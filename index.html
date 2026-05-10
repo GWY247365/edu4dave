@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<title>小学数学练习</title>
+<style>
+  :root {
+    --bg: #f5f7fb;
+    --card: #ffffff;
+    --primary: #4f7cff;
+    --primary-dark: #3a5fcc;
+    --accent: #ffb547;
+    --good: #2bb673;
+    --bad: #e8554e;
+    --text: #222;
+    --muted: #6b7280;
+    --border: #e3e7ef;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: -apple-system, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 18px;
+  }
+  .app {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 16px 16px 80px;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  header h1 {
+    font-size: 24px;
+    margin: 0;
+    color: var(--primary-dark);
+  }
+  .timer {
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    font-size: 22px;
+    background: var(--card);
+    padding: 8px 14px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    min-width: 110px;
+    text-align: center;
+  }
+  .timer.warn { color: #d97706; }
+  .timer.over { color: var(--bad); animation: pulse 1s infinite; }
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+  }
+  .controls {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  button {
+    font-family: inherit;
+    font-size: 17px;
+    font-weight: 600;
+    border: none;
+    border-radius: 12px;
+    padding: 12px 20px;
+    cursor: pointer;
+    min-height: 48px;
+    transition: transform 0.05s, opacity 0.2s;
+  }
+  button:active { transform: scale(0.97); }
+  .btn-primary { background: var(--primary); color: white; }
+  .btn-accent { background: var(--accent); color: #4a3000; }
+  .btn-ghost { background: var(--card); color: var(--primary-dark); border: 1px solid var(--border); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .question {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .qnum {
+    background: var(--primary);
+    color: white;
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    flex-shrink: 0;
+    font-size: 15px;
+  }
+  .qexpr {
+    font-size: 22px;
+    font-weight: 600;
+    flex: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .qinput {
+    width: 110px;
+    font-size: 22px;
+    font-weight: 600;
+    padding: 8px 10px;
+    border-radius: 10px;
+    border: 2px solid var(--border);
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    background: #fafbfd;
+    color: var(--text);
+  }
+  .qinput:focus {
+    outline: none;
+    border-color: var(--primary);
+    background: white;
+  }
+  .question.right .qinput { border-color: var(--good); background: #eafaf2; }
+  .question.wrong .qinput { border-color: var(--bad); background: #fdecec; }
+  .mark {
+    font-size: 22px;
+    width: 28px;
+    text-align: center;
+  }
+  .mark.right { color: var(--good); }
+  .mark.wrong { color: var(--bad); }
+
+  .diag {
+    background: #fff8ec;
+    border: 1px solid #fde2a4;
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin: -2px 0 12px 0;
+    font-size: 16px;
+    line-height: 1.55;
+  }
+  .diag b { color: #a85b00; }
+  .diag .correct { color: var(--good); font-weight: 700; }
+  .diag .step {
+    background: white;
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin-top: 6px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    white-space: pre;
+    font-size: 15px;
+    overflow-x: auto;
+  }
+
+  .summary {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 16px;
+    text-align: center;
+    font-size: 18px;
+  }
+  .summary .score { font-size: 32px; font-weight: 800; color: var(--primary-dark); }
+  .summary.over { background: #fff4f3; border-color: #f5b9b5; }
+
+  .modal {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.45);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: 20px;
+  }
+  .modal.show { display: flex; }
+  .modal-card {
+    background: white;
+    border-radius: 16px;
+    padding: 24px;
+    max-width: 400px;
+    width: 100%;
+    text-align: center;
+  }
+  .modal-card h2 { margin: 0 0 10px; color: var(--bad); font-size: 22px; }
+  .modal-card p { margin: 0 0 18px; color: var(--muted); font-size: 16px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>📐 数学小练习</h1>
+    <div id="timer" class="timer">10:00</div>
+  </header>
+
+  <div class="controls">
+    <button id="newBtn" class="btn-accent">🎲 New quiz</button>
+    <button id="checkBtn" class="btn-primary">✅ Check answers</button>
+  </div>
+
+  <div id="summary"></div>
+  <div id="quiz"></div>
+</div>
+
+<div id="timeoutModal" class="modal">
+  <div class="modal-card">
+    <h2>⏰ 时间到！</h2>
+    <p>10 分钟到了。你可以继续做完，或者先 Check answers 看看结果。</p>
+    <button id="modalClose" class="btn-primary">好的</button>
+  </div>
+</div>
+
+<script>
+// ---------- 题目生成 ----------
+function rand(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+
+function genMul() {
+  // 2..12 × 2..12 (跳过 ×0/×1，太简单)
+  const a = rand(2, 12);
+  const b = rand(2, 12);
+  return { type: 'mul', a, b, ans: a * b, text: `${a} × ${b} =` };
+}
+function genAdd() {
+  // 三位数 + 三位数
+  const a = rand(100, 899);
+  const b = rand(100, 999 - a < 100 ? 100 : 999 - a);
+  // 确保 a+b <= 1999 即可，简单保证三位数加三位数
+  return { type: 'add', a, b, ans: a + b, text: `${a} + ${b} =` };
+}
+function genSub() {
+  // 三位数 - 三位数，结果为正
+  let a = rand(200, 999);
+  let b = rand(100, a - 1);
+  return { type: 'sub', a, b, ans: a - b, text: `${a} − ${b} =` };
+}
+
+function generateQuiz() {
+  const qs = [];
+  for (let i = 0; i < 6; i++) qs.push(genMul());
+  for (let i = 0; i < 2; i++) qs.push(genAdd());
+  for (let i = 0; i < 2; i++) qs.push(genSub());
+  // 洗牌
+  for (let i = qs.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [qs[i], qs[j]] = [qs[j], qs[i]];
+  }
+  return qs;
+}
+
+// ---------- 渲染 ----------
+let quiz = [];
+const quizEl = document.getElementById('quiz');
+const summaryEl = document.getElementById('summary');
+
+function renderQuiz() {
+  summaryEl.innerHTML = '';
+  quizEl.innerHTML = '';
+  quiz.forEach((q, i) => {
+    const row = document.createElement('div');
+    row.className = 'question';
+    row.dataset.idx = i;
+    row.innerHTML = `
+      <span class="qnum">${i + 1}</span>
+      <span class="qexpr">${q.text}</span>
+      <input class="qinput" type="text" inputmode="numeric" pattern="[0-9-]*" autocomplete="off" />
+      <span class="mark"></span>
+    `;
+    quizEl.appendChild(row);
+  });
+  // 自动聚焦第一题
+  const first = quizEl.querySelector('.qinput');
+  if (first) first.focus({ preventScroll: true });
+}
+
+// ---------- 诊断逻辑 ----------
+function diagnoseMul(q, user) {
+  const { a, b, ans } = q;
+  const tips = [];
+  // 邻近乘法表
+  if (user === a * (b + 1)) tips.push(`你算成了 <b>${a} × ${b + 1} = ${a * (b + 1)}</b>，把 ×${b} 记成了 ×${b + 1}（相邻乘法表混淆）。`);
+  else if (user === a * (b - 1)) tips.push(`你算成了 <b>${a} × ${b - 1} = ${a * (b - 1)}</b>，把 ×${b} 记成了 ×${b - 1}。`);
+  else if (user === (a + 1) * b) tips.push(`你算成了 <b>${a + 1} × ${b} = ${(a + 1) * b}</b>，把 ${a}× 记成了 ${a + 1}×。`);
+  else if (user === (a - 1) * b) tips.push(`你算成了 <b>${a - 1} × ${b} = ${(a - 1) * b}</b>，把 ${a}× 记成了 ${a - 1}×。`);
+  else if (user === a + b) tips.push(`你做成了加法：${a} + ${b} = ${a + b}。注意符号是 <b>×</b>（乘法）。`);
+  else if (user === a - b || user === b - a) tips.push(`你做成了减法。注意符号是 <b>×</b>（乘法）。`);
+  else if (Math.abs(user - ans) === a) tips.push(`你少加（或多加）了一个 ${a}。检查是不是把 ×${b} 当成 ×${b - 1} 或 ×${b + 1}。`);
+  else if (Math.abs(user - ans) === b) tips.push(`你少加（或多加）了一个 ${b}。`);
+  else if (digitsReversed(user, ans)) tips.push(`数字写反了：正确答案是 ${ans}，你写成 ${user}（位数颠倒）。`);
+  else tips.push(`乘法表可能记错了。`);
+
+  // 教学
+  const teach = mulTeaching(a, b);
+  return tips.join(' ') + teach;
+}
+
+function mulTeaching(a, b) {
+  // 给一个分解策略
+  const ans = a * b;
+  let strategy = '';
+  if (b === 9) strategy = `${a}×9 小技巧：${a}×10 − ${a} = ${a * 10} − ${a} = <span class="correct">${ans}</span>`;
+  else if (a === 9) strategy = `9×${b} 小技巧：10×${b} − ${b} = ${10 * b} − ${b} = <span class="correct">${ans}</span>`;
+  else if (b === 11 && a <= 9) strategy = `${a}×11 小技巧：${a}×10 + ${a} = ${a * 10} + ${a} = <span class="correct">${ans}</span>`;
+  else if (a === 11 && b <= 9) strategy = `11×${b} 小技巧：10×${b} + ${b} = ${10 * b} + ${b} = <span class="correct">${ans}</span>`;
+  else if (b === 12) strategy = `${a}×12 拆开：${a}×10 + ${a}×2 = ${a * 10} + ${a * 2} = <span class="correct">${ans}</span>`;
+  else if (a === 12) strategy = `12×${b} 拆开：10×${b} + 2×${b} = ${10 * b} + ${2 * b} = <span class="correct">${ans}</span>`;
+  else {
+    // 通用：拆成 (a-1)*b + b，或者直接重复加
+    strategy = `连加法验算：${b} + ${b} + … （共 ${a} 个 ${b}）= <span class="correct">${ans}</span>`;
+  }
+  return `<div class="step">正确答案：<span class="correct">${ans}</span>。${strategy}</div>`;
+}
+
+function digitsReversed(u, c) {
+  if (u <= 0) return false;
+  const us = String(u).split('').reverse().join('');
+  return us === String(c) && String(u) !== String(c);
+}
+
+function diagnoseAdd(q, user) {
+  const { a, b, ans } = q;
+  const tips = [];
+  // 不进位逐列加（每列直接写两数之和的个位，进位丢掉）
+  const noCarry = columnAddNoCarry(a, b);
+  if (user === noCarry && noCarry !== ans) {
+    tips.push(`你按列相加时 <b>忘记进位</b> 了。每一列加起来超过 9 时要往左进 1。`);
+  } else if (user === ans + 10 || user === ans + 100 || user === ans + 1000) {
+    tips.push(`你 <b>多进了一位</b>。这一列没满 10 不需要进位。`);
+  } else if (user === ans - 10 || user === ans - 100) {
+    tips.push(`你 <b>少进了一位</b>。仔细检查每列相加是否 ≥ 10。`);
+  } else if (user === a - b || user === b - a) {
+    tips.push(`你做成了 <b>减法</b>。注意符号是 +。`);
+  } else if (digitsReversed(user, ans)) {
+    tips.push(`数字写反了。`);
+  } else {
+    tips.push(`计算过程中可能某一列加错或抄错了数字。`);
+  }
+  tips.push(columnAddTeach(a, b));
+  return tips.join(' ');
+}
+
+function columnAddNoCarry(a, b) {
+  const as = String(a).padStart(3, '0');
+  const bs = String(b).padStart(3, '0');
+  let res = '';
+  for (let i = 0; i < 3; i++) {
+    const s = (+as[i]) + (+bs[i]);
+    res += String(s % 10);
+  }
+  return parseInt(res, 10);
+}
+
+function columnAddTeach(a, b) {
+  const as = String(a).padStart(3, '0');
+  const bs = String(b).padStart(3, '0');
+  const o = (+as[2]) + (+bs[2]);
+  const oCarry = o >= 10 ? 1 : 0;
+  const t = (+as[1]) + (+bs[1]) + oCarry;
+  const tCarry = t >= 10 ? 1 : 0;
+  const h = (+as[0]) + (+bs[0]) + tCarry;
+  const ans = a + b;
+  return `<div class="step">竖式：
+  ${String(a).padStart(4)}
++ ${String(b).padStart(4)}
+------
+个位 ${+as[2]}+${+bs[2]}=${o}${oCarry ? '，进 1' : ''}
+十位 ${+as[1]}+${+bs[1]}${oCarry ? '+1' : ''}=${t}${tCarry ? '，进 1' : ''}
+百位 ${+as[0]}+${+bs[0]}${tCarry ? '+1' : ''}=${h}
+答：<span class="correct">${ans}</span></div>`;
+}
+
+function diagnoseSub(q, user) {
+  const { a, b, ans } = q;
+  const tips = [];
+  const absCol = columnSubAbs(a, b);
+  if (user === absCol && absCol !== ans) {
+    tips.push(`你 <b>没有借位</b>，每一列直接取了较大数减较小数。当上面的数字小于下面时，要从左边一位 <b>借 1</b>。`);
+  } else if (user === b - a) {
+    tips.push(`你把 <b>被减数和减数颠倒</b> 了，做成了 ${b}−${a}。`);
+  } else if (user === a + b) {
+    tips.push(`你做成了 <b>加法</b>。注意符号是 −。`);
+  } else if (user === ans + 10 || user === ans + 100) {
+    tips.push(`你 <b>少借了一位</b>。检查哪一列上面的数字比下面的小。`);
+  } else if (user === ans - 10 || user === ans - 100) {
+    tips.push(`你 <b>多借了一位</b>。`);
+  } else if (digitsReversed(user, ans)) {
+    tips.push(`数字写反了。`);
+  } else {
+    tips.push(`借位过程可能哪一步错了。`);
+  }
+  tips.push(columnSubTeach(a, b));
+  return tips.join(' ');
+}
+
+function columnSubAbs(a, b) {
+  const as = String(a).padStart(3, '0');
+  const bs = String(b).padStart(3, '0');
+  let res = '';
+  for (let i = 0; i < 3; i++) {
+    res += String(Math.abs((+as[i]) - (+bs[i])));
+  }
+  return parseInt(res, 10);
+}
+
+function columnSubTeach(a, b) {
+  const ans = a - b;
+  const as = String(a).padStart(3, '0').split('').map(Number);
+  const bs = String(b).padStart(3, '0').split('').map(Number);
+  // 模拟借位
+  const cols = ['个位', '十位', '百位'];
+  const lines = [];
+  let top = [...as];
+  for (let i = 2; i >= 0; i--) {
+    if (top[i] < bs[i]) {
+      // 向左借 1
+      let j = i - 1;
+      while (j >= 0 && top[j] === 0) { top[j] = 9; j--; }
+      if (j >= 0) top[j] -= 1;
+      top[i] += 10;
+      lines.push(`${cols[2 - i]}：${as[i]} 不够减 ${bs[i]}，向左借 1 变 ${top[i]}，${top[i]}−${bs[i]}=${top[i] - bs[i]}`);
+    } else {
+      lines.push(`${cols[2 - i]}：${top[i]}−${bs[i]}=${top[i] - bs[i]}`);
+    }
+  }
+  return `<div class="step">竖式：
+  ${String(a).padStart(4)}
+− ${String(b).padStart(4)}
+------
+${lines.join('\n')}
+答：<span class="correct">${ans}</span></div>`;
+}
+
+function diagnose(q, user) {
+  if (user === q.ans) return '';
+  if (q.type === 'mul') return diagnoseMul(q, user);
+  if (q.type === 'add') return diagnoseAdd(q, user);
+  if (q.type === 'sub') return diagnoseSub(q, user);
+  return '';
+}
+
+// ---------- 检查答案 ----------
+function checkAnswers() {
+  // 清除旧诊断
+  document.querySelectorAll('.diag').forEach(e => e.remove());
+  let correct = 0;
+  let answered = 0;
+  quiz.forEach((q, i) => {
+    const row = quizEl.querySelector(`.question[data-idx="${i}"]`);
+    const input = row.querySelector('.qinput');
+    const mark = row.querySelector('.mark');
+    const raw = input.value.trim();
+    row.classList.remove('right', 'wrong');
+    if (raw === '') {
+      mark.textContent = '–';
+      mark.className = 'mark';
+      return;
+    }
+    answered++;
+    const user = parseInt(raw, 10);
+    if (!Number.isFinite(user)) {
+      mark.textContent = '?';
+      mark.className = 'mark wrong';
+      row.classList.add('wrong');
+      return;
+    }
+    if (user === q.ans) {
+      correct++;
+      mark.textContent = '✓';
+      mark.className = 'mark right';
+      row.classList.add('right');
+    } else {
+      mark.textContent = '✗';
+      mark.className = 'mark wrong';
+      row.classList.add('wrong');
+      const diag = document.createElement('div');
+      diag.className = 'diag';
+      diag.innerHTML = `<b>第 ${i + 1} 题：</b> 你写的是 ${user}。${diagnose(q, user)}`;
+      row.insertAdjacentElement('afterend', diag);
+    }
+  });
+  const isOver = timerOver;
+  summaryEl.innerHTML = `
+    <div class="summary ${isOver ? 'over' : ''}">
+      <div class="score">${correct} / ${quiz.length}</div>
+      <div>答对 ${correct} 题，答错 ${answered - correct} 题${answered < quiz.length ? `，未做 ${quiz.length - answered} 题` : ''}。</div>
+      ${isOver ? '<div style="color:#b91c1c;margin-top:6px;">⏰ 已超过 10 分钟</div>' : ''}
+      ${correct === quiz.length ? '<div style="margin-top:8px;">🎉 全部答对，太棒了！</div>' : ''}
+    </div>
+  `;
+  summaryEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ---------- 计时 ----------
+const TIME_LIMIT = 10 * 60; // 10 分钟
+let timeLeft = TIME_LIMIT;
+let timerId = null;
+let timerOver = false;
+const timerEl = document.getElementById('timer');
+
+function fmt(s) {
+  const sign = s < 0 ? '+' : '';
+  const t = Math.abs(s);
+  const m = Math.floor(t / 60);
+  const ss = t % 60;
+  return sign + String(m).padStart(2, '0') + ':' + String(ss).padStart(2, '0');
+}
+
+function updateTimerDisplay() {
+  timerEl.textContent = fmt(timeLeft);
+  timerEl.classList.toggle('warn', timeLeft <= 60 && timeLeft > 0);
+  timerEl.classList.toggle('over', timeLeft <= 0);
+}
+
+function startTimer() {
+  stopTimer();
+  timeLeft = TIME_LIMIT;
+  timerOver = false;
+  updateTimerDisplay();
+  timerId = setInterval(() => {
+    timeLeft--;
+    updateTimerDisplay();
+    if (timeLeft === 0) {
+      timerOver = true;
+      showTimeout();
+    }
+    // 之后变成超时正计：显示 +mm:ss
+    if (timeLeft < 0) {
+      // 用绝对值显示，加个 + 号
+      timerEl.textContent = '+' + fmt(timeLeft).slice(1);
+    }
+  }, 1000);
+}
+
+function stopTimer() {
+  if (timerId) { clearInterval(timerId); timerId = null; }
+}
+
+function showTimeout() {
+  document.getElementById('timeoutModal').classList.add('show');
+  if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+}
+
+document.getElementById('modalClose').addEventListener('click', () => {
+  document.getElementById('timeoutModal').classList.remove('show');
+});
+
+// ---------- 按钮 ----------
+document.getElementById('newBtn').addEventListener('click', () => {
+  quiz = generateQuiz();
+  renderQuiz();
+  startTimer();
+});
+document.getElementById('checkBtn').addEventListener('click', checkAnswers);
+
+// 回车跳到下一题
+quizEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const inputs = [...quizEl.querySelectorAll('.qinput')];
+    const idx = inputs.indexOf(document.activeElement);
+    if (idx >= 0 && idx < inputs.length - 1) inputs[idx + 1].focus();
+    else checkAnswers();
+  }
+});
+
+// 初始化
+quiz = generateQuiz();
+renderQuiz();
+startTimer();
+</script>
+</body>
+</html>
