@@ -4,7 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Math Quiz">
+<meta name="theme-color" content="#0698da">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" type="image/svg+xml" href="./icon.svg">
+<link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
+<link rel="apple-touch-icon" href="./icon-180.png">
 <title>Math Quiz · 10 Questions</title>
 
 <style>
@@ -152,6 +158,24 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 
 .review-badge{font-size:11px;font-weight:700;color:var(--warn-deep);background:var(--warn-soft);border:1px solid #fde68a;padding:2px 8px;border-radius:9999px;letter-spacing:.04em}
 
+.streak-chip{appearance:none;border:1px solid #fde68a;background:linear-gradient(135deg,#fff7ed,#ffedd5);color:#9a3412;font-family:inherit;font-weight:800;display:inline-flex;align-items:center;gap:4px;padding:6px 10px;border-radius:9999px;cursor:pointer;font-size:14px;box-shadow:var(--shadow-card);transition:transform .15s ease}
+.streak-chip:active{transform:scale(.94)}
+.streak-chip .fire{font-size:14px;animation:flicker 2.4s ease-in-out infinite}
+.streak-chip .streak-num{font-variant-numeric:tabular-nums}
+.streak-chip.hot{background:linear-gradient(135deg,#fee2e2,#fecaca);border-color:#fca5a5;color:#991b1b}
+.streak-chip.hot .fire{font-size:16px;animation:flicker 1.6s ease-in-out infinite}
+@keyframes flicker{0%,100%{transform:scale(1) rotate(-2deg);opacity:1}50%{transform:scale(1.15) rotate(3deg);opacity:.85}}
+
+.bucket-grid{display:flex;flex-direction:column;gap:4px;margin-top:4px}
+.bucket-op{font-size:12px;font-weight:700;color:var(--ink-2);text-transform:uppercase;letter-spacing:.05em;margin:6px 0 2px}
+.bucket-row{display:flex;align-items:center;gap:10px;font-size:13px}
+.bucket-lbl{flex:0 0 110px;color:var(--ink-2)}
+.bucket-bar{flex:1;height:7px;background:var(--border-soft);border-radius:4px;overflow:hidden}
+.bucket-bar-fill{height:100%;background:var(--brand);transition:width .3s ease}
+.bucket-bar-fill.good{background:var(--ok)}
+.bucket-bar-fill.low{background:var(--bad)}
+.bucket-num{flex:0 0 44px;text-align:right;font-size:12px;color:var(--ink-3);font-variant-numeric:tabular-nums;font-weight:600}
+
 .stats-modal{max-width:480px;text-align:left;padding:20px}
 .stats-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
 .stats-head h2{margin:0}
@@ -216,15 +240,30 @@ const rint = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
 
 /* ---------- Stats: localStorage-backed per-fact tracking ---------- */
 const STATS_KEY = 'mathquiz.stats.v1';
+function todayKey(d) {
+  d = d || new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function dayDiff(a, b) {
+  const da = new Date(a + 'T00:00:00');
+  const db = new Date(b + 'T00:00:00');
+  return Math.round((db - da) / 86400000);
+}
 const Stats = (() => {
   function load() {
     try {
       const raw = localStorage.getItem(STATS_KEY);
-      if (!raw) return { facts: {}, hist: [] };
-      const data = JSON.parse(raw);
-      return { facts: data.facts || {}, hist: data.hist || [] };
-    } catch { return { facts: {}, hist: [] }; }
+      if (!raw) return blank();
+      const d = JSON.parse(raw);
+      return {
+        facts: d.facts || {},
+        hist: d.hist || [],
+        buckets: d.buckets || {},
+        streak: d.streak || { current: 0, best: 0, lastDay: null },
+      };
+    } catch { return blank(); }
   }
+  function blank() { return { facts: {}, hist: [], buckets: {}, streak: { current: 0, best: 0, lastDay: null } }; }
   function save(d) {
     try { localStorage.setItem(STATS_KEY, JSON.stringify(d)); } catch {}
   }
@@ -239,9 +278,39 @@ const Stats = (() => {
     data.facts[k] = f;
     save(data);
   }
+  function recordBucket(key, correct) {
+    const b = data.buckets[key] || { right: 0, wrong: 0 };
+    if (correct) b.right++; else b.wrong++;
+    data.buckets[key] = b;
+    save(data);
+  }
+  function bumpStreak() {
+    const today = todayKey();
+    const s = data.streak;
+    if (s.lastDay === today) return s; // already counted today
+    if (!s.lastDay) s.current = 1;
+    else {
+      const diff = dayDiff(s.lastDay, today);
+      if (diff === 1) s.current += 1;
+      else if (diff > 1) s.current = 1;
+    }
+    s.lastDay = today;
+    s.best = Math.max(s.best, s.current);
+    save(data);
+    return s;
+  }
+  function streakStatus() {
+    const s = data.streak;
+    if (!s.lastDay) return { current: 0, best: s.best, active: false };
+    const diff = dayDiff(s.lastDay, todayKey());
+    // If kid hasn't played in >1 day, streak is broken (display as 0 until they play today)
+    const active = diff <= 1;
+    return { current: active ? s.current : 0, best: s.best, active, lastDay: s.lastDay };
+  }
   function recordQuiz(total, correct, elapsedSec) {
     data.hist.push({ d: Date.now(), n: total, c: correct, t: elapsedSec });
     if (data.hist.length > 100) data.hist = data.hist.slice(-100);
+    bumpStreak();
     save(data);
   }
   function factWeight(stat) {
@@ -249,8 +318,21 @@ const Stats = (() => {
     let w = 1 + 2 * stat.wrong - 0.5 * stat.right;
     return Math.max(0.2, Math.min(8, w));
   }
+  function bucketWeight(key) {
+    return factWeight(data.buckets[key]);
+  }
+  function pickBucket(prefix) {
+    const opts = [0, 1, 2];
+    const weights = opts.map(k => bucketWeight(`${prefix}:${k}`));
+    const total = weights.reduce((s, x) => s + x, 0);
+    let r = Math.random() * total;
+    for (let i = 0; i < opts.length; i++) {
+      if (r < weights[i]) return opts[i];
+      r -= weights[i];
+    }
+    return opts[opts.length - 1];
+  }
   function pickMulFacts(n) {
-    // 66 unique facts: a×b where 2 ≤ a ≤ b ≤ 12
     const all = [];
     for (let a = 2; a <= 12; a++) {
       for (let b = a; b <= 12; b++) {
@@ -267,13 +349,27 @@ const Stats = (() => {
     }
     return out;
   }
+  function bucketSummary() {
+    const out = {};
+    ['add', 'sub'].forEach(p => {
+      out[p] = [0, 1, 2].map(k => {
+        const key = `${p}:${k}`;
+        const b = data.buckets[key] || { right: 0, wrong: 0 };
+        const total = b.right + b.wrong;
+        return {
+          k, key,
+          right: b.right, wrong: b.wrong, total,
+          accuracy: total ? Math.round(100 * b.right / total) : null,
+        };
+      });
+    });
+    return out;
+  }
   function summary() {
     const facts = data.facts;
-    const keys = Object.keys(facts);
-    let totalAttempts = 0, totalRight = 0;
-    let mastered = 0;
+    let totalAttempts = 0, totalRight = 0, mastered = 0;
     const weak = [];
-    for (const k of keys) {
+    for (const k of Object.keys(facts)) {
       const f = facts[k];
       totalAttempts += f.right + f.wrong;
       totalRight += f.right;
@@ -285,9 +381,7 @@ const Stats = (() => {
     }
     weak.sort((x, y) => y.weight - x.weight || y.wrong - x.wrong);
     const last = data.hist[data.hist.length - 1];
-    const avgScore = data.hist.length
-      ? data.hist.reduce((s, h) => s + h.c, 0) / data.hist.length
-      : 0;
+    const avgScore = data.hist.length ? data.hist.reduce((s, h) => s + h.c, 0) / data.hist.length : 0;
     return {
       quizzesDone: data.hist.length,
       lastScore: last ? `${last.c}/${last.n}` : '—',
@@ -297,28 +391,63 @@ const Stats = (() => {
       mastered,
       weak: weak.slice(0, 6),
       hist: data.hist.slice(-10),
+      streak: streakStatus(),
+      buckets: bucketSummary(),
     };
   }
   function reset() {
-    data = { facts: {}, hist: [] };
+    data = blank();
     save(data);
   }
-  return { recordMul, recordQuiz, pickMulFacts, getFact, factWeight, summary, reset };
+  return { recordMul, recordBucket, recordQuiz, pickMulFacts, pickBucket, getFact, factWeight, bucketWeight, summary, streakStatus, reset };
 })();
 
 function genMul() {
   const a = rint(2, 12), b = rint(2, 12);
   return { type: 'mul', a, b, ans: a * b, label: 'Multiplication · ×' };
 }
-function genAdd() {
-  const a = rint(120, 899);
-  const b = rint(120, 899);
-  return { type: 'add', a, b, ans: a + b, label: 'Addition · +' };
+function countCarries(a, b) {
+  let c = 0, carries = 0;
+  for (let i = 0; i < 3; i++) {
+    const da = Math.floor(a / Math.pow(10, i)) % 10;
+    const db = Math.floor(b / Math.pow(10, i)) % 10;
+    const s = da + db + c;
+    c = s >= 10 ? 1 : 0;
+    if (c) carries++;
+  }
+  return carries;
 }
-function genSub() {
-  let a = rint(300, 999);
-  let b = rint(120, a - 100);
-  return { type: 'sub', a, b, ans: a - b, label: 'Subtraction · −' };
+function countBorrows(a, b) {
+  let borrow = 0, borrows = 0;
+  for (let i = 0; i < 3; i++) {
+    const da = Math.floor(a / Math.pow(10, i)) % 10;
+    const db = Math.floor(b / Math.pow(10, i)) % 10;
+    if (da - borrow < db) { borrows++; borrow = 1; }
+    else borrow = 0;
+  }
+  return borrows;
+}
+function genAdd(targetCarries) {
+  for (let t = 0; t < 80; t++) {
+    const a = rint(120, 899), b = rint(120, 899);
+    if (targetCarries == null || countCarries(a, b) === targetCarries) {
+      return { type: 'add', a, b, ans: a + b, label: 'Addition · +', bucket: `add:${countCarries(a, b)}` };
+    }
+  }
+  const a = rint(120, 899), b = rint(120, 899);
+  return { type: 'add', a, b, ans: a + b, label: 'Addition · +', bucket: `add:${countCarries(a, b)}` };
+}
+function genSub(targetBorrows) {
+  for (let t = 0; t < 80; t++) {
+    const a = rint(300, 999);
+    const b = rint(120, a - 100);
+    if (targetBorrows == null || countBorrows(a, b) === targetBorrows) {
+      return { type: 'sub', a, b, ans: a - b, label: 'Subtraction · −', bucket: `sub:${countBorrows(a, b)}` };
+    }
+  }
+  const a = rint(300, 999);
+  const b = rint(120, a - 100);
+  return { type: 'sub', a, b, ans: a - b, label: 'Subtraction · −', bucket: `sub:${countBorrows(a, b)}` };
 }
 
 function newQuiz() {
@@ -334,8 +463,8 @@ function newQuiz() {
     const isReview = !!stat && stat.wrong > 0 && Stats.factWeight(stat) > 1.5;
     qs.push({ type: 'mul', a, b, ans: a * b, label: 'Multiplication · ×', isReview });
   });
-  for (let i = 0; i < 2; i++) qs.push(genAdd());
-  for (let i = 0; i < 2; i++) qs.push(genSub());
+  for (let i = 0; i < 2; i++) qs.push(genAdd(Stats.pickBucket('add')));
+  for (let i = 0; i < 2; i++) qs.push(genSub(Stats.pickBucket('sub')));
   for (let i = qs.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [qs[i], qs[j]] = [qs[j], qs[i]];
@@ -667,12 +796,13 @@ function submit(fromTimeout) {
   state.submitted = true;
   state.finalElapsed = TIME_LIMIT_SEC - state.remaining;
   clearInterval(tickHandle);
-  // Persist per-fact stats (only multiplication has a finite, repeatable fact set)
+  // Persist per-fact / per-bucket stats
   let correctCount = 0;
   state.quiz.forEach(q => {
     const isRight = Number(q.given) === q.ans;
     if (isRight) correctCount++;
     if (q.type === 'mul') Stats.recordMul(q.a, q.b, isRight);
+    else if (q.bucket) Stats.recordBucket(q.bucket, isRight);
   });
   Stats.recordQuiz(state.quiz.length, correctCount, state.finalElapsed);
   render();
@@ -734,13 +864,26 @@ function renderTopbar() {
   txt.appendChild(el('h1', null, 'Math Quiz · 10 Questions'));
   txt.appendChild(el('p', null, '6 multiplication · 2 addition · 2 subtraction · 10-minute timer'));
   brand.appendChild(mark); brand.appendChild(txt);
+  const sk = Stats.streakStatus();
+  if (sk.current > 0) {
+    const chip = el('button', 'streak-chip');
+    chip.title = `${sk.current}-day streak · best ${sk.best}`;
+    chip.setAttribute('aria-label', 'Daily streak');
+    chip.appendChild(spanTxt('🔥', 'fire'));
+    chip.appendChild(spanTxt(String(sk.current), 'streak-num'));
+    chip.onclick = () => { state.showStats = true; render(); };
+    if (sk.current >= 7) chip.classList.add('hot');
+    bar.appendChild(brand); bar.appendChild(chip);
+  } else {
+    bar.appendChild(brand);
+  }
   const stats = el('button', 'iconbtn');
   stats.title = 'Stats';
   stats.setAttribute('aria-label', 'Stats');
   stats.textContent = '📊';
   stats.onclick = () => { state.showStats = true; render(); };
   const timer = el('div', 'timer'); timer.id = 'timer';
-  bar.appendChild(brand); bar.appendChild(stats); bar.appendChild(timer);
+  bar.appendChild(stats); bar.appendChild(timer);
   return bar;
 }
 
@@ -959,14 +1102,18 @@ function renderStatsModal() {
     m.appendChild(el('p', 'stats-empty', 'No data yet — finish a quiz to start tracking your progress.'));
   } else {
     const tiles = el('div', 'stats-tiles');
+    const streakTile = statTile('Streak', s.streak.current ? `🔥 ${s.streak.current}` : '—');
+    if (s.streak.best > s.streak.current) {
+      streakTile.querySelector('.stat-label').textContent = `Streak · best ${s.streak.best}`;
+    }
+    tiles.appendChild(streakTile);
     tiles.appendChild(statTile('Quizzes', s.quizzesDone));
     tiles.appendChild(statTile('Last score', s.lastScore));
-    tiles.appendChild(statTile('Avg score', s.avgScore));
     tiles.appendChild(statTile('Mul accuracy', s.totalAccuracy + '%'));
     m.appendChild(tiles);
 
     const factsLine = el('p', 'stats-line',
-      `Multiplication facts seen: ${Object.keys(s.weak).length + s.mastered ? s.totalAttempts : 0} attempts · ${s.mastered} mastered`);
+      `Multiplication: ${s.totalAttempts} attempts · ${s.mastered} mastered`);
     m.appendChild(factsLine);
 
     if (s.weak.length) {
@@ -988,6 +1135,35 @@ function renderStatsModal() {
       m.appendChild(list);
     } else if (s.totalAttempts > 0) {
       m.appendChild(el('p', 'stats-line', '🌟 No weak facts right now — keep practicing!'));
+    }
+
+    const bucketTotal = ['add', 'sub'].reduce((sum, p) => sum + s.buckets[p].reduce((q, b) => q + b.total, 0), 0);
+    if (bucketTotal > 0) {
+      m.appendChild(el('h3', 'stats-h3', 'Add / Sub by difficulty'));
+      const bgrid = el('div', 'bucket-grid');
+      const labels = { 0: 'No carry/borrow', 1: '1 carry/borrow', 2: '2 carries/borrows' };
+      ['add', 'sub'].forEach(p => {
+        const opLabel = p === 'add' ? '+ Addition' : '− Subtraction';
+        bgrid.appendChild(el('div', 'bucket-op', opLabel));
+        s.buckets[p].forEach(b => {
+          const row = el('div', 'bucket-row');
+          const lbl = p === 'add' ? labels[b.k].replace('/borrow', '') : labels[b.k].replace('carry/', '');
+          row.appendChild(el('div', 'bucket-lbl', lbl));
+          const bar = el('div', 'bucket-bar');
+          if (b.total > 0) {
+            const fill = el('div', 'bucket-bar-fill');
+            fill.style.width = (b.accuracy || 0) + '%';
+            if (b.accuracy >= 80) fill.classList.add('good');
+            else if (b.accuracy < 50) fill.classList.add('low');
+            bar.appendChild(fill);
+          }
+          row.appendChild(bar);
+          const numTxt = b.total ? `${b.right}/${b.total}` : '—';
+          row.appendChild(el('div', 'bucket-num', numTxt));
+          bgrid.appendChild(row);
+        });
+      });
+      m.appendChild(bgrid);
     }
 
     if (s.hist.length >= 2) {
@@ -1050,6 +1226,13 @@ setTimeout(() => {
   const first = document.querySelector('.ansbox');
   if (first) first.focus();
 }, 100);
+
+// PWA: register service worker for offline use
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  });
+}
 </script>
 </body>
 </html>
