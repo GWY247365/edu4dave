@@ -1,581 +1,789 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
+<!doctype html>
+<html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-<meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-status-bar-style" content="default" />
-<title>小学数学练习</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Math Quiz">
+<title>Math Quiz · 10 Questions</title>
+
 <style>
-  :root {
-    --bg: #f5f7fb;
-    --card: #ffffff;
-    --primary: #4f7cff;
-    --primary-dark: #3a5fcc;
-    --accent: #ffb547;
-    --good: #2bb673;
-    --bad: #e8554e;
-    --text: #222;
-    --muted: #6b7280;
-    --border: #e3e7ef;
-  }
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body {
-    margin: 0; padding: 0;
-    font-family: -apple-system, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    font-size: 18px;
-  }
-  .app {
-    max-width: 720px;
-    margin: 0 auto;
-    padding: 16px 16px 80px;
-  }
-  header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 12px;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-  header h1 {
-    font-size: 24px;
-    margin: 0;
-    color: var(--primary-dark);
-  }
-  .timer {
-    font-variant-numeric: tabular-nums;
-    font-weight: 700;
-    font-size: 22px;
-    background: var(--card);
-    padding: 8px 14px;
-    border-radius: 12px;
-    border: 1px solid var(--border);
-    min-width: 110px;
-    text-align: center;
-  }
-  .timer.warn { color: #d97706; }
-  .timer.over { color: var(--bad); animation: pulse 1s infinite; }
-  @keyframes pulse {
-    0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.05); }
-  }
-  .controls {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 16px;
-    flex-wrap: wrap;
-  }
-  button {
-    font-family: inherit;
-    font-size: 17px;
-    font-weight: 600;
-    border: none;
-    border-radius: 12px;
-    padding: 12px 20px;
-    cursor: pointer;
-    min-height: 48px;
-    transition: transform 0.05s, opacity 0.2s;
-  }
-  button:active { transform: scale(0.97); }
-  .btn-primary { background: var(--primary); color: white; }
-  .btn-accent { background: var(--accent); color: #4a3000; }
-  .btn-ghost { background: var(--card); color: var(--primary-dark); border: 1px solid var(--border); }
-  button:disabled { opacity: 0.5; cursor: not-allowed; }
+:root{
+  --brand:#0698da;
+  --brand-deep:#0578ae;
+  --brand-soft:#e6f5fc;
+  --brand-soft-2:#cdebf8;
+  --ink:#0f172a;
+  --ink-2:#344054;
+  --ink-3:#6b7280;
+  --ink-4:#98a2b3;
+  --bg:#f4f8fb;
+  --card:#ffffff;
+  --border:#e1e6ec;
+  --border-soft:#eef1f4;
+  --ok:#16a34a;
+  --ok-soft:#ecfdf3;
+  --ok-deep:#15803d;
+  --warn:#d97706;
+  --warn-soft:#fffaeb;
+  --warn-deep:#b45309;
+  --bad:#dc2626;
+  --bad-soft:#fef2f2;
+  --bad-deep:#b91c1c;
+  --shadow-card:0 1px 3px rgb(15 23 42 / .06), 0 1px 2px rgb(15 23 42 / .04);
+  --shadow-pop:0 10px 15px -3px rgb(15 23 42 / .08), 0 4px 6px -4px rgb(15 23 42 / .05);
+  --shadow-brand:0 4px 14px -2px rgb(6 152 218 / .35);
+  --font:'Inter',system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:var(--font);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overscroll-behavior-y:none}
+.tabular{font-variant-numeric:tabular-nums}
 
-  .question {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 14px 16px;
-    margin-bottom: 10px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-  .qnum {
-    background: var(--primary);
-    color: white;
-    width: 32px; height: 32px;
-    border-radius: 50%;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 700;
-    flex-shrink: 0;
-    font-size: 15px;
-  }
-  .qexpr {
-    font-size: 22px;
-    font-weight: 600;
-    flex: 1;
-    font-variant-numeric: tabular-nums;
-  }
-  .qinput {
-    width: 110px;
-    font-size: 22px;
-    font-weight: 600;
-    padding: 8px 10px;
-    border-radius: 10px;
-    border: 2px solid var(--border);
-    text-align: center;
-    font-variant-numeric: tabular-nums;
-    background: #fafbfd;
-    color: var(--text);
-  }
-  .qinput:focus {
-    outline: none;
-    border-color: var(--primary);
-    background: white;
-  }
-  .question.right .qinput { border-color: var(--good); background: #eafaf2; }
-  .question.wrong .qinput { border-color: var(--bad); background: #fdecec; }
-  .mark {
-    font-size: 22px;
-    width: 28px;
-    text-align: center;
-  }
-  .mark.right { color: var(--good); }
-  .mark.wrong { color: var(--bad); }
+.shell{max-width:920px;margin:0 auto;padding:16px 20px 140px}
+.topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:14px;padding:14px 4px;margin:0 -4px 18px;background:linear-gradient(180deg,rgba(244,248,251,.96) 70%,rgba(244,248,251,0));backdrop-filter:blur(8px)}
+.brand{display:flex;align-items:center;gap:12px;flex:1;min-width:0}
+.brand-mark{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,#0698da 0%,#0578ae 100%);color:#fff;display:grid;place-items:center;font-size:24px;font-weight:800;box-shadow:var(--shadow-brand);flex-shrink:0}
+.brand-text h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-.01em;line-height:1.1}
+.brand-text p{margin:2px 0 0;font-size:13px;color:var(--ink-3);font-weight:500}
 
-  .diag {
-    background: #fff8ec;
-    border: 1px solid #fde2a4;
-    border-radius: 12px;
-    padding: 12px 14px;
-    margin: -2px 0 12px 0;
-    font-size: 16px;
-    line-height: 1.55;
-  }
-  .diag b { color: #a85b00; }
-  .diag .correct { color: var(--good); font-weight: 700; }
-  .diag .step {
-    background: white;
-    border-radius: 8px;
-    padding: 8px 10px;
-    margin-top: 6px;
-    font-family: ui-monospace, "SF Mono", Menlo, monospace;
-    white-space: pre;
-    font-size: 15px;
-    overflow-x: auto;
-  }
+.timer{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:12px;background:#fff;border:1px solid var(--border);font-weight:700;font-size:18px;box-shadow:var(--shadow-card);transition:all .2s ease}
+.timer .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);animation:pulse 2s ease-in-out infinite}
+.timer.warn{background:var(--warn-soft);border-color:#fde68a;color:var(--warn-deep)}
+.timer.warn .dot{background:var(--warn)}
+.timer.danger{background:var(--bad-soft);border-color:#fecaca;color:var(--bad-deep)}
+.timer.danger .dot{background:var(--bad)}
+.timer.done{opacity:.6}
 
-  .summary {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 16px;
-    margin-bottom: 16px;
-    text-align: center;
-    font-size: 18px;
-  }
-  .summary .score { font-size: 32px; font-weight: 800; color: var(--primary-dark); }
-  .summary.over { background: #fff4f3; border-color: #f5b9b5; }
+.btn{appearance:none;border:none;cursor:pointer;font-family:inherit;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:12px;padding:12px 18px;font-size:16px;transition:transform .15s ease, box-shadow .2s ease, background .2s ease;white-space:nowrap}
+.btn:active{transform:scale(.96)}
+.btn-primary{background:var(--brand);color:#fff;box-shadow:var(--shadow-brand)}
+.btn-primary:hover{background:var(--brand-deep)}
+.btn-ghost{background:#fff;color:var(--ink-2);border:1px solid var(--border)}
+.btn-ghost:hover{background:var(--bg)}
 
-  .modal {
-    position: fixed; inset: 0;
-    background: rgba(0,0,0,0.45);
-    display: none;
-    align-items: center;
-    justify-content: center;
-    z-index: 100;
-    padding: 20px;
-  }
-  .modal.show { display: flex; }
-  .modal-card {
-    background: white;
-    border-radius: 16px;
-    padding: 24px;
-    max-width: 400px;
-    width: 100%;
-    text-align: center;
-  }
-  .modal-card h2 { margin: 0 0 10px; color: var(--bad); font-size: 22px; }
-  .modal-card p { margin: 0 0 18px; color: var(--muted); font-size: 16px; }
+.progress{display:flex;gap:6px;margin-bottom:18px}
+.progress .seg{flex:1;height:6px;border-radius:4px;background:#e5edf3;transition:background .25s ease}
+.progress .seg.filled{background:var(--brand)}
+.progress .seg.ok{background:var(--ok)}
+.progress .seg.bad{background:var(--bad)}
+
+.qcard{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px 18px;margin-bottom:10px;box-shadow:var(--shadow-card);transition:border-color .2s, box-shadow .2s}
+.qcard.focused{border-color:var(--brand);box-shadow:0 0 0 4px rgba(6,152,218,.12),var(--shadow-card)}
+.qcard.ok{border-color:#bbf7d0;background:linear-gradient(180deg,#f0fdf4 0%,#fff 60%)}
+.qcard.bad{border-color:#fecaca;background:linear-gradient(180deg,#fef2f2 0%,#fff 60%)}
+
+.qhead{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.qnum{width:28px;height:28px;border-radius:8px;background:var(--brand-soft);color:var(--brand-deep);display:grid;place-items:center;font-weight:700;font-size:13px;flex-shrink:0}
+.qcard.ok .qnum{background:var(--ok-soft);color:var(--ok-deep)}
+.qcard.bad .qnum{background:var(--bad-soft);color:var(--bad-deep)}
+.qtag{font-size:12px;font-weight:600;color:var(--ink-3);text-transform:uppercase;letter-spacing:.06em}
+.qstatus{margin-left:auto;font-size:13px;font-weight:600}
+.qstatus.ok{color:var(--ok-deep)}
+.qstatus.bad{color:var(--bad-deep)}
+
+.qrow{display:flex;align-items:center;flex-wrap:wrap;gap:14px}
+.expr{font-family:'Inter',var(--font);font-size:44px;font-weight:700;letter-spacing:-.02em;color:var(--ink);font-variant-numeric:tabular-nums;display:inline-flex;align-items:center;gap:14px}
+.expr .op{color:var(--brand);font-weight:700}
+.expr .eq{color:var(--ink-3)}
+
+.ansbox{width:160px;height:64px;font-size:32px;font-weight:700;font-variant-numeric:tabular-nums;text-align:center;border:2px solid var(--border);border-radius:14px;background:#fff;color:var(--ink);font-family:inherit;outline:none;transition:border-color .15s, box-shadow .15s, background .15s;-moz-appearance:textfield;padding:0 8px}
+.ansbox::-webkit-outer-spin-button,.ansbox::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.ansbox:focus{border-color:var(--brand);box-shadow:0 0 0 4px rgba(6,152,218,.18)}
+.ansbox.ok{border-color:var(--ok);background:var(--ok-soft);color:var(--ok-deep)}
+.ansbox.bad{border-color:var(--bad);background:var(--bad-soft);color:var(--bad-deep);text-decoration:line-through;text-decoration-color:rgba(220,38,38,.5);text-decoration-thickness:2px}
+
+.correct-pill{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:10px;background:var(--ok-soft);color:var(--ok-deep);font-weight:700;font-size:18px;font-variant-numeric:tabular-nums;border:1px solid #bbf7d0}
+.correct-pill .ar{color:var(--ink-3);font-weight:500;margin-right:2px;font-size:13px;text-transform:uppercase;letter-spacing:.05em}
+
+.diag{margin-top:10px;padding:10px 14px;background:#fff7ed;border:1px solid #fed7aa;border-radius:12px}
+.diag-head{display:flex;align-items:center;gap:8px;font-weight:700;color:var(--warn-deep);margin-bottom:8px;font-size:14px;text-transform:uppercase;letter-spacing:.05em}
+.diag-head .ico{width:22px;height:22px;border-radius:6px;background:var(--warn);color:#fff;display:grid;place-items:center;font-size:14px;font-weight:800}
+.diag p{margin:4px 0;font-size:14px;line-height:1.5;color:var(--ink-2)}
+.diag .why{font-weight:600;color:var(--warn-deep)}
+.diag .work{margin-top:8px;font-family:'JetBrains Mono','SF Mono',Menlo,monospace;font-size:14px;line-height:1.55;background:#fff;border:1px dashed #fed7aa;border-radius:8px;padding:10px 12px;white-space:pre-wrap;color:var(--ink-1);overflow-x:auto}
+.diag .work b{color:var(--brand-deep);font-weight:700}
+.wgrid{--cell:32px;display:inline-block;margin:6px 0 12px;background:#fbfdff;border:1px solid #c7d4e2;border-radius:4px;background-image:linear-gradient(#dde6f0 1px,transparent 1px),linear-gradient(90deg,#dde6f0 1px,transparent 1px);background-size:var(--cell) var(--cell);background-position:0 0;vertical-align:top}
+.wrow{display:flex;align-items:center;height:var(--cell);margin:0;padding:0}
+.wcell{flex:0 0 var(--cell);width:var(--cell);height:var(--cell);display:flex;align-items:center;justify-content:center;line-height:1;font-size:18px;box-sizing:border-box}
+.wcell.op{font-weight:600;color:var(--ink)}
+.wcell.bw{color:var(--brand-deep);font-weight:700;font-size:12px;align-items:flex-start;padding-top:3px;letter-spacing:-.5px}
+.wcell.sign{color:var(--brand);font-weight:700;font-size:18px}
+.wcell.sum{color:var(--brand-deep);font-weight:800;font-size:20px}
+.wline{height:2px;background:var(--ink-1);margin:0;width:100%;align-self:end}
+.wsteps{margin-top:6px;font-size:13px;color:var(--ink-2);line-height:1.5}
+.wsteps b{color:var(--brand-deep)}
+.diag .tip{margin-top:8px;font-size:13px;color:var(--warn-deep);display:flex;gap:6px;align-items:flex-start}
+
+.actionbar{position:fixed;left:0;right:0;bottom:0;z-index:30;padding:14px 20px calc(14px + env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(244,248,251,0),rgba(244,248,251,.97) 40%);display:flex;justify-content:center}
+.actionbar-inner{display:flex;gap:12px;width:100%;max-width:920px}
+.btn-big{flex:1;height:60px;font-size:19px;font-weight:700;border-radius:16px;letter-spacing:.01em}
+.btn-big.btn-primary{box-shadow:0 6px 20px -4px rgba(6,152,218,.45)}
+
+.summary{background:#fff;border:1px solid var(--border);border-radius:18px;padding:20px 22px;margin-bottom:18px;box-shadow:var(--shadow-card);display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.summary .score{font-size:54px;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums;line-height:1}
+.summary .score .total{color:var(--ink-4);font-size:34px;font-weight:600}
+.summary .label{font-size:14px;color:var(--ink-3);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+.summary .msg{flex:1;min-width:200px}
+.summary .msg h2{margin:0 0 4px;font-size:22px;font-weight:700}
+.summary .msg p{margin:0;color:var(--ink-3);font-size:14px}
+.summary .breakdown{display:flex;gap:8px;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:9999px;font-size:13px;font-weight:600}
+.chip.ok{background:var(--ok-soft);color:var(--ok-deep)}
+.chip.bad{background:var(--bad-soft);color:var(--bad-deep)}
+.chip.time{background:var(--brand-soft);color:var(--brand-deep)}
+
+.modal-bg{position:fixed;inset:0;background:rgba(15,23,42,.5);display:grid;place-items:center;z-index:50;padding:24px;animation:fade .2s ease}
+.modal{background:#fff;border-radius:20px;max-width:420px;width:100%;padding:24px;text-align:center;box-shadow:0 25px 50px -12px rgba(15,23,42,.25)}
+.modal .ico-big{width:64px;height:64px;border-radius:18px;margin:0 auto 14px;background:var(--warn-soft);color:var(--warn);display:grid;place-items:center;font-size:32px}
+.modal h2{margin:0 0 8px;font-size:22px;font-weight:700}
+.modal p{margin:0 0 20px;color:var(--ink-3);font-size:15px;line-height:1.5}
+
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.55;transform:scale(.85)}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes pop{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
+.qcard{animation:pop .25s cubic-bezier(.4,0,.2,1) both}
+.qcard:nth-child(1){animation-delay:.02s}
+.qcard:nth-child(2){animation-delay:.05s}
+.qcard:nth-child(3){animation-delay:.08s}
+.qcard:nth-child(4){animation-delay:.11s}
+.qcard:nth-child(5){animation-delay:.14s}
+
+@media (prefers-reduced-motion: reduce){*,*::before,*::after{animation-duration:.01ms !important;transition-duration:.01ms !important}}
+
+@media (max-width:640px){
+  .expr{font-size:34px;gap:10px}
+  .ansbox{width:120px;height:56px;font-size:26px}
+  .brand-text h1{font-size:18px}
+  .brand-text p{display:none}
+  .timer{font-size:16px;padding:8px 12px}
+  .summary .score{font-size:42px}
+}
+@media (min-width:760px){
+  .qrow{gap:22px}
+  .expr{font-size:48px}
+  .ansbox{width:180px;height:72px;font-size:36px}
+}
+template{display:none}
 </style>
 </head>
 <body>
-<div class="app">
-  <header>
-    <h1>📐 数学小练习</h1>
-    <div id="timer" class="timer">10:00</div>
-  </header>
-
-  <div class="controls">
-    <button id="newBtn" class="btn-accent">🎲 New quiz</button>
-    <button id="checkBtn" class="btn-primary">✅ Check answers</button>
-  </div>
-
-  <div id="summary"></div>
-  <div id="quiz"></div>
-</div>
-
-<div id="timeoutModal" class="modal">
-  <div class="modal-card">
-    <h2>⏰ 时间到！</h2>
-    <p>10 分钟到了。你可以继续做完，或者先 Check answers 看看结果。</p>
-    <button id="modalClose" class="btn-primary">好的</button>
-  </div>
-</div>
+<div id="app"></div>
 
 <script>
-// ---------- 题目生成 ----------
-function rand(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+const TIME_LIMIT_SEC = 10 * 60;
+const WARN_AT = 60;
+const DANGER_AT = 30;
+
+const rint = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
 
 function genMul() {
-  // 2..12 × 2..12 (跳过 ×0/×1，太简单)
-  const a = rand(2, 12);
-  const b = rand(2, 12);
-  return { type: 'mul', a, b, ans: a * b, text: `${a} × ${b} =` };
+  const a = rint(2, 12), b = rint(2, 12);
+  return { type: 'mul', a, b, ans: a * b, label: 'Multiplication · ×' };
 }
 function genAdd() {
-  // 三位数 + 三位数
-  const a = rand(100, 899);
-  const b = rand(100, 999 - a < 100 ? 100 : 999 - a);
-  // 确保 a+b <= 1999 即可，简单保证三位数加三位数
-  return { type: 'add', a, b, ans: a + b, text: `${a} + ${b} =` };
+  const a = rint(120, 899);
+  const b = rint(120, 899);
+  return { type: 'add', a, b, ans: a + b, label: 'Addition · +' };
 }
 function genSub() {
-  // 三位数 - 三位数，结果为正
-  let a = rand(200, 999);
-  let b = rand(100, a - 1);
-  return { type: 'sub', a, b, ans: a - b, text: `${a} − ${b} =` };
+  let a = rint(300, 999);
+  let b = rint(120, a - 100);
+  return { type: 'sub', a, b, ans: a - b, label: 'Subtraction · −' };
 }
 
-function generateQuiz() {
+function newQuiz() {
   const qs = [];
   for (let i = 0; i < 6; i++) qs.push(genMul());
   for (let i = 0; i < 2; i++) qs.push(genAdd());
   for (let i = 0; i < 2; i++) qs.push(genSub());
-  // 洗牌
   for (let i = qs.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [qs[i], qs[j]] = [qs[j], qs[i]];
   }
-  return qs;
+  return qs.map((q, i) => ({ ...q, id: i, given: '' }));
 }
 
-// ---------- 渲染 ----------
-let quiz = [];
-const quizEl = document.getElementById('quiz');
-const summaryEl = document.getElementById('summary');
-
-function renderQuiz() {
-  summaryEl.innerHTML = '';
-  quizEl.innerHTML = '';
-  quiz.forEach((q, i) => {
-    const row = document.createElement('div');
-    row.className = 'question';
-    row.dataset.idx = i;
-    row.innerHTML = `
-      <span class="qnum">${i + 1}</span>
-      <span class="qexpr">${q.text}</span>
-      <input class="qinput" type="text" inputmode="numeric" pattern="[0-9-]*" autocomplete="off" />
-      <span class="mark"></span>
-    `;
-    quizEl.appendChild(row);
-  });
-  // 自动聚焦第一题
-  const first = quizEl.querySelector('.qinput');
-  if (first) first.focus({ preventScroll: true });
+/* ---------- Diagnostic engine ---------- */
+function diagnose(q, given) {
+  const g = Number(given);
+  if (given === '' || !Number.isFinite(g)) {
+    return {
+      why: 'You left this one blank.',
+      work: buildWork(q),
+      tip: 'Next time, take a guess even if you are not sure — an estimate is better than nothing.'
+    };
+  }
+  if (q.type === 'mul') return diagMul(q, g);
+  if (q.type === 'add') return diagAdd(q, g);
+  if (q.type === 'sub') return diagSub(q, g);
 }
 
-// ---------- 诊断逻辑 ----------
-function diagnoseMul(q, user) {
+function diagMul(q, g) {
   const { a, b, ans } = q;
-  const tips = [];
-  // 邻近乘法表
-  if (user === a * (b + 1)) tips.push(`你算成了 <b>${a} × ${b + 1} = ${a * (b + 1)}</b>，把 ×${b} 记成了 ×${b + 1}（相邻乘法表混淆）。`);
-  else if (user === a * (b - 1)) tips.push(`你算成了 <b>${a} × ${b - 1} = ${a * (b - 1)}</b>，把 ×${b} 记成了 ×${b - 1}。`);
-  else if (user === (a + 1) * b) tips.push(`你算成了 <b>${a + 1} × ${b} = ${(a + 1) * b}</b>，把 ${a}× 记成了 ${a + 1}×。`);
-  else if (user === (a - 1) * b) tips.push(`你算成了 <b>${a - 1} × ${b} = ${(a - 1) * b}</b>，把 ${a}× 记成了 ${a - 1}×。`);
-  else if (user === a + b) tips.push(`你做成了加法：${a} + ${b} = ${a + b}。注意符号是 <b>×</b>（乘法）。`);
-  else if (user === a - b || user === b - a) tips.push(`你做成了减法。注意符号是 <b>×</b>（乘法）。`);
-  else if (Math.abs(user - ans) === a) tips.push(`你少加（或多加）了一个 ${a}。检查是不是把 ×${b} 当成 ×${b - 1} 或 ×${b + 1}。`);
-  else if (Math.abs(user - ans) === b) tips.push(`你少加（或多加）了一个 ${b}。`);
-  else if (digitsReversed(user, ans)) tips.push(`数字写反了：正确答案是 ${ans}，你写成 ${user}（位数颠倒）。`);
-  else tips.push(`乘法表可能记错了。`);
+  const diff = g - ans;
 
-  // 教学
-  const teach = mulTeaching(a, b);
-  return tips.join(' ') + teach;
+  if (diff === a) return { why: `You answered ${a} × ${b + 1} = ${a*(b+1)}. Looks like you counted one extra group of ${a}.`, work: buildMulWork(a, b), tip: `Pause and ask: "How many groups of ${a}?" The answer is ${b}, not ${b+1}.` };
+  if (diff === -a) return { why: `You answered ${a} × ${b - 1} = ${a*(b-1)}. You missed one group of ${a}.`, work: buildMulWork(a, b), tip: `${a} × ${b} is one more ${a} than ${a} × ${b-1}.` };
+  if (diff === b) return { why: `You answered ${a + 1} × ${b} = ${(a+1)*b}. You added an extra group of ${b}.`, work: buildMulWork(a, b), tip: `${a} × ${b} is one less ${b} than ${a+1} × ${b}.` };
+  if (diff === -b) return { why: `You answered ${a - 1} × ${b} = ${(a-1)*b}. You missed one group of ${b}.`, work: buildMulWork(a, b), tip: `${a} × ${b} is one more ${b} than ${a-1} × ${b}.` };
+
+  if (g === a + b) return { why: `You added instead of multiplying: ${a} + ${b} = ${a+b}. Watch the × sign.`, work: buildMulWork(a, b), tip: `× means "${b} groups of ${a}", not "add them".` };
+
+  if (ans >= 10 && reverseNum(ans) === g) return { why: `The digits are reversed: the answer is ${ans} but you wrote ${g}.`, work: buildMulWork(a, b), tip: 'Double-check the order of the ones and tens digit before moving on.' };
+
+  for (let k = -3; k <= 3; k++) {
+    if (k === 0 || k === 1 || k === -1) continue;
+    if (g === a * (b + k)) return { why: `You answered ${a} × ${b + k} = ${g}. You mixed up neighbouring rows in the ${a} times table.`, work: buildMulWork(a, b), tip: `Times table for ${a}: ${a}×${b-1}=${a*(b-1)}, ${a}×${b}=${ans}, ${a}×${b+1}=${a*(b+1)}.` };
+    if (g === (a + k) * b) return { why: `You answered ${a + k} × ${b} = ${g}. You mixed up ${a} with ${a+k}.`, work: buildMulWork(a, b), tip: 'Read the first number carefully.' };
+  }
+
+  if (g === ans * 10 || g === ans * 100) return { why: `Your answer is ${g/ans}× too big — looks like an extra zero.`, work: buildMulWork(a, b), tip: 'Estimate first: two small numbers multiplied rarely go above 144.' };
+  if (ans % 10 === 0 && g === ans / 10) return { why: 'Your answer is 10× too small — you may have dropped a zero.', work: buildMulWork(a, b), tip: 'When the answer ends in 0, remember to keep that zero.' };
+
+  return { why: `You were off by ${Math.abs(diff)}. The times-table fact didn't come out right.`, work: buildMulWork(a, b), tip: `Practice the ${a} times table: ${a}×1 all the way up to ${a}×12.` };
 }
 
-function mulTeaching(a, b) {
-  // 给一个分解策略
+function diagAdd(q, g) {
+  const { a, b, ans } = q;
+  const diff = g - ans;
+
+  const noCarry = sumNoCarry(a, b);
+  if (g === noCarry && noCarry !== ans) {
+    const cols = whichColumnsNeedCarry(a, b);
+    return {
+      why: `You added each column but forgot to carry. The ${cols.join(' and ')} column added up to 10 or more, so 1 needs to carry over to the next column.`,
+      work: buildAddWork(a, b),
+      tip: 'When a column adds to 10 or more, write the ones digit and carry the 1 to the next column on the left.'
+    };
+  }
+
+  if (diff === -10) return { why: 'You forgot one carry — from the ones to the tens (off by 10).', work: buildAddWork(a, b), tip: 'When the ones add to 10 or more, add 1 to the tens column.' };
+  if (diff === -100) return { why: 'You forgot one carry — from the tens to the hundreds (off by 100).', work: buildAddWork(a, b), tip: 'When the tens add to 10 or more, add 1 to the hundreds column.' };
+  if (diff === -110) return { why: 'You missed both carries (off by 110).', work: buildAddWork(a, b), tip: 'After adding each column, check from right to left: did any column reach 10? Carry 1 to the next.' };
+
+  if (Math.abs(diff) <= 3) return { why: `Only off by ${Math.abs(diff)} — a small slip in one column.`, work: buildAddWork(a, b), tip: 'Write each column total down on scratch paper and double-check it.' };
+
+  return { why: `You were off by ${Math.abs(diff)} — likely a misalignment or a missed digit.`, work: buildAddWork(a, b), tip: 'Stack the numbers vertically: ones under ones, tens under tens, hundreds under hundreds.' };
+}
+
+function diagSub(q, g) {
+  const { a, b, ans } = q;
+  const diff = g - ans;
+
+  const noBorrow = subAbsPerColumn(a, b);
+  if (g === noBorrow && noBorrow !== ans) {
+    return {
+      why: 'You took the bigger digit minus the smaller digit in each column instead of borrowing.',
+      work: buildSubWork(a, b),
+      tip: 'Subtraction is "top minus bottom". When the top is smaller, borrow 1 from the next column (it becomes +10).'
+    };
+  }
+  if (diff === 10) return { why: 'You forgot one borrow — when the ones column was too small to subtract, you should have borrowed from the tens (off by 10).', work: buildSubWork(a, b), tip: 'When the top digit is smaller than the bottom, borrow 1 (worth 10) from the column to its left.' };
+  if (diff === 100) return { why: 'You forgot one borrow — from the hundreds to the tens (off by 100).', work: buildSubWork(a, b), tip: 'When borrowing from the hundreds, remember to subtract 1 from the hundreds digit.' };
+  if (diff === 110) return { why: 'You missed both borrows (off by 110).', work: buildSubWork(a, b), tip: 'Check each column: if the top is smaller than the bottom, you must borrow.' };
+
+  if (g === b - a) return { why: 'You swapped the two numbers — you computed the smaller minus the bigger.', work: buildSubWork(a, b), tip: `${a} − ${b} means "start with ${a} and take away ${b}", not the other way around.` };
+
+  if (Math.abs(diff) <= 3) return { why: `Only off by ${Math.abs(diff)} — a small slip in one column.`, work: buildSubWork(a, b), tip: 'Double-check each column, especially the one right after a borrow.' };
+
+  return { why: `You were off by ${Math.abs(diff)} — likely a misalignment.`, work: buildSubWork(a, b), tip: 'Stack the numbers vertically and start subtracting from the ones column.' };
+}
+
+/* ---------- Solution rendering ---------- */
+function buildWork(q) {
+  if (q.type === 'mul') return buildMulWork(q.a, q.b);
+  if (q.type === 'add') return buildAddWork(q.a, q.b);
+  if (q.type === 'sub') return buildSubWork(q.a, q.b);
+}
+
+function buildMulWork(a, b) {
   const ans = a * b;
-  let strategy = '';
-  if (b === 9) strategy = `${a}×9 小技巧：${a}×10 − ${a} = ${a * 10} − ${a} = <span class="correct">${ans}</span>`;
-  else if (a === 9) strategy = `9×${b} 小技巧：10×${b} − ${b} = ${10 * b} − ${b} = <span class="correct">${ans}</span>`;
-  else if (b === 11 && a <= 9) strategy = `${a}×11 小技巧：${a}×10 + ${a} = ${a * 10} + ${a} = <span class="correct">${ans}</span>`;
-  else if (a === 11 && b <= 9) strategy = `11×${b} 小技巧：10×${b} + ${b} = ${10 * b} + ${b} = <span class="correct">${ans}</span>`;
-  else if (b === 12) strategy = `${a}×12 拆开：${a}×10 + ${a}×2 = ${a * 10} + ${a * 2} = <span class="correct">${ans}</span>`;
-  else if (a === 12) strategy = `12×${b} 拆开：10×${b} + 2×${b} = ${10 * b} + ${2 * b} = <span class="correct">${ans}</span>`;
-  else {
-    // 通用：拆成 (a-1)*b + b，或者直接重复加
-    strategy = `连加法验算：${b} + ${b} + … （共 ${a} 个 ${b}）= <span class="correct">${ans}</span>`;
-  }
-  return `<div class="step">正确答案：<span class="correct">${ans}</span>。${strategy}</div>`;
-}
-
-function digitsReversed(u, c) {
-  if (u <= 0) return false;
-  const us = String(u).split('').reverse().join('');
-  return us === String(c) && String(u) !== String(c);
-}
-
-function diagnoseAdd(q, user) {
-  const { a, b, ans } = q;
-  const tips = [];
-  // 不进位逐列加（每列直接写两数之和的个位，进位丢掉）
-  const noCarry = columnAddNoCarry(a, b);
-  if (user === noCarry && noCarry !== ans) {
-    tips.push(`你按列相加时 <b>忘记进位</b> 了。每一列加起来超过 9 时要往左进 1。`);
-  } else if (user === ans + 10 || user === ans + 100 || user === ans + 1000) {
-    tips.push(`你 <b>多进了一位</b>。这一列没满 10 不需要进位。`);
-  } else if (user === ans - 10 || user === ans - 100) {
-    tips.push(`你 <b>少进了一位</b>。仔细检查每列相加是否 ≥ 10。`);
-  } else if (user === a - b || user === b - a) {
-    tips.push(`你做成了 <b>减法</b>。注意符号是 +。`);
-  } else if (digitsReversed(user, ans)) {
-    tips.push(`数字写反了。`);
+  let lines = [`${a} × ${b} = ?`];
+  if (b === 12) {
+    lines.push(`Think: 12 = 10 + 2`);
+    lines.push(`${a} × 10 = ${a*10}`);
+    lines.push(`${a} ×  2 = ${a*2}`);
+    lines.push(`Total   = ${a*10} + ${a*2} = <b>${ans}</b>`);
+  } else if (b === 11) {
+    lines.push(`Think: 11 = 10 + 1`);
+    lines.push(`${a} × 10 = ${a*10}`);
+    lines.push(`${a} ×  1 = ${a}`);
+    lines.push(`Total   = ${a*10} + ${a} = <b>${ans}</b>`);
+  } else if (a === 9 || b === 9) {
+    const x = a === 9 ? b : a;
+    lines.push(`Trick: 9 × ${x} = 10 × ${x} − ${x}`);
+    lines.push(`     = ${10*x} − ${x} = <b>${9*x}</b>`);
   } else {
-    tips.push(`计算过程中可能某一列加错或抄错了数字。`);
+    if (b > 5) {
+      lines.push(`Split: ${b} = 5 + ${b-5}`);
+      lines.push(`${a} × 5      = ${a*5}`);
+      lines.push(`${a} × ${b-5}      = ${a*(b-5)}`);
+      lines.push(`Total       = ${a*5} + ${a*(b-5)} = <b>${ans}</b>`);
+    } else {
+      let s = '';
+      for (let i = 0; i < b; i++) s += (i ? ' + ' : '') + a;
+      lines.push(`= ${s}`);
+      lines.push(`= <b>${ans}</b>`);
+    }
   }
-  tips.push(columnAddTeach(a, b));
-  return tips.join(' ');
+  return lines.join('\n');
 }
 
-function columnAddNoCarry(a, b) {
-  const as = String(a).padStart(3, '0');
-  const bs = String(b).padStart(3, '0');
-  let res = '';
-  for (let i = 0; i < 3; i++) {
-    const s = (+as[i]) + (+bs[i]);
-    res += String(s % 10);
+function gridRow(cells) {
+  return '<div class="wrow">' + cells.map(c => {
+    const cls = c.cls || '';
+    return `<div class="wcell ${cls}">${c.v ?? ''}</div>`;
+  }).join('') + '</div>';
+}
+function gridCols(n) {
+  return `style="grid-template-columns:repeat(${n}, 1.6em)"`;
+}
+
+function buildAddWork(a, b) {
+  const sum = a + b;
+  const sa = String(a), sb = String(b), ss = String(sum);
+  const opW = Math.max(sa.length, sb.length);
+  const carries = [];
+  let c = 0;
+  for (let i = 0; i < opW; i++) {
+    const da = i < sa.length ? Number(sa[sa.length - 1 - i]) : 0;
+    const db = i < sb.length ? Number(sb[sb.length - 1 - i]) : 0;
+    const s = da + db + c;
+    c = s >= 10 ? 1 : 0;
+    carries.push(c);
   }
-  return parseInt(res, 10);
-}
-
-function columnAddTeach(a, b) {
-  const as = String(a).padStart(3, '0');
-  const bs = String(b).padStart(3, '0');
-  const o = (+as[2]) + (+bs[2]);
-  const oCarry = o >= 10 ? 1 : 0;
-  const t = (+as[1]) + (+bs[1]) + oCarry;
-  const tCarry = t >= 10 ? 1 : 0;
-  const h = (+as[0]) + (+bs[0]) + tCarry;
-  const ans = a + b;
-  return `<div class="step">竖式：
-  ${String(a).padStart(4)}
-+ ${String(b).padStart(4)}
-------
-个位 ${+as[2]}+${+bs[2]}=${o}${oCarry ? '，进 1' : ''}
-十位 ${+as[1]}+${+bs[1]}${oCarry ? '+1' : ''}=${t}${tCarry ? '，进 1' : ''}
-百位 ${+as[0]}+${+bs[0]}${tCarry ? '+1' : ''}=${h}
-答：<span class="correct">${ans}</span></div>`;
-}
-
-function diagnoseSub(q, user) {
-  const { a, b, ans } = q;
-  const tips = [];
-  const absCol = columnSubAbs(a, b);
-  if (user === absCol && absCol !== ans) {
-    tips.push(`你 <b>没有借位</b>，每一列直接取了较大数减较小数。当上面的数字小于下面时，要从左边一位 <b>借 1</b>。`);
-  } else if (user === b - a) {
-    tips.push(`你把 <b>被减数和减数颠倒</b> 了，做成了 ${b}−${a}。`);
-  } else if (user === a + b) {
-    tips.push(`你做成了 <b>加法</b>。注意符号是 −。`);
-  } else if (user === ans + 10 || user === ans + 100) {
-    tips.push(`你 <b>少借了一位</b>。检查哪一列上面的数字比下面的小。`);
-  } else if (user === ans - 10 || user === ans - 100) {
-    tips.push(`你 <b>多借了一位</b>。`);
-  } else if (digitsReversed(user, ans)) {
-    tips.push(`数字写反了。`);
-  } else {
-    tips.push(`借位过程可能哪一步错了。`);
+  const finalCarry = carries[opW - 1];
+  const totW = opW + 1; // +1 for sign/final-carry column
+  // build cells (left → right): [sign-col] + [opW operand cols]
+  const carryCells = [{v:''}];
+  for (let i = 0; i < opW; i++) {
+    const colFromRight = opW - 1 - i;
+    const carryIn = colFromRight > 0 ? carries[colFromRight - 1] : 0;
+    carryCells.push({v: carryIn ? '1' : '', cls: 'bw'});
   }
-  tips.push(columnSubTeach(a, b));
-  return tips.join(' ');
+  const aCells = [{v:''}].concat(sa.padStart(opW,' ').split('').map(d => ({v: d.trim(), cls:'op'})));
+  const bCells = [{v:'+', cls:'sign'}].concat(sb.padStart(opW,' ').split('').map(d => ({v: d.trim(), cls:'op'})));
+  const sCells = (finalCarry ? '1' : ' ').concat((finalCarry ? ss.slice(1) : ss).padStart(opW,' ')).split('').map(d => ({v: d.trim(), cls:'sum'}));
+  const colStyle = gridCols(totW);
+  const c1 = carries[0], c2 = carries[1];
+  return `<div class="wgrid" ${colStyle}>` +
+    gridRow(carryCells) +
+    gridRow(aCells) +
+    gridRow(bCells) +
+    `<div class="wline"></div>` +
+    gridRow(sCells) +
+    `</div><div class="wsteps">` +
+    `Ones: ${a%10} + ${b%10} = ${(a%10)+(b%10)}${c1?' → write '+((a%10)+(b%10))%10+', <b>carry 1</b>':''}<br>` +
+    `Tens: ${Math.floor(a/10)%10} + ${Math.floor(b/10)%10}${c1?' + 1':''} = ${(Math.floor(a/10)%10)+(Math.floor(b/10)%10)+c1}${c2?' → write '+((Math.floor(a/10)%10)+(Math.floor(b/10)%10)+c1)%10+', <b>carry 1</b>':''}<br>` +
+    `Hundreds: ${Math.floor(a/100)} + ${Math.floor(b/100)}${c2?' + 1':''} = ${Math.floor(a/100)+Math.floor(b/100)+c2}` +
+    `</div>`;
 }
 
-function columnSubAbs(a, b) {
-  const as = String(a).padStart(3, '0');
-  const bs = String(b).padStart(3, '0');
-  let res = '';
-  for (let i = 0; i < 3; i++) {
-    res += String(Math.abs((+as[i]) - (+bs[i])));
-  }
-  return parseInt(res, 10);
-}
-
-function columnSubTeach(a, b) {
+function buildSubWork(a, b) {
   const ans = a - b;
-  const as = String(a).padStart(3, '0').split('').map(Number);
-  const bs = String(b).padStart(3, '0').split('').map(Number);
-  // 模拟借位
-  const cols = ['个位', '十位', '百位'];
-  const lines = [];
-  let top = [...as];
-  for (let i = 2; i >= 0; i--) {
-    if (top[i] < bs[i]) {
-      // 向左借 1
-      let j = i - 1;
-      while (j >= 0 && top[j] === 0) { top[j] = 9; j--; }
-      if (j >= 0) top[j] -= 1;
-      top[i] += 10;
-      lines.push(`${cols[2 - i]}：${as[i]} 不够减 ${bs[i]}，向左借 1 变 ${top[i]}，${top[i]}−${bs[i]}=${top[i] - bs[i]}`);
-    } else {
-      lines.push(`${cols[2 - i]}：${top[i]}−${bs[i]}=${top[i] - bs[i]}`);
-    }
+  const sa = String(a), sb = String(b), ss = String(ans);
+  const opW = Math.max(sa.length, sb.length);
+  const aD = [], bD = [];
+  for (let i = 0; i < opW; i++) {
+    aD.push(i < sa.length ? Number(sa[sa.length-1-i]) : 0);
+    bD.push(i < sb.length ? Number(sb[sb.length-1-i]) : 0);
   }
-  return `<div class="step">竖式：
-  ${String(a).padStart(4)}
-− ${String(b).padStart(4)}
-------
-${lines.join('\n')}
-答：<span class="correct">${ans}</span></div>`;
+  const newA = [...aD];
+  const borrowed = [];
+  for (let i = 0; i < opW; i++) {
+    if (newA[i] < bD[i]) { borrowed[i] = true; newA[i] += 10; newA[i+1] = (newA[i+1] ?? 0) - 1; }
+    else borrowed[i] = false;
+  }
+  const anyBorrow = borrowed.some(Boolean);
+  const totW = opW + 1;
+  // borrow row: cell shows new value (could be 2-digit) only where it changed
+  const bwCells = [{v:''}];
+  for (let i = 0; i < opW; i++) {
+    const col = opW - 1 - i;
+    const v = newA[col] !== aD[col] ? String(newA[col]) : '';
+    bwCells.push({v, cls:'bw'});
+  }
+  const aCells = [{v:''}].concat(sa.padStart(opW,' ').split('').map(d => ({v: d.trim(), cls:'op'})));
+  const bCells = [{v:'−', cls:'sign'}].concat(sb.padStart(opW,' ').split('').map(d => ({v: d.trim(), cls:'op'})));
+  const sCells = [{v:''}].concat(ss.padStart(opW,' ').split('').map(d => ({v: d.trim(), cls:'sum'})));
+  const colStyle = gridCols(totW);
+  const b1 = borrowed[0], b2 = borrowed[1];
+  const o = (a%10), t = Math.floor(a/10)%10, h = Math.floor(a/100);
+  const bo = (b%10), bt = Math.floor(b/10)%10, bh = Math.floor(b/100);
+  const newO = b1 ? o + 10 : o;
+  const newT = (b1 ? t - 1 : t) + (b2 ? 10 : 0);
+  const newH = b2 ? h - 1 : h;
+  return `<div class="wgrid" ${colStyle}>` +
+    (anyBorrow ? gridRow(bwCells) : '') +
+    gridRow(aCells) +
+    gridRow(bCells) +
+    `<div class="wline"></div>` +
+    gridRow(sCells) +
+    `</div><div class="wsteps">` +
+    `Ones: ${o} − ${bo}${b1 ? ` → too small, <b>borrow 1 from tens</b> → ${newO} − ${bo}` : ''} = ${newO - bo}<br>` +
+    `Tens: ${b1 ? `${t} − 1 = ${t-1}` : t} − ${bt}${b2 ? ` → too small, <b>borrow 1 from hundreds</b> → ${newT} − ${bt}` : ''} = ${newT - bt}<br>` +
+    `Hundreds: ${b2 ? `${h} − 1 = ${h-1}` : h} − ${bh} = ${newH - bh}` +
+    (anyBorrow ? `<br><span style="color:var(--ink-3)">(Numbers above each column show its value after borrowing.)</span>` : '') +
+    `</div>`;
 }
 
-function diagnose(q, user) {
-  if (user === q.ans) return '';
-  if (q.type === 'mul') return diagnoseMul(q, user);
-  if (q.type === 'add') return diagnoseAdd(q, user);
-  if (q.type === 'sub') return diagnoseSub(q, user);
-  return '';
+function pad3(n) { return String(n).padStart(3, ' '); }
+function reverseNum(n) { return Number(String(n).split('').reverse().join('')); }
+function sumNoCarry(a, b) {
+  let r = '', x = a, y = b;
+  for (let i = 0; i < 4; i++) {
+    const d = (x%10) + (y%10);
+    r = (d % 10) + r;
+    x = Math.floor(x/10); y = Math.floor(y/10);
+    if (x === 0 && y === 0) break;
+  }
+  return Number(r);
+}
+function whichColumnsNeedCarry(a, b) {
+  const out = [];
+  if ((a%10)+(b%10) >= 10) out.push('ones');
+  const carry = (a%10)+(b%10) >= 10 ? 1 : 0;
+  if ((Math.floor(a/10)%10)+(Math.floor(b/10)%10)+carry >= 10) out.push('tens');
+  return out.length ? out : ['some'];
+}
+function subAbsPerColumn(a, b) {
+  let r = '';
+  for (let i = 0; i < 3; i++) {
+    const da = Math.floor(a / Math.pow(10, i)) % 10;
+    const db = Math.floor(b / Math.pow(10, i)) % 10;
+    r = Math.abs(da - db) + r;
+  }
+  return Number(r);
 }
 
-// ---------- 检查答案 ----------
-function checkAnswers() {
-  // 清除旧诊断
-  document.querySelectorAll('.diag').forEach(e => e.remove());
-  let correct = 0;
-  let answered = 0;
-  quiz.forEach((q, i) => {
-    const row = quizEl.querySelector(`.question[data-idx="${i}"]`);
-    const input = row.querySelector('.qinput');
-    const mark = row.querySelector('.mark');
-    const raw = input.value.trim();
-    row.classList.remove('right', 'wrong');
-    if (raw === '') {
-      mark.textContent = '–';
-      mark.className = 'mark';
-      return;
+/* ---------- App state + render ---------- */
+const state = {
+  quiz: newQuiz(),
+  startedAt: Date.now(),
+  remaining: TIME_LIMIT_SEC,
+  submitted: false,
+  timeUp: false,
+  showTimeoutModal: false,
+  finalElapsed: null,
+};
+
+let tickHandle = null;
+function startTimer() {
+  clearInterval(tickHandle);
+  state.startedAt = Date.now();
+  state.remaining = TIME_LIMIT_SEC;
+  tickHandle = setInterval(() => {
+    if (state.submitted) { clearInterval(tickHandle); return; }
+    const elapsed = Math.floor((Date.now() - state.startedAt) / 1000);
+    state.remaining = Math.max(0, TIME_LIMIT_SEC - elapsed);
+    if (state.remaining === 0 && !state.timeUp) {
+      state.timeUp = true;
+      state.showTimeoutModal = true;
+      submit(true);
     }
-    answered++;
-    const user = parseInt(raw, 10);
-    if (!Number.isFinite(user)) {
-      mark.textContent = '?';
-      mark.className = 'mark wrong';
-      row.classList.add('wrong');
-      return;
-    }
-    if (user === q.ans) {
-      correct++;
-      mark.textContent = '✓';
-      mark.className = 'mark right';
-      row.classList.add('right');
+    renderTimer();
+  }, 250);
+}
+
+function fmt(sec) {
+  const m = Math.floor(sec/60), s = sec%60;
+  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+function renderTimer() {
+  const el = document.getElementById('timer');
+  if (!el) return;
+  el.textContent = '';
+  const dot = document.createElement('span'); dot.className='dot';
+  const txt = document.createElement('span'); txt.className='tabular';
+  txt.textContent = fmt(state.remaining);
+  el.appendChild(dot); el.appendChild(txt);
+  el.classList.toggle('warn', !state.submitted && state.remaining <= WARN_AT && state.remaining > DANGER_AT);
+  el.classList.toggle('danger', !state.submitted && state.remaining <= DANGER_AT && state.remaining > 0);
+  el.classList.toggle('done', state.submitted);
+}
+
+function startNew() {
+  state.quiz = newQuiz();
+  state.submitted = false;
+  state.timeUp = false;
+  state.showTimeoutModal = false;
+  state.finalElapsed = null;
+  startTimer();
+  render();
+  setTimeout(() => {
+    const first = document.querySelector('.ansbox');
+    if (first) first.focus();
+  }, 50);
+}
+
+function submit(fromTimeout) {
+  if (state.submitted) return;
+  document.querySelectorAll('.ansbox').forEach(inp => {
+    const id = Number(inp.dataset.id);
+    state.quiz[id].given = inp.value.trim();
+  });
+  state.submitted = true;
+  state.finalElapsed = TIME_LIMIT_SEC - state.remaining;
+  clearInterval(tickHandle);
+  render();
+  // scroll to first wrong (or top if all correct), keeping context visible
+  setTimeout(() => {
+    const firstBad = document.querySelector('.qcard.bad');
+    if (firstBad) {
+      const y = firstBad.getBoundingClientRect().top + window.scrollY - 80;
+      window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
     } else {
-      mark.textContent = '✗';
-      mark.className = 'mark wrong';
-      row.classList.add('wrong');
-      const diag = document.createElement('div');
-      diag.className = 'diag';
-      diag.innerHTML = `<b>第 ${i + 1} 题：</b> 你写的是 ${user}。${diagnose(q, user)}`;
-      row.insertAdjacentElement('afterend', diag);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, 50);
+}
+
+function dismissModal() {
+  state.showTimeoutModal = false;
+  render();
+}
+
+function render() {
+  const app = document.getElementById('app');
+  app.innerHTML = '';
+  const shell = el('div', 'shell');
+  shell.appendChild(renderTopbar());
+  if (state.submitted) shell.appendChild(renderSummary());
+  shell.appendChild(renderProgress());
+  state.quiz.forEach((q, i) => shell.appendChild(renderQuestion(q, i)));
+  app.appendChild(shell);
+  app.appendChild(renderActionBar());
+  if (state.showTimeoutModal) app.appendChild(renderTimeoutModal());
+  renderTimer();
+}
+
+function el(tag, cls, txt) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (txt != null) e.textContent = txt;
+  return e;
+}
+
+function renderTopbar() {
+  const bar = el('div', 'topbar');
+  const brand = el('div', 'brand');
+  const mark = el('div', 'brand-mark', '×');
+  const txt = el('div', 'brand-text');
+  txt.appendChild(el('h1', null, 'Math Quiz · 10 Questions'));
+  txt.appendChild(el('p', null, '6 multiplication · 2 addition · 2 subtraction · 10-minute timer'));
+  brand.appendChild(mark); brand.appendChild(txt);
+  const timer = el('div', 'timer'); timer.id = 'timer';
+  bar.appendChild(brand); bar.appendChild(timer);
+  return bar;
+}
+
+function renderProgress() {
+  const wrap = el('div', 'progress');
+  state.quiz.forEach(q => {
+    const seg = el('div', 'seg');
+    if (state.submitted) {
+      const right = Number(q.given) === q.ans;
+      seg.classList.add(right ? 'ok' : 'bad');
+    } else if ((q.given || '') !== '') {
+      seg.classList.add('filled');
+    }
+    wrap.appendChild(seg);
+  });
+  return wrap;
+}
+
+function renderQuestion(q, idx) {
+  const card = el('div', 'qcard');
+  const right = state.submitted && Number(q.given) === q.ans;
+  const wrong = state.submitted && Number(q.given) !== q.ans;
+  if (right) card.classList.add('ok');
+  if (wrong) card.classList.add('bad');
+
+  const head = el('div', 'qhead');
+  head.appendChild(el('div', 'qnum', String(idx + 1)));
+  head.appendChild(el('div', 'qtag', q.label));
+  if (state.submitted) {
+    const st = el('div', 'qstatus ' + (right ? 'ok' : 'bad'),
+      right ? '✓ Correct' : '✗ Incorrect');
+    head.appendChild(st);
+  }
+  card.appendChild(head);
+
+  const row = el('div', 'qrow');
+  const expr = el('div', 'expr');
+  expr.appendChild(spanTxt(q.a, 'tabular'));
+  expr.appendChild(spanTxt(q.type === 'mul' ? '×' : q.type === 'add' ? '+' : '−', 'op'));
+  expr.appendChild(spanTxt(q.b, 'tabular'));
+  expr.appendChild(spanTxt('=', 'eq'));
+  row.appendChild(expr);
+
+  const inp = document.createElement('input');
+  inp.className = 'ansbox';
+  inp.type = 'number';
+  inp.inputMode = 'numeric';
+  inp.pattern = '[0-9]*';
+  inp.autocomplete = 'off';
+  inp.dataset.id = String(idx);
+  inp.value = q.given;
+  inp.placeholder = '?';
+  if (state.submitted) {
+    inp.readOnly = true;
+    if (right) inp.classList.add('ok');
+    else inp.classList.add('bad');
+  }
+  inp.addEventListener('focus', () => card.classList.add('focused'));
+  inp.addEventListener('blur', () => card.classList.remove('focused'));
+  inp.addEventListener('input', e => {
+    state.quiz[idx].given = e.target.value;
+    const segs = document.querySelectorAll('.progress .seg');
+    if (segs[idx]) segs[idx].classList.toggle('filled', e.target.value !== '');
+  });
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const all = [...document.querySelectorAll('.ansbox')];
+      const i = all.indexOf(inp);
+      if (i + 1 < all.length) all[i+1].focus();
+      else inp.blur();
     }
   });
-  const isOver = timerOver;
-  summaryEl.innerHTML = `
-    <div class="summary ${isOver ? 'over' : ''}">
-      <div class="score">${correct} / ${quiz.length}</div>
-      <div>答对 ${correct} 题，答错 ${answered - correct} 题${answered < quiz.length ? `，未做 ${quiz.length - answered} 题` : ''}。</div>
-      ${isOver ? '<div style="color:#b91c1c;margin-top:6px;">⏰ 已超过 10 分钟</div>' : ''}
-      ${correct === quiz.length ? '<div style="margin-top:8px;">🎉 全部答对，太棒了！</div>' : ''}
-    </div>
-  `;
-  summaryEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
+  row.appendChild(inp);
 
-// ---------- 计时 ----------
-const TIME_LIMIT = 10 * 60; // 10 分钟
-let timeLeft = TIME_LIMIT;
-let timerId = null;
-let timerOver = false;
-const timerEl = document.getElementById('timer');
-
-function fmt(s) {
-  const sign = s < 0 ? '+' : '';
-  const t = Math.abs(s);
-  const m = Math.floor(t / 60);
-  const ss = t % 60;
-  return sign + String(m).padStart(2, '0') + ':' + String(ss).padStart(2, '0');
-}
-
-function updateTimerDisplay() {
-  timerEl.textContent = fmt(timeLeft);
-  timerEl.classList.toggle('warn', timeLeft <= 60 && timeLeft > 0);
-  timerEl.classList.toggle('over', timeLeft <= 0);
-}
-
-function startTimer() {
-  stopTimer();
-  timeLeft = TIME_LIMIT;
-  timerOver = false;
-  updateTimerDisplay();
-  timerId = setInterval(() => {
-    timeLeft--;
-    updateTimerDisplay();
-    if (timeLeft === 0) {
-      timerOver = true;
-      showTimeout();
-    }
-    // 之后变成超时正计：显示 +mm:ss
-    if (timeLeft < 0) {
-      // 用绝对值显示，加个 + 号
-      timerEl.textContent = '+' + fmt(timeLeft).slice(1);
-    }
-  }, 1000);
-}
-
-function stopTimer() {
-  if (timerId) { clearInterval(timerId); timerId = null; }
-}
-
-function showTimeout() {
-  document.getElementById('timeoutModal').classList.add('show');
-  if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
-}
-
-document.getElementById('modalClose').addEventListener('click', () => {
-  document.getElementById('timeoutModal').classList.remove('show');
-});
-
-// ---------- 按钮 ----------
-document.getElementById('newBtn').addEventListener('click', () => {
-  quiz = generateQuiz();
-  renderQuiz();
-  startTimer();
-});
-document.getElementById('checkBtn').addEventListener('click', checkAnswers);
-
-// 回车跳到下一题
-quizEl.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    const inputs = [...quizEl.querySelectorAll('.qinput')];
-    const idx = inputs.indexOf(document.activeElement);
-    if (idx >= 0 && idx < inputs.length - 1) inputs[idx + 1].focus();
-    else checkAnswers();
+  if (wrong) {
+    const pill = el('div', 'correct-pill');
+    pill.appendChild(spanTxt('Answer', 'ar'));
+    pill.appendChild(spanTxt(q.ans, 'tabular'));
+    row.appendChild(pill);
   }
-});
+  card.appendChild(row);
 
-// 初始化
-quiz = generateQuiz();
-renderQuiz();
+  if (wrong) card.appendChild(renderDiag(q));
+  return card;
+}
+
+function renderDiag(q) {
+  const d = diagnose(q, q.given);
+  const wrap = el('div', 'diag');
+  const head = el('div', 'diag-head');
+  const ico = el('div', 'ico', '!');
+  head.appendChild(ico);
+  head.appendChild(el('span', null, 'What went wrong · How to do it'));
+  wrap.appendChild(head);
+
+  const why = el('p', 'why', d.why);
+  wrap.appendChild(why);
+
+  const work = el('div', 'work');
+  work.innerHTML = d.work;
+  wrap.appendChild(work);
+
+  const tip = el('div', 'tip');
+  tip.appendChild(spanTxt('💡 ', null));
+  tip.appendChild(spanTxt(d.tip, null));
+  wrap.appendChild(tip);
+  return wrap;
+}
+
+function renderSummary() {
+  const correct = state.quiz.filter(q => Number(q.given) === q.ans).length;
+  const wrong = state.quiz.length - correct;
+  const wrap = el('div', 'summary');
+
+  const score = el('div');
+  score.appendChild(el('div', 'label', 'Your score'));
+  const big = el('div', 'score');
+  const num = el('span', null, String(correct));
+  num.style.color = correct >= 8 ? 'var(--ok-deep)' : correct >= 5 ? 'var(--brand-deep)' : 'var(--bad-deep)';
+  big.appendChild(num);
+  big.appendChild(spanTxt(' / 10', 'total'));
+  score.appendChild(big);
+  wrap.appendChild(score);
+
+  const msg = el('div', 'msg');
+  let title, sub;
+  if (state.timeUp) { title = "Time's up!"; sub = "Try to work a little faster next time. Let's look at the ones you missed."; }
+  else if (correct === 10) { title = 'Perfect score! 🎉'; sub = `Finished in ${fmt(state.finalElapsed)} — every answer correct.`; }
+  else if (correct >= 8) { title = 'Great job!'; sub = `Finished in ${fmt(state.finalElapsed)}. Scroll down for the few you missed.`; }
+  else if (correct >= 5) { title = 'Nice effort — keep going!'; sub = `Finished in ${fmt(state.finalElapsed)}. Read each explanation carefully.`; }
+  else { title = "Don't worry — let's see what to fix."; sub = `Finished in ${fmt(state.finalElapsed)}. Each missed question has a step-by-step walkthrough below.`; }
+  msg.appendChild(el('h2', null, title));
+  msg.appendChild(el('p', null, sub));
+  wrap.appendChild(msg);
+
+  const breakdown = el('div', 'breakdown');
+  breakdown.appendChild(chip('ok', `✓ ${correct} correct`));
+  breakdown.appendChild(chip('bad', `✗ ${wrong} missed`));
+  breakdown.appendChild(chip('time', `⏱ ${fmt(state.finalElapsed || 0)}`));
+  wrap.appendChild(breakdown);
+  return wrap;
+}
+
+function chip(kind, text) {
+  const c = el('span', 'chip ' + kind);
+  c.appendChild(spanTxt(text, null));
+  return c;
+}
+
+function renderActionBar() {
+  const bar = el('div', 'actionbar');
+  const inner = el('div', 'actionbar-inner');
+
+  const newBtn = el('button', 'btn btn-ghost btn-big');
+  newBtn.textContent = '🔄 New quiz';
+  newBtn.onclick = () => {
+    if (!state.submitted) {
+      const ok = confirm('Start a new quiz? Your current answers will be discarded.');
+      if (!ok) return;
+    }
+    startNew();
+  };
+
+  const submitBtn = el('button', 'btn btn-primary btn-big');
+  if (state.submitted) {
+    submitBtn.textContent = '🔄 Try another quiz';
+    submitBtn.onclick = startNew;
+  } else {
+    submitBtn.textContent = '✓ Check answers';
+    submitBtn.onclick = () => submit(false);
+  }
+
+  inner.appendChild(newBtn);
+  inner.appendChild(submitBtn);
+  bar.appendChild(inner);
+  return bar;
+}
+
+function renderTimeoutModal() {
+  const bg = el('div', 'modal-bg');
+  bg.addEventListener('click', e => { if (e.target === bg) dismissModal(); });
+  const m = el('div', 'modal');
+  const ico = el('div', 'ico-big', '⏰');
+  m.appendChild(ico);
+  m.appendChild(el('h2', null, "Time's up"));
+  m.appendChild(el('p', null, "The 10 minutes are over. Your quiz has been submitted automatically — let's see how you did."));
+  const btn = el('button', 'btn btn-primary btn-big');
+  btn.style.width = '100%';
+  btn.textContent = 'See results';
+  btn.onclick = dismissModal;
+  m.appendChild(btn);
+  bg.appendChild(m);
+  return bg;
+}
+
+function spanTxt(text, cls) {
+  const s = document.createElement('span');
+  if (cls) s.className = cls;
+  s.textContent = String(text);
+  return s;
+}
+
 startTimer();
+render();
+setTimeout(() => {
+  const first = document.querySelector('.ansbox');
+  if (first) first.focus();
+}, 100);
 </script>
 </body>
 </html>
