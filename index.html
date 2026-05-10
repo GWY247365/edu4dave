@@ -58,6 +58,8 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .timer.warn .dot{background:var(--warn)}
 .timer.danger{background:var(--bad-soft);border-color:#fecaca;color:var(--bad-deep)}
 .timer.danger .dot{background:var(--bad)}
+.timer.over{background:var(--bad-soft);border-color:#fecaca;color:var(--bad-deep)}
+.timer.over .dot{background:var(--bad);animation:pulse 1s ease-in-out infinite}
 .timer.done{opacity:.6}
 
 .btn{appearance:none;border:none;cursor:pointer;font-family:inherit;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:12px;padding:12px 18px;font-size:16px;transition:transform .15s ease, box-shadow .2s ease, background .2s ease;white-space:nowrap}
@@ -143,6 +145,7 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .chip.ok{background:var(--ok-soft);color:var(--ok-deep)}
 .chip.bad{background:var(--bad-soft);color:var(--bad-deep)}
 .chip.time{background:var(--brand-soft);color:var(--brand-deep)}
+.chip.time.over{background:var(--bad-soft);color:var(--bad-deep)}
 
 .modal-bg{position:fixed;inset:0;background:rgba(15,23,42,.5);display:grid;place-items:center;z-index:50;padding:24px;animation:fade .2s ease}
 .modal{background:#fff;border-radius:20px;max-width:420px;width:100%;padding:24px;text-align:center;box-shadow:0 25px 50px -12px rgba(15,23,42,.25)}
@@ -745,19 +748,20 @@ function startTimer() {
   tickHandle = setInterval(() => {
     if (state.submitted) { clearInterval(tickHandle); return; }
     const elapsed = Math.floor((Date.now() - state.startedAt) / 1000);
-    state.remaining = Math.max(0, TIME_LIMIT_SEC - elapsed);
-    if (state.remaining === 0 && !state.timeUp) {
+    state.remaining = TIME_LIMIT_SEC - elapsed; // may go negative — overtime
+    if (state.remaining <= 0 && !state.timeUp) {
       state.timeUp = true;
       state.showTimeoutModal = true;
-      submit(true);
     }
     renderTimer();
   }, 250);
 }
 
 function fmt(sec) {
-  const m = Math.floor(sec/60), s = sec%60;
-  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  const sign = sec < 0 ? '+' : '';
+  const t = Math.abs(sec);
+  const m = Math.floor(t / 60), s = t % 60;
+  return `${sign}${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
 }
 
 function renderTimer() {
@@ -770,6 +774,7 @@ function renderTimer() {
   el.appendChild(dot); el.appendChild(txt);
   el.classList.toggle('warn', !state.submitted && state.remaining <= WARN_AT && state.remaining > DANGER_AT);
   el.classList.toggle('danger', !state.submitted && state.remaining <= DANGER_AT && state.remaining > 0);
+  el.classList.toggle('over', !state.submitted && state.remaining <= 0);
   el.classList.toggle('done', state.submitted);
 }
 
@@ -1015,12 +1020,15 @@ function renderSummary() {
   wrap.appendChild(score);
 
   const msg = el('div', 'msg');
+  const elapsed = state.finalElapsed || 0;
+  const overtime = elapsed > TIME_LIMIT_SEC;
+  const timeStr = fmtElapsed(elapsed);
+  const timeNote = overtime ? ` (${fmt(elapsed - TIME_LIMIT_SEC)} over)` : '';
   let title, sub;
-  if (state.timeUp) { title = "Time's up!"; sub = "Try to work a little faster next time. Let's look at the ones you missed."; }
-  else if (correct === 10) { title = 'Perfect score! 🎉'; sub = `Finished in ${fmt(state.finalElapsed)} — every answer correct.`; }
-  else if (correct >= 8) { title = 'Great job!'; sub = `Finished in ${fmt(state.finalElapsed)}. Scroll down for the few you missed.`; }
-  else if (correct >= 5) { title = 'Nice effort — keep going!'; sub = `Finished in ${fmt(state.finalElapsed)}. Read each explanation carefully.`; }
-  else { title = "Don't worry — let's see what to fix."; sub = `Finished in ${fmt(state.finalElapsed)}. Each missed question has a step-by-step walkthrough below.`; }
+  if (correct === 10) { title = 'Perfect score! 🎉'; sub = `Finished in ${timeStr}${timeNote} — every answer correct.`; }
+  else if (correct >= 8) { title = 'Great job!'; sub = `Finished in ${timeStr}${timeNote}. Scroll down for the few you missed.`; }
+  else if (correct >= 5) { title = 'Nice effort — keep going!'; sub = `Finished in ${timeStr}${timeNote}. Read each explanation carefully.`; }
+  else { title = "Don't worry — let's see what to fix."; sub = `Finished in ${timeStr}${timeNote}. Each missed question has a step-by-step walkthrough below.`; }
   msg.appendChild(el('h2', null, title));
   msg.appendChild(el('p', null, sub));
   wrap.appendChild(msg);
@@ -1028,9 +1036,16 @@ function renderSummary() {
   const breakdown = el('div', 'breakdown');
   breakdown.appendChild(chip('ok', `✓ ${correct} correct`));
   breakdown.appendChild(chip('bad', `✗ ${wrong} missed`));
-  breakdown.appendChild(chip('time', `⏱ ${fmt(state.finalElapsed || 0)}`));
+  breakdown.appendChild(chip(overtime ? 'time over' : 'time', `⏱ ${timeStr}`));
   wrap.appendChild(breakdown);
   return wrap;
+}
+
+function fmtElapsed(sec) {
+  // Always positive elapsed time, no leading +
+  const t = Math.max(0, sec);
+  const m = Math.floor(t / 60), s = t % 60;
+  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
 }
 
 function chip(kind, text) {
@@ -1074,11 +1089,11 @@ function renderTimeoutModal() {
   const m = el('div', 'modal');
   const ico = el('div', 'ico-big', '⏰');
   m.appendChild(ico);
-  m.appendChild(el('h2', null, "Time's up"));
-  m.appendChild(el('p', null, "The 10 minutes are over. Your quiz has been submitted automatically — let's see how you did."));
+  m.appendChild(el('h2', null, "Time's up — keep going!"));
+  m.appendChild(el('p', null, "The 10 minutes are up. Take the time you need to finish — we'll just track your total time."));
   const btn = el('button', 'btn btn-primary btn-big');
   btn.style.width = '100%';
-  btn.textContent = 'See results';
+  btn.textContent = 'Keep going';
   btn.onclick = dismissModal;
   m.appendChild(btn);
   bg.appendChild(m);
