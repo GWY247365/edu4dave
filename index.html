@@ -204,6 +204,9 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .chart-bar.low{background:var(--bad)}
 .chart-num{font-size:10px;color:var(--ink-3);font-weight:600;font-variant-numeric:tabular-nums;flex:0 0 12px}
 .stats-actions{display:flex;gap:10px;margin-top:18px;justify-content:flex-end}
+.pin-row{display:flex;align-items:center;gap:10px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border-soft)}
+.pin-label{flex:1;font-size:13px;color:var(--ink-3);font-weight:600}
+.pin-btn{flex-shrink:0;font-size:14px;padding:8px 14px}
 .sync-section{margin-top:6px;padding-bottom:12px;border-bottom:1px solid var(--border-soft)}
 .sync-row{display:flex;gap:8px;margin-top:4px}
 .sync-input{flex:1;min-width:0;font-family:inherit;font-size:15px;padding:10px 12px;border:2px solid var(--border);border-radius:10px;background:#fff;color:var(--ink)}
@@ -284,10 +287,11 @@ const Stats = (() => {
         hist: d.hist || [],
         buckets: d.buckets || {},
         streak: d.streak || { current: 0, best: 0, lastDay: null },
+        pin: d.pin || null,
       };
     } catch { return blank(); }
   }
-  function blank() { return { facts: {}, hist: [], buckets: {}, streak: { current: 0, best: 0, lastDay: null } }; }
+  function blank() { return { facts: {}, hist: [], buckets: {}, streak: { current: 0, best: 0, lastDay: null }, pin: null }; }
   function save(d) {
     try { localStorage.setItem(STATS_KEY, JSON.stringify(d)); } catch {}
   }
@@ -423,6 +427,8 @@ const Stats = (() => {
     data = blank();
     save(data);
   }
+  function getPinHash() { return data.pin || null; }
+  function setPin(hash) { data.pin = hash || null; save(data); }
   function exportRaw() { return JSON.parse(JSON.stringify(data)); }
   function importMerge(remote) {
     if (!remote || typeof remote !== 'object') return;
@@ -430,9 +436,10 @@ const Stats = (() => {
     data.buckets = mergeCountMap(data.buckets, remote.buckets);
     data.hist = mergeHist(data.hist, remote.hist);
     data.streak = mergeStreak(data.streak, remote.streak);
+    if (!data.pin && remote.pin) data.pin = remote.pin;
     save(data);
   }
-  return { recordMul, recordBucket, recordQuiz, pickMulFacts, pickBucket, getFact, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge };
+  return { recordMul, recordBucket, recordQuiz, pickMulFacts, pickBucket, getFact, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin };
 })();
 
 // Merge helpers for cross-device sync (keep the richer record, union history)
@@ -493,6 +500,34 @@ async function cloudSync(code) {
   const remote = await cloudLoad(code);
   Stats.importMerge(remote);
   await cloudSave(code, Stats.exportRaw());
+}
+function pushIfSynced() {
+  const fc = getFamilyCode();
+  if (fc) cloudSave(fc, Stats.exportRaw()).catch(() => {});
+}
+
+// ---------- Parent gate (4-digit PIN, with a math fallback) ----------
+function pinHash(s) {
+  // Lightweight non-crypto hash — a deterrent, not real security.
+  let h = 2166136261;
+  const str = String(s);
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return (h >>> 0).toString(36);
+}
+function parentGate() {
+  const hash = Stats.getPinHash();
+  if (hash) {
+    const pin = prompt('家长 PIN（4 位数字）：');
+    if (pin === null) return false;
+    if (pinHash(pin.trim()) !== hash) { alert('PIN 不对，已取消。'); return false; }
+    return true;
+  }
+  // No PIN set → fall back to a 2-digit × 2-digit math gate.
+  const a = rint(13, 39), b = rint(13, 39);
+  const ans = prompt(`家长验证：请计算 ${a} × ${b} = ?\n（在「家长 PIN」里设置一个 PIN 会更方便）`);
+  if (ans === null) return false;
+  if (Number(ans) !== a * b) { alert('答案不对，已取消。'); return false; }
+  return true;
 }
 
 function genMul() {
@@ -1305,17 +1340,15 @@ function renderStatsModal() {
     m.appendChild(planSection);
   }
 
+  m.appendChild(renderPinRow());
+
   const actions = el('div', 'stats-actions');
   const reset = el('button', 'btn btn-ghost', '重置进度（需家长验证）');
   reset.onclick = () => {
-    // Parent gate: a 2-digit × 2-digit product is outside the kid's 12×12
-    // range, so it blocks a young child from wiping progress by accident.
-    const a = rint(13, 39), b = rint(13, 39);
-    const ans = prompt(`家长验证（防止小朋友误删）：\n请计算 ${a} × ${b} = ?`);
-    if (ans === null) return;
-    if (Number(ans) !== a * b) { alert('答案不对，已取消重置。'); return; }
+    if (!parentGate()) return;
     if (confirm('确认清空这台设备的全部进度？此操作无法撤销。')) {
       Stats.reset();
+      pushIfSynced();
       render();
     }
   };
@@ -1412,6 +1445,36 @@ function statTile(label, value) {
 }
 
 function closeStats() { state.showStats = false; render(); }
+
+function renderPinRow() {
+  const wrap = el('div', 'pin-row');
+  const has = !!Stats.getPinHash();
+  wrap.appendChild(el('div', 'pin-label', has ? '🔒 家长 PIN 已开启' : '🔓 未设置家长 PIN'));
+  const btn = el('button', 'btn btn-ghost pin-btn', has ? '修改 / 清除' : '设置 PIN');
+  btn.onclick = () => {
+    if (has) {
+      const cur = prompt('请输入当前家长 PIN：');
+      if (cur === null) return;
+      if (pinHash(cur.trim()) !== Stats.getPinHash()) { alert('PIN 不对。'); return; }
+      const next = prompt('输入新的 4 位 PIN（留空则清除）：');
+      if (next === null) return;
+      const t = next.trim();
+      if (t === '') { Stats.setPin(null); pushIfSynced(); alert('已清除家长 PIN。'); render(); return; }
+      if (!/^\d{4}$/.test(t)) { alert('PIN 必须是 4 位数字。'); return; }
+      Stats.setPin(pinHash(t)); pushIfSynced(); alert('PIN 已更新。'); render();
+    } else {
+      const p1 = prompt('设置 4 位家长 PIN：');
+      if (p1 === null) return;
+      if (!/^\d{4}$/.test(p1.trim())) { alert('PIN 必须是 4 位数字。'); return; }
+      const p2 = prompt('再输入一次确认：');
+      if (p2 === null) return;
+      if (p1.trim() !== p2.trim()) { alert('两次输入不一致。'); return; }
+      Stats.setPin(pinHash(p1.trim())); pushIfSynced(); alert('家长 PIN 已设置。'); render();
+    }
+  };
+  wrap.appendChild(btn);
+  return wrap;
+}
 
 function renderSyncSection() {
   const wrap = el('div', 'sync-section');
