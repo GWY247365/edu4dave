@@ -204,6 +204,18 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .chart-bar.low{background:var(--bad)}
 .chart-num{font-size:10px;color:var(--ink-3);font-weight:600;font-variant-numeric:tabular-nums;flex:0 0 12px}
 .stats-actions{display:flex;gap:10px;margin-top:18px;justify-content:flex-end}
+.plan-section{margin-top:14px}
+.plan-btn{width:100%;margin-top:4px}
+.plan-loading{margin-top:10px;font-size:14px;color:var(--ink-3);text-align:center;padding:14px}
+.plan-error{margin-top:10px;font-size:13px;color:var(--bad-deep);background:var(--bad-soft);border:1px solid #fecaca;border-radius:10px;padding:10px 12px;line-height:1.5}
+.plan-body{margin-top:10px;background:var(--brand-soft);border:1px solid var(--brand-soft-2);border-radius:12px;padding:12px 16px;font-size:14px;line-height:1.6;color:var(--ink-2)}
+.plan-body .plan-h{margin:12px 0 4px;font-size:15px;font-weight:700;color:var(--brand-deep)}
+.plan-body .plan-h:first-child{margin-top:0}
+.plan-body .plan-p{margin:6px 0}
+.plan-body .plan-ul{margin:6px 0;padding-left:20px}
+.plan-body .plan-ul li{margin:3px 0}
+.plan-body code{background:#fff;border:1px solid var(--border);border-radius:4px;padding:1px 5px;font-size:13px;font-variant-numeric:tabular-nums}
+.plan-body strong{color:var(--ink)}
 
 @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.55;transform:scale(.85)}}
 @keyframes fade{from{opacity:0}to{opacity:1}}
@@ -1201,6 +1213,17 @@ function renderStatsModal() {
     }
   }
 
+  if (s.quizzesDone > 0) {
+    const planSection = el('div', 'plan-section');
+    planSection.appendChild(el('h3', 'stats-h3', '✨ AI 学习计划'));
+    const planContainer = el('div', 'plan-container');
+    const genBtn = el('button', 'btn btn-primary plan-btn', '生成本周分析和下周计划');
+    genBtn.onclick = () => generatePlan(planContainer, genBtn);
+    planSection.appendChild(genBtn);
+    planSection.appendChild(planContainer);
+    m.appendChild(planSection);
+  }
+
   const actions = el('div', 'stats-actions');
   const reset = el('button', 'btn btn-ghost', 'Reset stats');
   reset.onclick = () => {
@@ -1217,6 +1240,81 @@ function renderStatsModal() {
 
   bg.appendChild(m);
   return bg;
+}
+
+async function generatePlan(container, btn) {
+  btn.disabled = true;
+  container.innerHTML = '';
+  const loading = el('div', 'plan-loading', '正在生成学习计划，请稍候…');
+  container.appendChild(loading);
+  try {
+    const s = Stats.summary();
+    const payload = {
+      quizzesDone: s.quizzesDone,
+      multiplicationAccuracyPct: s.totalAccuracy,
+      factsMastered: s.mastered,
+      streak: { current: s.streak.current, best: s.streak.best },
+      weakestMultiplicationFacts: s.weak.map(w => ({
+        fact: `${w.a}×${w.b}`, correct: w.right, wrong: w.wrong,
+      })),
+      additionByCarries: s.buckets.add.map(b => ({
+        carries: b.k, accuracyPct: b.accuracy, attempts: b.total,
+      })),
+      subtractionByBorrows: s.buckets.sub.map(b => ({
+        borrows: b.k, accuracyPct: b.accuracy, attempts: b.total,
+      })),
+      recentQuizzes: s.hist.map(h => ({ correct: h.c, outOf: h.n, seconds: h.t })),
+    };
+    const res = await fetch('/api/plan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stats: payload }),
+    });
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      throw new Error(errBody.error || `服务器返回 ${res.status}`);
+    }
+    const data = await res.json();
+    container.innerHTML = '';
+    const body = el('div', 'plan-body');
+    body.innerHTML = renderMarkdown(data.plan || '');
+    container.appendChild(body);
+    btn.textContent = '重新生成';
+  } catch (e) {
+    container.innerHTML = '';
+    const err = el('div', 'plan-error');
+    err.textContent = '生成失败：' + e.message + '。AI 计划需要已部署的后端并配置了 ANTHROPIC_API_KEY。';
+    container.appendChild(err);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function renderMarkdown(md) {
+  const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const inline = s => esc(s)
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>');
+  const lines = String(md).split('\n');
+  let html = '', inList = false;
+  const closeList = () => { if (inList) { html += '</ul>'; inList = false; } };
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (/^#{1,6}\s/.test(line)) {
+      closeList();
+      html += `<h4 class="plan-h">${inline(line.replace(/^#{1,6}\s/, ''))}</h4>`;
+    } else if (/^[-*]\s/.test(line) || /^\d+\.\s/.test(line)) {
+      if (!inList) { html += '<ul class="plan-ul">'; inList = true; }
+      html += `<li>${inline(line.replace(/^([-*]|\d+\.)\s/, ''))}</li>`;
+    } else if (line === '') {
+      closeList();
+    } else {
+      closeList();
+      html += `<p class="plan-p">${inline(line)}</p>`;
+    }
+  }
+  closeList();
+  return html;
 }
 
 function statTile(label, value) {

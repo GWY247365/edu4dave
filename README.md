@@ -11,6 +11,25 @@
 - 每日连胜（🔥 streak）：连续天数完成 quiz 会显示火苗图标；中断超过 1 天自动归零
 - 📊 Progress 面板：累计 quiz 数、平均分、乘法事实掌握进度、加减法各难度桶准确率、最近 10 次 quiz 柱状图
 
+## ✨ AI 学习计划（需要后端 + API key）
+
+📊 Progress 面板里有「生成本周分析和下周计划」按钮。点击后会把孩子本地累积的统计（弱项乘法事实、加减法各难度准确率、连胜、最近成绩）发到一个 serverless 函数 `api/plan.js`，由 Claude 生成一份面向家长的中文分析 + 下周练习计划。
+
+> 隐私提醒：用这个功能时，孩子的练习统计会发送到服务器端再转发给 Claude API。不用这个按钮时，所有数据仍只存在本地。
+
+### 部署步骤（Vercel）
+
+1. 部署仓库到 Vercel（见下方「部署到 Vercel」）—— `api/plan.js` 会被自动识别为 serverless 函数。
+2. 在 Vercel 项目 → Settings → Environment Variables 添加：
+   - `ANTHROPIC_API_KEY` = 你的 Anthropic API key（从 https://console.anthropic.com 获取）
+3. 重新部署。完成后「生成计划」按钮即可用。
+
+可选环境变量：
+- `PLAN_MODEL`（默认 `claude-opus-4-7`）—— 想更快/更省可设为 `claude-sonnet-4-6` 或 `claude-haiku-4-5`
+- `PLAN_EFFORT`（默认 `medium`，仅对 Opus/Sonnet 生效）—— `low`/`medium`/`high`
+
+本地开发：`npm install` 后用 `npx vercel dev` 起本地服务器（需要先设置 `ANTHROPIC_API_KEY` 环境变量），直接开 `index.html` 时除 AI 计划外的功能都可用。
+
 ## PWA：当作 App 用
 
 - iPad Safari 打开网址 → 分享 → "添加到主屏幕"

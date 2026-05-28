@@ -1,0 +1,10 @@
+{
+  "name": "math-quiz",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Interactive math quiz for kids with AI-generated learning plans.",
+  "dependencies": {
+    "@anthropic-ai/sdk": "latest"
+  }
+}
