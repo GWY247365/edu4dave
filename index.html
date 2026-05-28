@@ -204,6 +204,15 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .chart-bar.low{background:var(--bad)}
 .chart-num{font-size:10px;color:var(--ink-3);font-weight:600;font-variant-numeric:tabular-nums;flex:0 0 12px}
 .stats-actions{display:flex;gap:10px;margin-top:18px;justify-content:flex-end}
+.sync-section{margin-top:6px;padding-bottom:12px;border-bottom:1px solid var(--border-soft)}
+.sync-row{display:flex;gap:8px;margin-top:4px}
+.sync-input{flex:1;min-width:0;font-family:inherit;font-size:15px;padding:10px 12px;border:2px solid var(--border);border-radius:10px;background:#fff;color:var(--ink)}
+.sync-input:focus{outline:none;border-color:var(--brand)}
+.sync-btn{flex-shrink:0}
+.sync-status{margin-top:6px;font-size:13px;color:var(--ink-3);min-height:16px}
+.sync-status.ok{color:var(--ok-deep)}
+.sync-status.err{color:var(--bad-deep)}
+.sync-hint{margin-top:6px;font-size:12px;color:var(--ink-4);line-height:1.45}
 .plan-section{margin-top:14px}
 .plan-btn{width:100%;margin-top:4px}
 .plan-loading{margin-top:10px;font-size:14px;color:var(--ink-3);text-align:center;padding:14px}
@@ -414,8 +423,77 @@ const Stats = (() => {
     data = blank();
     save(data);
   }
-  return { recordMul, recordBucket, recordQuiz, pickMulFacts, pickBucket, getFact, factWeight, bucketWeight, summary, streakStatus, reset };
+  function exportRaw() { return JSON.parse(JSON.stringify(data)); }
+  function importMerge(remote) {
+    if (!remote || typeof remote !== 'object') return;
+    data.facts = mergeCountMap(data.facts, remote.facts);
+    data.buckets = mergeCountMap(data.buckets, remote.buckets);
+    data.hist = mergeHist(data.hist, remote.hist);
+    data.streak = mergeStreak(data.streak, remote.streak);
+    save(data);
+  }
+  return { recordMul, recordBucket, recordQuiz, pickMulFacts, pickBucket, getFact, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge };
 })();
+
+// Merge helpers for cross-device sync (keep the richer record, union history)
+function mergeCountMap(a, b) {
+  a = a || {}; b = b || {};
+  const out = { ...a };
+  for (const k in b) {
+    const x = out[k], y = b[k];
+    if (!x) { out[k] = y; continue; }
+    const ta = (x.right || 0) + (x.wrong || 0);
+    const tb = (y.right || 0) + (y.wrong || 0);
+    out[k] = { ...(tb > ta ? y : x) };
+    if (x.lastSeen != null || y.lastSeen != null) {
+      out[k].lastSeen = Math.max(x.lastSeen || 0, y.lastSeen || 0);
+    }
+  }
+  return out;
+}
+function mergeHist(a, b) {
+  const all = [...(a || []), ...(b || [])].sort((p, q) => (p.d || 0) - (q.d || 0));
+  const seen = new Set(), out = [];
+  for (const h of all) { if (!seen.has(h.d)) { seen.add(h.d); out.push(h); } }
+  return out.slice(-100);
+}
+function mergeStreak(a, b) {
+  a = a || { current: 0, best: 0, lastDay: null };
+  b = b || { current: 0, best: 0, lastDay: null };
+  let s;
+  if (!a.lastDay) s = b;
+  else if (!b.lastDay) s = a;
+  else s = (a.lastDay >= b.lastDay) ? a : b;
+  return { current: s.current || 0, best: Math.max(a.best || 0, b.best || 0), lastDay: s.lastDay || null };
+}
+
+// ---------- Cloud sync (family code + Upstash via /api/progress) ----------
+const FAMILY_KEY = 'mathquiz.familyCode';
+function getFamilyCode() { try { return localStorage.getItem(FAMILY_KEY) || ''; } catch { return ''; } }
+function setFamilyCode(c) {
+  try { c ? localStorage.setItem(FAMILY_KEY, c) : localStorage.removeItem(FAMILY_KEY); } catch {}
+}
+function sanitizeCode(c) {
+  return String(c || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 64);
+}
+async function cloudLoad(code) {
+  const res = await fetch('/api/progress?code=' + encodeURIComponent(code));
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || ('读取 ' + res.status)); }
+  return (await res.json()).data || null;
+}
+async function cloudSave(code, data) {
+  const res = await fetch('/api/progress', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code, data }),
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || ('保存 ' + res.status)); }
+}
+async function cloudSync(code) {
+  const remote = await cloudLoad(code);
+  Stats.importMerge(remote);
+  await cloudSave(code, Stats.exportRaw());
+}
 
 function genMul() {
   const a = rint(2, 12), b = rint(2, 12);
@@ -822,6 +900,8 @@ function submit(fromTimeout) {
     else if (q.bucket) Stats.recordBucket(q.bucket, isRight);
   });
   Stats.recordQuiz(state.quiz.length, correctCount, state.finalElapsed);
+  const fc = getFamilyCode();
+  if (fc) cloudSave(fc, Stats.exportRaw()).catch(() => {});
   render();
   // scroll to first wrong (or top if all correct), keeping context visible
   setTimeout(() => {
@@ -1124,6 +1204,7 @@ function renderStatsModal() {
   closeBtn.onclick = closeStats;
   head.appendChild(closeBtn);
   m.appendChild(head);
+  m.appendChild(renderSyncSection());
 
   if (s.quizzesDone === 0 && s.totalAttempts === 0) {
     m.appendChild(el('p', 'stats-empty', 'No data yet — finish a quiz to start tracking your progress.'));
@@ -1326,6 +1407,50 @@ function statTile(label, value) {
 
 function closeStats() { state.showStats = false; render(); }
 
+function renderSyncSection() {
+  const wrap = el('div', 'sync-section');
+  wrap.appendChild(el('h3', 'stats-h3', '☁️ 多设备同步'));
+  const row = el('div', 'sync-row');
+  const input = document.createElement('input');
+  input.className = 'sync-input';
+  input.type = 'text';
+  input.placeholder = '家庭码（各设备填同一个）';
+  input.autocomplete = 'off';
+  input.value = getFamilyCode();
+  const btn = el('button', 'btn btn-primary sync-btn', '保存并同步');
+  const status = el('div', 'sync-status', '');
+  btn.onclick = async () => {
+    const code = sanitizeCode(input.value);
+    if (code.length < 3) {
+      status.textContent = '家庭码至少 3 位（字母/数字/-/_）';
+      status.className = 'sync-status err';
+      return;
+    }
+    setFamilyCode(code);
+    input.value = code;
+    btn.disabled = true;
+    status.textContent = '同步中…';
+    status.className = 'sync-status';
+    try {
+      await cloudSync(code);
+      status.textContent = '✓ 已同步到云端，正在刷新…';
+      status.className = 'sync-status ok';
+      setTimeout(() => { if (state.showStats) render(); }, 900);
+    } catch (e) {
+      status.textContent = '同步失败：' + e.message + '（需配置 Upstash）';
+      status.className = 'sync-status err';
+    } finally {
+      btn.disabled = false;
+    }
+  };
+  row.appendChild(input);
+  row.appendChild(btn);
+  wrap.appendChild(row);
+  wrap.appendChild(status);
+  wrap.appendChild(el('div', 'sync-hint', '在每台设备输入同一个家庭码即可共享进度。知道这个码的人都能读取，请用别人猜不到的码。'));
+  return wrap;
+}
+
 function spanTxt(text, cls) {
   const s = document.createElement('span');
   if (cls) s.className = cls;
@@ -1339,6 +1464,13 @@ setTimeout(() => {
   const first = document.querySelector('.ansbox');
   if (first) first.focus();
 }, 100);
+
+// On load, if a family code is set, pull + merge cloud progress
+(function initCloudSync() {
+  const code = getFamilyCode();
+  if (!code) return;
+  cloudSync(code).then(() => render()).catch(() => {});
+})();
 
 // PWA: register service worker for offline use
 if ('serviceWorker' in navigator) {

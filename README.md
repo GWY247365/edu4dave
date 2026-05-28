@@ -36,6 +36,21 @@
 
 本地开发：用 `npx vercel dev` 起本地服务器（需要先设置 `HUNYUAN_API_KEY` 环境变量）；直接开 `index.html` 时除 AI 计划外的功能都可用。
 
+## ☁️ 多设备同步（家庭码 + Upstash）
+
+进度默认存在每台设备本地（localStorage）。开启云同步后，在每台设备的 📊 面板里输入**同一个家庭码**，进度就会跨设备共享（拉取 → 合并 → 回写）。
+
+- 合并策略：同一个乘法事实/难度桶保留练习次数更多的记录；历史按时间去重合并；连胜取最近一天。单个小孩为主、一台设备时就是简单的「打开拉取、做完上传」。
+- 安全：知道家庭码的人都能读到进度，请用别人猜不到的码（≥3 位，字母/数字/`-`/`_`）。
+
+### 开通 Upstash（免费）
+
+1. Vercel 项目 → **Storage** → 选 **Upstash** 的 Redis（Marketplace 一键创建，免费额度足够）
+2. 创建后 Vercel 会**自动注入**环境变量 `UPSTASH_REDIS_REST_URL` 和 `UPSTASH_REDIS_REST_TOKEN`（也兼容 `KV_REST_API_URL`/`KV_REST_API_TOKEN`）
+3. **Redeploy** 一次。之后 📊 面板的「多设备同步」就能用了
+
+不配置 Upstash 也不影响其它功能——只是同步按钮会提示未配置。
+
 ## PWA：当作 App 用
 
 - iPad Safari 打开网址 → 分享 → "添加到主屏幕"
