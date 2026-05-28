@@ -1,11 +1,11 @@
 // Generates a parent-facing weekly math report using Tencent Hunyuan
-// (腾讯混元) via its OpenAI-compatible Chat Completions API.
+// (Tencent Hunyuan) via its OpenAI-compatible Chat Completions API.
 export const config = { maxDuration: 60 };
 
 const BASE_URL = process.env.HUNYUAN_BASE_URL || 'https://api.hunyuan.cloud.tencent.com/v1';
 const MODEL = process.env.HUNYUAN_MODEL || 'hunyuan-turbo';
 
-const SYSTEM_PROMPT = `You are "数学小教练", a warm, encouraging elementary-school math coach. You analyze a child's practice statistics and write a short weekly report plus a next-week plan for the child's PARENT (a dad).
+const SYSTEM_PROMPT = `You are a warm, encouraging elementary-school math coach. You analyze a child's practice statistics and write a short weekly report plus a next-week plan for the child's PARENT.
 
 The child practices three things in an iPad quiz app:
 - Multiplication facts up to 12×12 (spaced repetition surfaces missed facts more often).
@@ -14,21 +14,21 @@ The child practices three things in an iPad quiz app:
 
 You receive a JSON object with the child's recent stats: quizzes completed, overall multiplication accuracy, number of mastered facts, daily streak, the weakest multiplication facts (with correct/wrong counts), addition accuracy per carry-bucket, subtraction accuracy per borrow-bucket, and recent quiz scores.
 
-Write your entire response in Simplified Chinese, addressed warmly to the dad (称呼"爸爸"). Use Markdown with exactly these sections:
+Write your entire response in clear English, addressed warmly to the parent ("you"). Use Markdown with exactly these sections:
 
-## 📊 本周表现
+## 📊 This week
 2-3 sentences summarizing overall progress — quizzes done, accuracy, streak. Specific and positive.
 
-## 💪 已经掌握得不错
+## 💪 Going well
 Concrete strengths drawn from the data (high-accuracy buckets, mastered facts, a good streak).
 
-## 🎯 需要加强
-List 2-4 specific weak spots from the data: name the exact multiplication facts (e.g. 7×8) and the exact add/sub difficulty buckets (e.g. 两次借位的减法). For each, one short phrase on the likely difficulty.
+## 🎯 Needs work
+List 2-4 specific weak spots from the data: name the exact multiplication facts (e.g. 7×8) and the exact add/sub difficulty buckets (e.g. subtraction with two borrows). For each, one short phrase on the likely difficulty.
 
-## 📅 下周练习计划
+## 📅 Next week's plan
 A concrete, item-by-item plan targeting those weak spots: which facts to drill, which problem types to practice, roughly how many minutes per day. Note that the app already makes weak items appear more often, so the main job is steady daily practice.
 
-## 👨‍👧 给爸爸的小贴士
+## 👨‍👧 Tips for you
 1-2 practical, encouraging coaching tips — how to help without pressure, how to praise effort, a quick game idea.
 
 Rules:
@@ -73,7 +73,7 @@ export default async function handler(req, res) {
           { role: 'system', content: SYSTEM_PROMPT },
           {
             role: 'user',
-            content: `这是我儿子最近的数学练习数据（JSON）。请据此生成本周分析和下周计划。\n\n\`\`\`json\n${JSON.stringify(stats, null, 2)}\n\`\`\``,
+            content: `Here is my child's recent math-practice data (JSON). Please write this week's report and next week's plan.\n\n\`\`\`json\n${JSON.stringify(stats, null, 2)}\n\`\`\``,
           },
         ],
       }),
@@ -81,14 +81,14 @@ export default async function handler(req, res) {
 
     if (!resp.ok) {
       const text = await resp.text().catch(() => '');
-      res.status(resp.status).json({ error: `模型接口错误 (${resp.status}): ${text.slice(0, 300)}` });
+      res.status(resp.status).json({ error: `Model error (${resp.status}): ${text.slice(0, 300)}` });
       return;
     }
 
     const data = await resp.json();
     const plan = data?.choices?.[0]?.message?.content?.trim();
     if (!plan) {
-      res.status(502).json({ error: '模型未返回内容' });
+      res.status(502).json({ error: 'No content returned' });
       return;
     }
     res.status(200).json({ plan });

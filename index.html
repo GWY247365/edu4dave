@@ -160,6 +160,13 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .iconbtn.close{width:32px;height:32px;font-size:14px;border-radius:8px;color:var(--ink-3)}
 
 .review-badge{font-size:11px;font-weight:700;color:var(--warn-deep);background:var(--warn-soft);border:1px solid #fde68a;padding:2px 8px;border-radius:9999px;letter-spacing:.04em}
+.pretip{margin-top:8px;font-size:13px;color:var(--brand-deep);background:var(--brand-soft);border:1px solid var(--brand-soft-2);border-radius:10px;padding:8px 12px;line-height:1.45}
+.teach-wrap{margin-top:8px}
+.teach-btn{font-size:13px;padding:7px 12px}
+.teach-out{margin-top:8px;font-size:14px;line-height:1.55;color:var(--ink-2);background:#fff;border:1px dashed var(--brand-soft-2);border-radius:8px;padding:0;max-height:0;overflow:hidden;transition:max-height .2s,padding .2s}
+.teach-out:not(:empty){padding:10px 12px;max-height:600px}
+.teach-out.err{color:var(--bad-deep);border-color:#fecaca}
+.focus-btn{width:100%;margin-top:10px}
 
 .streak-chip{appearance:none;border:1px solid #fde68a;background:linear-gradient(135deg,#fff7ed,#ffedd5);color:#9a3412;font-family:inherit;font-weight:800;display:inline-flex;align-items:center;gap:4px;padding:6px 10px;border-radius:9999px;cursor:pointer;font-size:14px;box-shadow:var(--shadow-card);transition:transform .15s ease}
 .streak-chip:active{transform:scale(.94)}
@@ -427,6 +434,15 @@ const Stats = (() => {
     data = blank();
     save(data);
   }
+  function isAdvanced() {
+    // True once most of the 66 facts (2..12 × 2..12) are mastered.
+    let mastered = 0;
+    for (const k of Object.keys(data.facts)) {
+      const f = data.facts[k];
+      if (f.right >= 3 && f.wrong === 0) mastered++;
+    }
+    return mastered >= 53;
+  }
   function getPinHash() { return data.pin || null; }
   function setPin(hash) { data.pin = hash || null; save(data); }
   function exportRaw() { return JSON.parse(JSON.stringify(data)); }
@@ -439,7 +455,7 @@ const Stats = (() => {
     if (!data.pin && remote.pin) data.pin = remote.pin;
     save(data);
   }
-  return { recordMul, recordBucket, recordQuiz, pickMulFacts, pickBucket, getFact, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin };
+  return { recordMul, recordBucket, recordQuiz, pickMulFacts, pickBucket, getFact, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced };
 })();
 
 // Merge helpers for cross-device sync (keep the richer record, union history)
@@ -485,7 +501,7 @@ function sanitizeCode(c) {
 }
 async function cloudLoad(code) {
   const res = await fetch('/api/progress?code=' + encodeURIComponent(code));
-  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || ('读取 ' + res.status)); }
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || ('load ' + res.status)); }
   return (await res.json()).data || null;
 }
 async function cloudSave(code, data) {
@@ -494,7 +510,7 @@ async function cloudSave(code, data) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ code, data }),
   });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || ('保存 ' + res.status)); }
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || ('save ' + res.status)); }
 }
 async function cloudSync(code) {
   const remote = await cloudLoad(code);
@@ -517,16 +533,16 @@ function pinHash(s) {
 function parentGate() {
   const hash = Stats.getPinHash();
   if (hash) {
-    const pin = prompt('家长 PIN（4 位数字）：');
+    const pin = prompt('Parent PIN (4 digits):');
     if (pin === null) return false;
-    if (pinHash(pin.trim()) !== hash) { alert('PIN 不对，已取消。'); return false; }
+    if (pinHash(pin.trim()) !== hash) { alert('Wrong PIN. Cancelled.'); return false; }
     return true;
   }
   // No PIN set → fall back to a 2-digit × 2-digit math gate.
   const a = rint(13, 39), b = rint(13, 39);
-  const ans = prompt(`家长验证：请计算 ${a} × ${b} = ?\n（在「家长 PIN」里设置一个 PIN 会更方便）`);
+  const ans = prompt(`Parent check: what is ${a} × ${b}?\n(Set a PIN under "Parent PIN" to make this quicker.)`);
   if (ans === null) return false;
-  if (Number(ans) !== a * b) { alert('答案不对，已取消。'); return false; }
+  if (Number(ans) !== a * b) { alert('Wrong answer. Cancelled.'); return false; }
   return true;
 }
 
@@ -578,10 +594,19 @@ function genSub(targetBorrows) {
   return { type: 'sub', a, b, ans: a - b, label: 'Subtraction · −', bucket: `sub:${countBorrows(a, b)}` };
 }
 
+// Bigger multiplication, unlocked once the times tables are mastered.
+function genBigMul() {
+  const a = rint(11, 99), b = rint(2, 9);
+  return { type: 'mul', a, b, ans: a * b, label: 'Multiplication · ×', big: true };
+}
+
 function newQuiz() {
   const qs = [];
-  // Spaced-repetition weighted pick of 6 distinct multiplication facts
-  const picks = Stats.pickMulFacts(6);
+  const advanced = Stats.isAdvanced();
+  // How many of the 6 multiplication slots become bigger problems.
+  const bigCount = advanced ? 2 : 0;
+  const factCount = 6 - bigCount;
+  const picks = Stats.pickMulFacts(factCount);
   picks.forEach(p => {
     // randomly flip orientation so kid sees both 7×8 and 8×7
     const flip = Math.random() < 0.5;
@@ -591,8 +616,35 @@ function newQuiz() {
     const isReview = !!stat && stat.wrong > 0 && Stats.factWeight(stat) > 1.5;
     qs.push({ type: 'mul', a, b, ans: a * b, label: 'Multiplication · ×', isReview });
   });
+  for (let i = 0; i < bigCount; i++) qs.push(genBigMul());
   for (let i = 0; i < 2; i++) qs.push(genAdd(Stats.pickBucket('add')));
   for (let i = 0; i < 2; i++) qs.push(genSub(Stats.pickBucket('sub')));
+  for (let i = qs.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [qs[i], qs[j]] = [qs[j], qs[i]];
+  }
+  return qs.map((q, i) => ({ ...q, id: i, given: '' }));
+}
+
+// A quiz built mostly from the child's weakest items.
+function focusQuiz() {
+  const s = Stats.summary();
+  const qs = [];
+  let facts = s.weak.slice(0, 6).map(w => ({ a: w.a, b: w.b }));
+  if (facts.length < 6) {
+    const extra = Stats.pickMulFacts(6 - facts.length);
+    facts = facts.concat(extra.map(p => ({ a: p.a, b: p.b })));
+  }
+  facts.forEach(f => {
+    const flip = Math.random() < 0.5;
+    const a = flip ? f.b : f.a, b = flip ? f.a : f.b;
+    qs.push({ type: 'mul', a, b, ans: a * b, label: 'Multiplication · ×', isReview: true });
+  });
+  const worstBucket = (p) => [...s.buckets[p]]
+    .sort((x, y) => Stats.bucketWeight(`${p}:${y.k}`) - Stats.bucketWeight(`${p}:${x.k}`))[0];
+  const wa = worstBucket('add'), ws = worstBucket('sub');
+  for (let i = 0; i < 2; i++) qs.push(genAdd(wa ? wa.k : null));
+  for (let i = 0; i < 2; i++) qs.push(genSub(ws ? ws.k : null));
   for (let i = qs.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [qs[i], qs[j]] = [qs[j], qs[i]];
@@ -862,6 +914,7 @@ const state = {
   timeUp: false,
   showTimeoutModal: false,
   showStats: false,
+  isPractice: false,
   finalElapsed: null,
 };
 
@@ -905,6 +958,40 @@ function renderTimer() {
 
 function startNew() {
   state.quiz = newQuiz();
+  state.isPractice = false;
+  state.submitted = false;
+  state.timeUp = false;
+  state.showTimeoutModal = false;
+  state.finalElapsed = null;
+  startTimer();
+  render();
+  setTimeout(() => {
+    const first = document.querySelector('.ansbox');
+    if (first) first.focus();
+  }, 50);
+}
+
+function startFocus() {
+  state.quiz = focusQuiz();
+  state.isPractice = false;
+  state.submitted = false;
+  state.timeUp = false;
+  state.showStats = false;
+  state.showTimeoutModal = false;
+  state.finalElapsed = null;
+  startTimer();
+  render();
+  setTimeout(() => {
+    const first = document.querySelector('.ansbox');
+    if (first) first.focus();
+  }, 50);
+}
+
+function retryWrong() {
+  const wrong = state.quiz.filter(q => Number(q.given) !== q.ans);
+  if (!wrong.length) { startNew(); return; }
+  state.quiz = wrong.map((q, i) => ({ ...q, id: i, given: '' }));
+  state.isPractice = true; // don't log a partial set to history/streak
   state.submitted = false;
   state.timeUp = false;
   state.showTimeoutModal = false;
@@ -931,10 +1018,10 @@ function submit(fromTimeout) {
   state.quiz.forEach(q => {
     const isRight = Number(q.given) === q.ans;
     if (isRight) correctCount++;
-    if (q.type === 'mul') Stats.recordMul(q.a, q.b, isRight);
+    if (q.type === 'mul' && !q.big && q.a <= 12 && q.b <= 12) Stats.recordMul(q.a, q.b, isRight);
     else if (q.bucket) Stats.recordBucket(q.bucket, isRight);
   });
-  Stats.recordQuiz(state.quiz.length, correctCount, state.finalElapsed);
+  if (!state.isPractice) Stats.recordQuiz(state.quiz.length, correctCount, state.finalElapsed);
   const fc = getFamilyCode();
   if (fc) cloudSave(fc, Stats.exportRaw()).catch(() => {});
   render();
@@ -1104,8 +1191,29 @@ function renderQuestion(q, idx) {
   }
   card.appendChild(row);
 
+  // Pre-practice strategy card on review multiplication facts (learn, then try)
+  if (!state.submitted && q.isReview && q.type === 'mul' && q.a <= 12 && q.b <= 12) {
+    const tip = el('div', 'pretip');
+    tip.appendChild(spanTxt('💡 ', null));
+    tip.appendChild(spanTxt(factTip(q.a, q.b), null));
+    card.appendChild(tip);
+  }
+
   if (wrong) card.appendChild(renderDiag(q));
   return card;
+}
+
+// Short, kid-friendly multiplication strategy (without giving the answer away).
+function factTip(a, b) {
+  if (a === 9 || b === 9) { const x = a === 9 ? b : a; return `×9 trick: think ${x}×10, then take away ${x}.`; }
+  if (a === 11 && b <= 9) return `×11 trick: ${b}×10, then add ${b}.`;
+  if (b === 11 && a <= 9) return `×11 trick: ${a}×10, then add ${a}.`;
+  if (a === 12 || b === 12) { const x = a === 12 ? b : a; return `×12: add ${x}×10 and ${x}×2.`; }
+  if (a === 5 || b === 5) { const x = a === 5 ? b : a; return `×5 trick: take half of ${x}×10.`; }
+  if (a % 2 === 0) return `Double it: work out ${a / 2}×${b}, then double the answer.`;
+  if (b % 2 === 0) return `Double it: work out ${a}×${b / 2}, then double the answer.`;
+  const lo = Math.min(a, b), hi = Math.max(a, b);
+  return `Skip-count by ${lo}, ${hi} times.`;
 }
 
 function renderDiag(q) {
@@ -1128,21 +1236,52 @@ function renderDiag(q) {
   tip.appendChild(spanTxt('💡 ', null));
   tip.appendChild(spanTxt(d.tip, null));
   wrap.appendChild(tip);
+
+  // AI mini-lesson (kid-facing) — on demand
+  const teachWrap = el('div', 'teach-wrap');
+  const teachBtn = el('button', 'btn btn-ghost teach-btn', '🧠 Teach me this');
+  const teachOut = el('div', 'teach-out');
+  teachBtn.onclick = async () => {
+    teachBtn.disabled = true;
+    teachOut.className = 'teach-out';
+    teachOut.textContent = 'Thinking…';
+    try {
+      const res = await fetch('/api/teach', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ problem: { type: q.type, a: q.a, b: q.b } }),
+      });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || ('error ' + res.status)); }
+      const data = await res.json();
+      teachOut.textContent = data.lesson || '';
+      teachBtn.style.display = 'none';
+    } catch (e) {
+      teachOut.className = 'teach-out err';
+      teachOut.textContent = "Couldn't load a lesson (needs the deployed backend + API key).";
+    } finally {
+      teachBtn.disabled = false;
+    }
+  };
+  teachWrap.appendChild(teachBtn);
+  teachWrap.appendChild(teachOut);
+  wrap.appendChild(teachWrap);
   return wrap;
 }
 
 function renderSummary() {
+  const total = state.quiz.length;
   const correct = state.quiz.filter(q => Number(q.given) === q.ans).length;
-  const wrong = state.quiz.length - correct;
+  const wrong = total - correct;
+  const ratio = total ? correct / total : 0;
   const wrap = el('div', 'summary');
 
   const score = el('div');
-  score.appendChild(el('div', 'label', 'Your score'));
+  score.appendChild(el('div', 'label', state.isPractice ? 'Practice' : 'Your score'));
   const big = el('div', 'score');
   const num = el('span', null, String(correct));
-  num.style.color = correct >= 8 ? 'var(--ok-deep)' : correct >= 5 ? 'var(--brand-deep)' : 'var(--bad-deep)';
+  num.style.color = ratio >= 0.8 ? 'var(--ok-deep)' : ratio >= 0.5 ? 'var(--brand-deep)' : 'var(--bad-deep)';
   big.appendChild(num);
-  big.appendChild(spanTxt(' / 10', 'total'));
+  big.appendChild(spanTxt(' / ' + total, 'total'));
   score.appendChild(big);
   wrap.appendChild(score);
 
@@ -1152,9 +1291,9 @@ function renderSummary() {
   const timeStr = fmtElapsed(elapsed);
   const timeNote = overtime ? ` (${fmt(elapsed - TIME_LIMIT_SEC)} over)` : '';
   let title, sub;
-  if (correct === 10) { title = 'Perfect score! 🎉'; sub = `Finished in ${timeStr}${timeNote} — every answer correct.`; }
-  else if (correct >= 8) { title = 'Great job!'; sub = `Finished in ${timeStr}${timeNote}. Scroll down for the few you missed.`; }
-  else if (correct >= 5) { title = 'Nice effort — keep going!'; sub = `Finished in ${timeStr}${timeNote}. Read each explanation carefully.`; }
+  if (correct === total) { title = 'Perfect score! 🎉'; sub = `Finished in ${timeStr}${timeNote} — every answer correct.`; }
+  else if (ratio >= 0.8) { title = 'Great job!'; sub = `Finished in ${timeStr}${timeNote}. Scroll down for the few you missed.`; }
+  else if (ratio >= 0.5) { title = 'Nice effort — keep going!'; sub = `Finished in ${timeStr}${timeNote}. Read each explanation carefully.`; }
   else { title = "Don't worry — let's see what to fix."; sub = `Finished in ${timeStr}${timeNote}. Each missed question has a step-by-step walkthrough below.`; }
   msg.appendChild(el('h2', null, title));
   msg.appendChild(el('p', null, sub));
@@ -1197,8 +1336,15 @@ function renderActionBar() {
 
   const submitBtn = el('button', 'btn btn-primary btn-big');
   if (state.submitted) {
-    submitBtn.textContent = '🔄 Try another quiz';
-    submitBtn.onclick = startNew;
+    const missed = state.quiz.filter(q => Number(q.given) !== q.ans).length;
+    if (missed > 0) {
+      submitBtn.textContent = `🔁 Retry missed (${missed})`;
+      submitBtn.onclick = retryWrong;
+    } else {
+      submitBtn.textContent = '🔄 New quiz';
+      submitBtn.onclick = startNew;
+      newBtn.style.display = 'none';
+    }
   } else {
     submitBtn.textContent = '✓ Check answers';
     submitBtn.onclick = () => submit(false);
@@ -1276,6 +1422,9 @@ function renderStatsModal() {
         list.appendChild(row);
       });
       m.appendChild(list);
+      const focusBtn = el('button', 'btn btn-primary focus-btn', '🎯 Practice these now');
+      focusBtn.onclick = startFocus;
+      m.appendChild(focusBtn);
     } else if (s.totalAttempts > 0) {
       m.appendChild(el('p', 'stats-line', '🌟 No weak facts right now — keep practicing!'));
     }
@@ -1312,15 +1461,16 @@ function renderStatsModal() {
     if (s.hist.length >= 2) {
       m.appendChild(el('h3', 'stats-h3', 'Recent quizzes'));
       const chart = el('div', 'mini-chart');
-      const max = 10;
       s.hist.forEach(h => {
+        const denom = h.n || 10;
         const col = el('div', 'chart-col');
         const bar = el('div', 'chart-bar');
-        bar.style.height = (100 * h.c / max) + '%';
+        bar.style.height = (100 * h.c / denom) + '%';
         bar.title = `${h.c}/${h.n} · ${fmt(h.t)}`;
-        if (h.c === 10) bar.classList.add('perfect');
-        else if (h.c >= 8) bar.classList.add('good');
-        else if (h.c < 5) bar.classList.add('low');
+        const r = h.c / denom;
+        if (r === 1) bar.classList.add('perfect');
+        else if (r >= 0.8) bar.classList.add('good');
+        else if (r < 0.5) bar.classList.add('low');
         col.appendChild(bar);
         col.appendChild(el('div', 'chart-num', String(h.c)));
         chart.appendChild(col);
@@ -1331,9 +1481,9 @@ function renderStatsModal() {
 
   if (s.quizzesDone > 0) {
     const planSection = el('div', 'plan-section');
-    planSection.appendChild(el('h3', 'stats-h3', '✨ AI 学习计划'));
+    planSection.appendChild(el('h3', 'stats-h3', '✨ AI Learning Plan'));
     const planContainer = el('div', 'plan-container');
-    const genBtn = el('button', 'btn btn-primary plan-btn', '生成本周分析和下周计划');
+    const genBtn = el('button', 'btn btn-primary plan-btn', 'Generate weekly report & plan');
     genBtn.onclick = () => generatePlan(planContainer, genBtn);
     planSection.appendChild(genBtn);
     planSection.appendChild(planContainer);
@@ -1343,10 +1493,10 @@ function renderStatsModal() {
   m.appendChild(renderPinRow());
 
   const actions = el('div', 'stats-actions');
-  const reset = el('button', 'btn btn-ghost', '重置进度（需家长验证）');
+  const reset = el('button', 'btn btn-ghost', 'Reset progress (parent only)');
   reset.onclick = () => {
     if (!parentGate()) return;
-    if (confirm('确认清空这台设备的全部进度？此操作无法撤销。')) {
+    if (confirm('Clear all progress on this device? This cannot be undone.')) {
       Stats.reset();
       pushIfSynced();
       render();
@@ -1365,7 +1515,7 @@ function renderStatsModal() {
 async function generatePlan(container, btn) {
   btn.disabled = true;
   container.innerHTML = '';
-  const loading = el('div', 'plan-loading', '正在生成学习计划，请稍候…');
+  const loading = el('div', 'plan-loading', 'Generating the learning plan…');
   container.appendChild(loading);
   try {
     const s = Stats.summary();
@@ -1392,18 +1542,18 @@ async function generatePlan(container, btn) {
     });
     if (!res.ok) {
       const errBody = await res.json().catch(() => ({}));
-      throw new Error(errBody.error || `服务器返回 ${res.status}`);
+      throw new Error(errBody.error || `server returned ${res.status}`);
     }
     const data = await res.json();
     container.innerHTML = '';
     const body = el('div', 'plan-body');
     body.innerHTML = renderMarkdown(data.plan || '');
     container.appendChild(body);
-    btn.textContent = '重新生成';
+    btn.textContent = 'Regenerate';
   } catch (e) {
     container.innerHTML = '';
     const err = el('div', 'plan-error');
-    err.textContent = '生成失败：' + e.message + '。AI 计划需要已部署的后端并配置了模型 API key（HUNYUAN_API_KEY）。';
+    err.textContent = 'Failed: ' + e.message + '. The AI plan needs the deployed backend with a model API key (HUNYUAN_API_KEY).';
     container.appendChild(err);
   } finally {
     btn.disabled = false;
@@ -1449,27 +1599,27 @@ function closeStats() { state.showStats = false; render(); }
 function renderPinRow() {
   const wrap = el('div', 'pin-row');
   const has = !!Stats.getPinHash();
-  wrap.appendChild(el('div', 'pin-label', has ? '🔒 家长 PIN 已开启' : '🔓 未设置家长 PIN'));
-  const btn = el('button', 'btn btn-ghost pin-btn', has ? '修改 / 清除' : '设置 PIN');
+  wrap.appendChild(el('div', 'pin-label', has ? '🔒 Parent PIN is on' : '🔓 No parent PIN set'));
+  const btn = el('button', 'btn btn-ghost pin-btn', has ? 'Change / remove' : 'Set PIN');
   btn.onclick = () => {
     if (has) {
-      const cur = prompt('请输入当前家长 PIN：');
+      const cur = prompt('Enter the current parent PIN:');
       if (cur === null) return;
-      if (pinHash(cur.trim()) !== Stats.getPinHash()) { alert('PIN 不对。'); return; }
-      const next = prompt('输入新的 4 位 PIN（留空则清除）：');
+      if (pinHash(cur.trim()) !== Stats.getPinHash()) { alert('Wrong PIN.'); return; }
+      const next = prompt('Enter a new 4-digit PIN (leave blank to remove):');
       if (next === null) return;
       const t = next.trim();
-      if (t === '') { Stats.setPin(null); pushIfSynced(); alert('已清除家长 PIN。'); render(); return; }
-      if (!/^\d{4}$/.test(t)) { alert('PIN 必须是 4 位数字。'); return; }
-      Stats.setPin(pinHash(t)); pushIfSynced(); alert('PIN 已更新。'); render();
+      if (t === '') { Stats.setPin(null); pushIfSynced(); alert('Parent PIN removed.'); render(); return; }
+      if (!/^\d{4}$/.test(t)) { alert('PIN must be 4 digits.'); return; }
+      Stats.setPin(pinHash(t)); pushIfSynced(); alert('PIN updated.'); render();
     } else {
-      const p1 = prompt('设置 4 位家长 PIN：');
+      const p1 = prompt('Set a 4-digit parent PIN:');
       if (p1 === null) return;
-      if (!/^\d{4}$/.test(p1.trim())) { alert('PIN 必须是 4 位数字。'); return; }
-      const p2 = prompt('再输入一次确认：');
+      if (!/^\d{4}$/.test(p1.trim())) { alert('PIN must be 4 digits.'); return; }
+      const p2 = prompt('Enter it again to confirm:');
       if (p2 === null) return;
-      if (p1.trim() !== p2.trim()) { alert('两次输入不一致。'); return; }
-      Stats.setPin(pinHash(p1.trim())); pushIfSynced(); alert('家长 PIN 已设置。'); render();
+      if (p1.trim() !== p2.trim()) { alert('The two entries do not match.'); return; }
+      Stats.setPin(pinHash(p1.trim())); pushIfSynced(); alert('Parent PIN set.'); render();
     }
   };
   wrap.appendChild(btn);
@@ -1478,35 +1628,35 @@ function renderPinRow() {
 
 function renderSyncSection() {
   const wrap = el('div', 'sync-section');
-  wrap.appendChild(el('h3', 'stats-h3', '☁️ 多设备同步'));
+  wrap.appendChild(el('h3', 'stats-h3', '☁️ Sync across devices'));
   const row = el('div', 'sync-row');
   const input = document.createElement('input');
   input.className = 'sync-input';
   input.type = 'text';
-  input.placeholder = '家庭码（各设备填同一个）';
+  input.placeholder = 'Family code (same on every device)';
   input.autocomplete = 'off';
   input.value = getFamilyCode();
-  const btn = el('button', 'btn btn-primary sync-btn', '保存并同步');
+  const btn = el('button', 'btn btn-primary sync-btn', 'Save & sync');
   const status = el('div', 'sync-status', '');
   btn.onclick = async () => {
     const code = sanitizeCode(input.value);
     if (code.length < 3) {
-      status.textContent = '家庭码至少 3 位（字母/数字/-/_）';
+      status.textContent = 'Family code needs at least 3 characters (letters/numbers/-/_).';
       status.className = 'sync-status err';
       return;
     }
     setFamilyCode(code);
     input.value = code;
     btn.disabled = true;
-    status.textContent = '同步中…';
+    status.textContent = 'Syncing…';
     status.className = 'sync-status';
     try {
       await cloudSync(code);
-      status.textContent = '✓ 已同步到云端，正在刷新…';
+      status.textContent = '✓ Synced to the cloud, refreshing…';
       status.className = 'sync-status ok';
       setTimeout(() => { if (state.showStats) render(); }, 900);
     } catch (e) {
-      status.textContent = '同步失败：' + e.message + '（需配置 Upstash）';
+      status.textContent = 'Sync failed: ' + e.message + ' (Upstash must be configured).';
       status.className = 'sync-status err';
     } finally {
       btn.disabled = false;
@@ -1516,7 +1666,7 @@ function renderSyncSection() {
   row.appendChild(btn);
   wrap.appendChild(row);
   wrap.appendChild(status);
-  wrap.appendChild(el('div', 'sync-hint', '在每台设备输入同一个家庭码即可共享进度。知道这个码的人都能读取，请用别人猜不到的码。'));
+  wrap.appendChild(el('div', 'sync-hint', 'Enter the same family code on each device to share progress. Anyone who knows the code can read it, so pick one that is hard to guess.'));
   return wrap;
 }
 
