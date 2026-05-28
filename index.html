@@ -147,8 +147,8 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .chip.time{background:var(--brand-soft);color:var(--brand-deep)}
 .chip.time.over{background:var(--bad-soft);color:var(--bad-deep)}
 
-.modal-bg{position:fixed;inset:0;background:rgba(15,23,42,.5);display:grid;place-items:center;z-index:50;padding:24px;animation:fade .2s ease}
-.modal{background:#fff;border-radius:20px;max-width:420px;width:100%;padding:24px;text-align:center;box-shadow:0 25px 50px -12px rgba(15,23,42,.25)}
+.modal-bg{position:fixed;inset:0;background:rgba(15,23,42,.5);display:grid;place-items:center;z-index:50;padding:24px;animation:fade .2s ease;overflow-y:auto}
+.modal{background:#fff;border-radius:20px;max-width:420px;width:100%;padding:24px;text-align:center;box-shadow:0 25px 50px -12px rgba(15,23,42,.25);max-height:88vh;overflow-y:auto}
 .modal .ico-big{width:64px;height:64px;border-radius:18px;margin:0 auto 14px;background:var(--warn-soft);color:var(--warn);display:grid;place-items:center;font-size:32px}
 .modal h2{margin:0 0 8px;font-size:22px;font-weight:700}
 .modal p{margin:0 0 20px;color:var(--ink-3);font-size:15px;line-height:1.5}
