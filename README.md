@@ -13,22 +13,28 @@
 
 ## ✨ AI 学习计划（需要后端 + API key）
 
-📊 Progress 面板里有「生成本周分析和下周计划」按钮。点击后会把孩子本地累积的统计（弱项乘法事实、加减法各难度准确率、连胜、最近成绩）发到一个 serverless 函数 `api/plan.js`，由 Claude 生成一份面向家长的中文分析 + 下周练习计划。
+📊 Progress 面板里有「生成本周分析和下周计划」按钮。点击后会把孩子本地累积的统计（弱项乘法事实、加减法各难度准确率、连胜、最近成绩）发到一个 serverless 函数 `api/plan.js`，由**腾讯混元**大模型生成一份面向家长的中文分析 + 下周练习计划。
 
-> 隐私提醒：用这个功能时，孩子的练习统计会发送到服务器端再转发给 Claude API。不用这个按钮时，所有数据仍只存在本地。
+> 隐私提醒：用这个功能时，孩子的练习统计会发送到服务器端再转发给混元 API。不用这个按钮时，所有数据仍只存在本地。
+
+### 获取腾讯混元 API key
+
+1. 登录腾讯云 https://cloud.tencent.com → 搜索并开通「混元大模型」服务
+2. 在混元控制台 → API 密钥管理，创建一个 **OpenAI 兼容接口**的 API key（形如 `sk-...`）
+3. 按量付费充值（混元 turbo 很便宜，生成一份计划只需几厘钱）
 
 ### 部署步骤（Vercel）
 
 1. 部署仓库到 Vercel（见下方「部署到 Vercel」）—— `api/plan.js` 会被自动识别为 serverless 函数。
 2. 在 Vercel 项目 → Settings → Environment Variables 添加：
-   - `ANTHROPIC_API_KEY` = 你的 Anthropic API key（从 https://console.anthropic.com 获取）
+   - `HUNYUAN_API_KEY` = 你的混元 API key
 3. 重新部署。完成后「生成计划」按钮即可用。
 
 可选环境变量：
-- `PLAN_MODEL`（默认 `claude-opus-4-7`）—— 想更快/更省可设为 `claude-sonnet-4-6` 或 `claude-haiku-4-5`
-- `PLAN_EFFORT`（默认 `medium`，仅对 Opus/Sonnet 生效）—— `low`/`medium`/`high`
+- `HUNYUAN_MODEL`（默认 `hunyuan-turbo`）—— 也可设为 `hunyuan-pro`、`hunyuan-turbos-latest` 等（以混元控制台支持的模型列表为准）
+- `HUNYUAN_BASE_URL`（默认 `https://api.hunyuan.cloud.tencent.com/v1`）—— 如官方接口地址有变可覆盖
 
-本地开发：`npm install` 后用 `npx vercel dev` 起本地服务器（需要先设置 `ANTHROPIC_API_KEY` 环境变量），直接开 `index.html` 时除 AI 计划外的功能都可用。
+本地开发：用 `npx vercel dev` 起本地服务器（需要先设置 `HUNYUAN_API_KEY` 环境变量）；直接开 `index.html` 时除 AI 计划外的功能都可用。
 
 ## PWA：当作 App 用
 

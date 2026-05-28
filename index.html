@@ -1283,7 +1283,7 @@ async function generatePlan(container, btn) {
   } catch (e) {
     container.innerHTML = '';
     const err = el('div', 'plan-error');
-    err.textContent = '生成失败：' + e.message + '。AI 计划需要已部署的后端并配置了 ANTHROPIC_API_KEY。';
+    err.textContent = '生成失败：' + e.message + '。AI 计划需要已部署的后端并配置了模型 API key（HUNYUAN_API_KEY）。';
     container.appendChild(err);
   } finally {
     btn.disabled = false;

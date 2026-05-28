@@ -1,13 +1,10 @@
-import Anthropic from '@anthropic-ai/sdk';
-
-// Allow up to 60s — Opus with adaptive thinking can take a while.
+// Generates a parent-facing weekly math report using Tencent Hunyuan
+// (腾讯混元) via its OpenAI-compatible Chat Completions API.
 export const config = { maxDuration: 60 };
 
-const MODEL = process.env.PLAN_MODEL || 'claude-opus-4-7';
-const EFFORT = process.env.PLAN_EFFORT || 'medium';
+const BASE_URL = process.env.HUNYUAN_BASE_URL || 'https://api.hunyuan.cloud.tencent.com/v1';
+const MODEL = process.env.HUNYUAN_MODEL || 'hunyuan-turbo';
 
-// Stable instructions — cached as a prompt prefix. The volatile per-child
-// stats go in the user message, after this cached block.
 const SYSTEM_PROMPT = `You are "数学小教练", a warm, encouraging elementary-school math coach. You analyze a child's practice statistics and write a short weekly report plus a next-week plan for the child's PARENT (a dad).
 
 The child practices three things in an iPad quiz app:
@@ -41,15 +38,13 @@ Rules:
 - Be warm and confidence-building.
 - Do not echo the raw JSON or include code blocks in your response.`;
 
-const client = new Anthropic();
-
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method not allowed' });
     return;
   }
-  if (!process.env.ANTHROPIC_API_KEY) {
-    res.status(500).json({ error: 'Server is missing ANTHROPIC_API_KEY' });
+  if (!process.env.HUNYUAN_API_KEY) {
+    res.status(500).json({ error: 'Server is missing HUNYUAN_API_KEY' });
     return;
   }
 
@@ -64,32 +59,40 @@ export default async function handler(req, res) {
   }
 
   try {
-    const params = {
-      model: MODEL,
-      max_tokens: 6000,
-      system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
-      messages: [{
-        role: 'user',
-        content: `这是我儿子最近的数学练习数据（JSON）。请据此生成本周分析和下周计划。\n\n\`\`\`json\n${JSON.stringify(stats, null, 2)}\n\`\`\``,
-      }],
-    };
-    // Adaptive thinking + effort are supported on Opus 4.6/4.7 and Sonnet 4.6.
-    // Skip them if the model is overridden to one that would reject them (e.g. Haiku).
-    if (/opus-4-7|opus-4-6|sonnet-4-6/.test(MODEL)) {
-      params.thinking = { type: 'adaptive' };
-      params.output_config = { effort: EFFORT };
+    const resp = await fetch(`${BASE_URL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${process.env.HUNYUAN_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: 3000,
+        temperature: 0.7,
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          {
+            role: 'user',
+            content: `这是我儿子最近的数学练习数据（JSON）。请据此生成本周分析和下周计划。\n\n\`\`\`json\n${JSON.stringify(stats, null, 2)}\n\`\`\``,
+          },
+        ],
+      }),
+    });
+
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      res.status(resp.status).json({ error: `模型接口错误 (${resp.status}): ${text.slice(0, 300)}` });
+      return;
     }
 
-    const message = await client.messages.create(params);
-    const plan = message.content
-      .filter((b) => b.type === 'text')
-      .map((b) => b.text)
-      .join('\n')
-      .trim();
-
+    const data = await resp.json();
+    const plan = data?.choices?.[0]?.message?.content?.trim();
+    if (!plan) {
+      res.status(502).json({ error: '模型未返回内容' });
+      return;
+    }
     res.status(200).json({ plan });
   } catch (e) {
-    const status = e?.status || 500;
-    res.status(status).json({ error: e?.message || 'Plan generation failed' });
+    res.status(500).json({ error: e?.message || 'Plan generation failed' });
   }
 }
