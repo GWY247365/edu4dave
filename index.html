@@ -1306,9 +1306,15 @@ function renderStatsModal() {
   }
 
   const actions = el('div', 'stats-actions');
-  const reset = el('button', 'btn btn-ghost', 'Reset stats');
+  const reset = el('button', 'btn btn-ghost', '重置进度（需家长验证）');
   reset.onclick = () => {
-    if (confirm('Reset all stats? This cannot be undone.')) {
+    // Parent gate: a 2-digit × 2-digit product is outside the kid's 12×12
+    // range, so it blocks a young child from wiping progress by accident.
+    const a = rint(13, 39), b = rint(13, 39);
+    const ans = prompt(`家长验证（防止小朋友误删）：\n请计算 ${a} × ${b} = ?`);
+    if (ans === null) return;
+    if (Number(ans) !== a * b) { alert('答案不对，已取消重置。'); return; }
+    if (confirm('确认清空这台设备的全部进度？此操作无法撤销。')) {
       Stats.reset();
       render();
     }
