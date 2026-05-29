@@ -284,13 +284,35 @@ function dayDiff(a, b) {
   return Math.round((db - da) / 86400000);
 }
 const Stats = (() => {
+  // FSRS-lite scheduling constants
+  const FAST_MS = 4000;      // a correct answer faster than this counts toward fluency
+  const STAB_FLUENT = 12;    // days of stability needed to count a fact as mastered
+  const STAB_MAX = 400;      // cap on stability (days)
+
+  // Migrate an old {right,wrong,lastSeen} fact to the FSRS-lite shape.
+  function migrateFact(f) {
+    if (!f) return f;
+    if (f.stab != null) return f;
+    const right = f.right || 0, wrong = f.wrong || 0, last = f.lastSeen || 0;
+    let stab;
+    if (right >= 3 && wrong === 0) stab = 14;
+    else if (right > wrong) stab = 2;
+    else if (right > 0) stab = 1;
+    else stab = 0.5;
+    return { right, wrong, lastSeen: last, stab, last, recent: '', avgT: null, fast: 0 };
+  }
+  function migrateFacts(facts) {
+    facts = facts || {};
+    for (const k in facts) facts[k] = migrateFact(facts[k]);
+    return facts;
+  }
   function load() {
     try {
       const raw = localStorage.getItem(STATS_KEY);
       if (!raw) return blank();
       const d = JSON.parse(raw);
       return {
-        facts: d.facts || {},
+        facts: migrateFacts(d.facts || {}),
         hist: d.hist || [],
         buckets: d.buckets || {},
         streak: d.streak || { current: 0, best: 0, lastDay: null },
@@ -305,11 +327,50 @@ const Stats = (() => {
   let data = load();
   function mulKey(a, b) { return a <= b ? `${a}x${b}` : `${b}x${a}`; }
   function getFact(a, b) { return data.facts[mulKey(a, b)]; }
-  function recordMul(a, b, correct) {
+
+  // ---- FSRS-lite scheduling + mastery/fluency state ----
+  function retr(f, now) {
+    if (!f || !f.stab) return 0; // unseen / no stability → fully "due"
+    const days = (now - (f.last || f.lastSeen || 0)) / 86400000;
+    return Math.exp(-days / f.stab);
+  }
+  function factState(f, now) {
+    if (!f || (f.right || 0) + (f.wrong || 0) === 0) return 'new';
+    const rec = f.recent || '';
+    const last3ok = rec.length >= 3 && rec.slice(-3) === '111';
+    const fluentSpeed = f.avgT != null && f.avgT <= FAST_MS;
+    if (last3ok && fluentSpeed && (f.stab || 0) >= STAB_FLUENT) return 'fluent';
+    if (last3ok) return 'accurate';
+    return 'learning';
+  }
+  function mulWeight(f) {
+    if (!f || (f.right || 0) + (f.wrong || 0) === 0) return 2.5; // unseen → ensure coverage
+    const R = retr(f, Date.now());
+    const recentWrong = (f.recent || '').slice(-1) === '0' ? 0.8 : 0;
+    return Math.max(0.2, 0.3 + 2.5 * (1 - R) + recentWrong);
+  }
+  function countWeight(stat) { // legacy weight for add/sub buckets
+    if (!stat) return 1;
+    return Math.max(0.2, Math.min(8, 1 + 2 * (stat.wrong || 0) - 0.5 * (stat.right || 0)));
+  }
+  function recordMul(a, b, correct, ms) {
     const k = mulKey(a, b);
-    const f = data.facts[k] || { right: 0, wrong: 0, lastSeen: 0 };
-    if (correct) f.right++; else f.wrong++;
-    f.lastSeen = Date.now();
+    const now = Date.now();
+    const f = data.facts[k] || { right: 0, wrong: 0, lastSeen: 0, stab: 0, last: 0, recent: '', avgT: null, fast: 0 };
+    const wasFast = correct && typeof ms === 'number' && ms > 0 && ms <= FAST_MS;
+    if (correct) {
+      f.right++;
+      f.stab = f.stab > 0 ? Math.min(STAB_MAX, f.stab * (wasFast ? 2.6 : 1.8)) : (wasFast ? 3 : 1.2);
+      if (typeof ms === 'number' && ms > 0) f.avgT = f.avgT == null ? ms : Math.round(0.6 * f.avgT + 0.4 * ms);
+      if (wasFast) f.fast = (f.fast || 0) + 1;
+    } else {
+      f.wrong++;
+      // A lapse drops the review interval back to ~1 day so it resurfaces soon.
+      f.stab = Math.min(1, Math.max(0.3, (f.stab || 1) * 0.2));
+      f.fast = 0;
+    }
+    f.last = now; f.lastSeen = now;
+    f.recent = ((f.recent || '') + (correct ? '1' : '0')).slice(-8);
     data.facts[k] = f;
     save(data);
   }
@@ -348,13 +409,9 @@ const Stats = (() => {
     bumpStreak();
     save(data);
   }
-  function factWeight(stat) {
-    if (!stat) return 1;
-    let w = 1 + 2 * stat.wrong - 0.5 * stat.right;
-    return Math.max(0.2, Math.min(8, w));
-  }
+  const factWeight = mulWeight; // alias used by the frontend's review-badge check
   function bucketWeight(key) {
-    return factWeight(data.buckets[key]);
+    return countWeight(data.buckets[key]);
   }
   function pickBucket(prefix) {
     const opts = [0, 1, 2];
@@ -371,7 +428,7 @@ const Stats = (() => {
     const all = [];
     for (let a = 2; a <= 12; a++) {
       for (let b = a; b <= 12; b++) {
-        all.push({ a, b, w: factWeight(getFact(a, b)) });
+        all.push({ a, b, w: mulWeight(getFact(a, b)) });
       }
     }
     const out = [];
@@ -402,16 +459,17 @@ const Stats = (() => {
   }
   function summary() {
     const facts = data.facts;
+    const now = Date.now();
     let totalAttempts = 0, totalRight = 0, mastered = 0;
     const weak = [];
     for (const k of Object.keys(facts)) {
       const f = facts[k];
-      totalAttempts += f.right + f.wrong;
-      totalRight += f.right;
-      if (f.right >= 3 && f.wrong === 0) mastered++;
-      if (f.wrong > 0) {
+      totalAttempts += (f.right || 0) + (f.wrong || 0);
+      totalRight += (f.right || 0);
+      if (factState(f, now) === 'fluent') mastered++;
+      if ((f.wrong || 0) > 0) {
         const [a, b] = k.split('x').map(Number);
-        weak.push({ a, b, right: f.right, wrong: f.wrong, weight: factWeight(f) });
+        weak.push({ a, b, right: f.right || 0, wrong: f.wrong || 0, weight: mulWeight(f), state: factState(f, now) });
       }
     }
     weak.sort((x, y) => y.weight - x.weight || y.wrong - x.wrong);
@@ -435,11 +493,11 @@ const Stats = (() => {
     save(data);
   }
   function isAdvanced() {
-    // True once most of the 66 facts (2..12 × 2..12) are mastered.
+    // True once most of the 66 facts (2..12 × 2..12) are fluent.
+    const now = Date.now();
     let mastered = 0;
     for (const k of Object.keys(data.facts)) {
-      const f = data.facts[k];
-      if (f.right >= 3 && f.wrong === 0) mastered++;
+      if (factState(data.facts[k], now) === 'fluent') mastered++;
     }
     return mastered >= 53;
   }
@@ -448,7 +506,7 @@ const Stats = (() => {
   function exportRaw() { return JSON.parse(JSON.stringify(data)); }
   function importMerge(remote) {
     if (!remote || typeof remote !== 'object') return;
-    data.facts = mergeCountMap(data.facts, remote.facts);
+    data.facts = migrateFacts(mergeCountMap(data.facts, remote.facts));
     data.buckets = mergeCountMap(data.buckets, remote.buckets);
     data.hist = mergeHist(data.hist, remote.hist);
     data.streak = mergeStreak(data.streak, remote.streak);
@@ -1018,7 +1076,10 @@ function submit(fromTimeout) {
   state.quiz.forEach(q => {
     const isRight = Number(q.given) === q.ans;
     if (isRight) correctCount++;
-    if (q.type === 'mul' && !q.big && q.a <= 12 && q.b <= 12) Stats.recordMul(q.a, q.b, isRight);
+    if (q.type === 'mul' && !q.big && q.a <= 12 && q.b <= 12) {
+      const ms = (q._t0 != null && q._t1 != null) ? (q._t1 - q._t0) : undefined;
+      Stats.recordMul(q.a, q.b, isRight, ms);
+    }
     else if (q.bucket) Stats.recordBucket(q.bucket, isRight);
   });
   if (!state.isPractice) Stats.recordQuiz(state.quiz.length, correctCount, state.finalElapsed);
@@ -1165,10 +1226,15 @@ function renderQuestion(q, idx) {
     if (right) inp.classList.add('ok');
     else inp.classList.add('bad');
   }
-  inp.addEventListener('focus', () => card.classList.add('focused'));
+  inp.addEventListener('focus', () => {
+    card.classList.add('focused');
+    if (state.quiz[idx]._t0 == null) state.quiz[idx]._t0 = Date.now();
+  });
   inp.addEventListener('blur', () => card.classList.remove('focused'));
   inp.addEventListener('input', e => {
     state.quiz[idx].given = e.target.value;
+    state.quiz[idx]._t1 = Date.now();
+    if (state.quiz[idx]._t0 == null) state.quiz[idx]._t0 = state.quiz[idx]._t1;
     const segs = document.querySelectorAll('.progress .seg');
     if (segs[idx]) segs[idx].classList.toggle('filled', e.target.value !== '');
   });
