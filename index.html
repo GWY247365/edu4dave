@@ -229,7 +229,7 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .bucket-bar-fill.low{background:var(--bad)}
 .bucket-num{flex:0 0 44px;text-align:right;font-size:12px;color:var(--ink-3);font-variant-numeric:tabular-nums;font-weight:600}
 
-.stats-modal{max-width:480px;text-align:left;padding:20px}
+.stats-modal{max-width:600px;text-align:left;padding:20px}
 .stats-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
 .stats-head h2{margin:0}
 .stats-empty{text-align:center;color:var(--ink-3);padding:18px 0}
@@ -2339,6 +2339,11 @@ function renderSyncSection() {
       status.textContent = 'Family code needs at least 3 characters (letters/numbers/-/_).';
       status.className = 'sync-status err';
       return;
+    }
+    // If a parent PIN is set, changing the family code requires it.
+    const current = getFamilyCode();
+    if (Stats.getPinHash() && code !== current) {
+      if (!parentGate()) { input.value = current; return; }
     }
     setFamilyCode(code);
     input.value = code;
