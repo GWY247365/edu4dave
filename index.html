@@ -183,6 +183,11 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .lesson-actions .btn-big{flex:1}
 .div-actions{display:flex;gap:10px;margin-top:8px}
 .div-actions .btn{flex:1}
+.area-model{display:flex;gap:6px;margin:10px 0}
+.area-cell{flex:2;background:var(--brand-soft);border:2px solid var(--brand-soft-2);border-radius:8px;padding:14px 8px;text-align:center;font-size:14px;color:var(--ink-2);line-height:1.5}
+.area-cell.ones{flex:1;background:var(--ok-soft);border-color:#bbf7d0}
+.area-cell b{font-size:20px;color:var(--brand-deep)}
+.area-cell.ones b{color:var(--ok-deep)}
 
 .streak-chip{appearance:none;border:1px solid #fde68a;background:linear-gradient(135deg,#fff7ed,#ffedd5);color:#9a3412;font-family:inherit;font-weight:800;display:inline-flex;align-items:center;gap:4px;padding:6px 10px;border-radius:9999px;cursor:pointer;font-size:14px;box-shadow:var(--shadow-card);transition:transform .15s ease}
 .streak-chip:active{transform:scale(.94)}
@@ -330,16 +335,17 @@ const Stats = (() => {
       return {
         facts: migrateFacts(d.facts || {}),
         divFacts: migrateFacts(d.divFacts || {}),
+        skills: migrateFacts(d.skills || {}),
         hist: d.hist || [],
         buckets: d.buckets || {},
         streak: d.streak || { current: 0, best: 0, lastDay: null },
-        unlocked: Object.assign({ division: false }, d.unlocked || {}),
+        unlocked: Object.assign({ division: false, bigmul: false }, d.unlocked || {}),
         seen: d.seen || {},
         pin: d.pin || null,
       };
     } catch { return blank(); }
   }
-  function blank() { return { facts: {}, divFacts: {}, hist: [], buckets: {}, streak: { current: 0, best: 0, lastDay: null }, unlocked: { division: false }, seen: {}, pin: null }; }
+  function blank() { return { facts: {}, divFacts: {}, skills: {}, hist: [], buckets: {}, streak: { current: 0, best: 0, lastDay: null }, unlocked: { division: false, bigmul: false }, seen: {}, pin: null }; }
   function save(d) {
     try { localStorage.setItem(STATS_KEY, JSON.stringify(d)); } catch {}
   }
@@ -426,13 +432,24 @@ const Stats = (() => {
     for (const k in data.facts) if (factState(data.facts[k], now) === 'fluent') m++;
     return m;
   }
-  const DIV_UNLOCK_AT = 24; // division unlocks once enough mul facts are fluent
+  // Skill-level tracking (for procedures like 2-digit multiplication that
+  // aren't a small fixed fact set — one aggregate FSRS record per skill).
+  function getSkill(name) { return data.skills[name]; }
+  function recordSkill(name, correct, ms) {
+    data.skills[name] = applyResult(data.skills[name] || blankFact(), correct, ms);
+    save(data);
+  }
+  function skillState(name) { return factState(data.skills[name], Date.now()); }
+  const DIV_UNLOCK_AT = 24;    // division unlocks once enough mul facts are fluent
+  const BIGMUL_UNLOCK_AT = 40; // 2-digit multiplication unlocks with strong table fluency
   function checkUnlocks() {
     let newly = null;
-    if (!data.unlocked.division && mulFluentCount() >= DIV_UNLOCK_AT) {
-      data.unlocked.division = true;
-      newly = 'division';
-      save(data);
+    const fluent = mulFluentCount();
+    if (!data.unlocked.division && fluent >= DIV_UNLOCK_AT) {
+      data.unlocked.division = true; newly = newly || 'division'; save(data);
+    }
+    if (!data.unlocked.bigmul && fluent >= BIGMUL_UNLOCK_AT) {
+      data.unlocked.bigmul = true; newly = newly || 'bigmul'; save(data);
     }
     return newly;
   }
@@ -563,6 +580,16 @@ const Stats = (() => {
         mastered: div.mastered,
         weak: div.weak,
       },
+      bigmul: (() => {
+        const f = data.skills.bigmul;
+        const attempts = f ? (f.right || 0) + (f.wrong || 0) : 0;
+        return {
+          unlocked: isUnlocked('bigmul'),
+          attempts,
+          accuracy: attempts ? Math.round(100 * (f.right || 0) / attempts) : 0,
+          state: f ? factState(f, Date.now()) : 'new',
+        };
+      })(),
       hist: data.hist.slice(-10),
       streak: streakStatus(),
       buckets: bucketSummary(),
@@ -588,6 +615,7 @@ const Stats = (() => {
     if (!remote || typeof remote !== 'object') return;
     data.facts = migrateFacts(mergeCountMap(data.facts, remote.facts));
     data.divFacts = migrateFacts(mergeCountMap(data.divFacts, remote.divFacts));
+    data.skills = migrateFacts(mergeCountMap(data.skills, remote.skills));
     data.buckets = mergeCountMap(data.buckets, remote.buckets);
     data.hist = mergeHist(data.hist, remote.hist);
     data.streak = mergeStreak(data.streak, remote.streak);
@@ -598,7 +626,7 @@ const Stats = (() => {
     if (!data.pin && remote.pin) data.pin = remote.pin;
     save(data);
   }
-  return { recordMul, recordDiv, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount };
+  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount };
 })();
 
 // Merge helpers for cross-device sync (keep the richer record, union history)
@@ -737,10 +765,11 @@ function genSub(targetBorrows) {
   return { type: 'sub', a, b, ans: a - b, label: 'Subtraction · −', bucket: `sub:${countBorrows(a, b)}` };
 }
 
-// Bigger multiplication, unlocked once the times tables are mastered.
+// Two-digit × one-digit multiplication (its own unlocked skill domain).
 function genBigMul() {
   const a = rint(11, 99), b = rint(2, 9);
-  return { type: 'mul', a, b, ans: a * b, label: 'Multiplication · ×', big: true };
+  const review = Stats.skillState('bigmul') !== 'fluent';
+  return { type: 'mul', a, b, ans: a * b, label: 'Multiplication · ×', big: true, isReview: review };
 }
 
 // Division fact (inverse of a times-table fact, no remainder).
@@ -761,21 +790,7 @@ function mulQuestion(a, b) {
   return { type: 'mul', a, b, ans: a * b, label: 'Multiplication · ×', isReview };
 }
 
-function newQuiz() {
-  const qs = [];
-  const divOn = Stats.isUnlocked('division');
-  const mulSlots = divOn ? 4 : 6;
-  const advanced = Stats.isAdvanced();
-  const bigCount = advanced ? Math.min(2, mulSlots) : 0;
-  const factCount = mulSlots - bigCount;
-  Stats.pickMulFacts(factCount).forEach(p => {
-    const flip = Math.random() < 0.5;
-    qs.push(mulQuestion(flip ? p.b : p.a, flip ? p.a : p.b));
-  });
-  for (let i = 0; i < bigCount; i++) qs.push(genBigMul());
-  if (divOn) for (let i = 0; i < 2; i++) qs.push(genDiv());
-  for (let i = 0; i < 2; i++) qs.push(genAdd(Stats.pickBucket('add')));
-  for (let i = 0; i < 2; i++) qs.push(genSub(Stats.pickBucket('sub')));
+function shuffleQuiz(qs) {
   for (let i = qs.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [qs[i], qs[j]] = [qs[j], qs[i]];
@@ -783,17 +798,39 @@ function newQuiz() {
   return qs.map((q, i) => ({ ...q, id: i, given: '' }));
 }
 
-// Focused division-learning quiz (used right after the lesson, and to "learn until learned").
+function newQuiz() {
+  const qs = [];
+  // Always 2 addition + 2 subtraction; the other 6 slots are mul/div/bigmul.
+  const divOn = Stats.isUnlocked('division');
+  const bigOn = Stats.isUnlocked('bigmul');
+  const divCount = divOn ? 2 : 0;
+  const bigCount = bigOn ? (Stats.skillState('bigmul') === 'fluent' ? 1 : 2) : 0;
+  const factCount = Math.max(2, 6 - divCount - bigCount); // keep tables warm
+  Stats.pickMulFacts(factCount).forEach(p => {
+    const flip = Math.random() < 0.5;
+    qs.push(mulQuestion(flip ? p.b : p.a, flip ? p.a : p.b));
+  });
+  for (let i = 0; i < bigCount; i++) qs.push(genBigMul());
+  for (let i = 0; i < divCount; i++) qs.push(genDiv());
+  for (let i = 0; i < 2; i++) qs.push(genAdd(Stats.pickBucket('add')));
+  for (let i = 0; i < 2; i++) qs.push(genSub(Stats.pickBucket('sub')));
+  return shuffleQuiz(qs);
+}
+
+// Focused learning quizzes (used right after a lesson, and to "learn until learned").
 function divisionQuiz() {
   const qs = [];
   for (let i = 0; i < 8; i++) qs.push(genDiv());
   qs.push(genAdd(Stats.pickBucket('add')));
   qs.push(genSub(Stats.pickBucket('sub')));
-  for (let i = qs.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [qs[i], qs[j]] = [qs[j], qs[i]];
-  }
-  return qs.map((q, i) => ({ ...q, id: i, given: '' }));
+  return shuffleQuiz(qs);
+}
+function bigmulQuiz() {
+  const qs = [];
+  for (let i = 0; i < 8; i++) qs.push(genBigMul());
+  qs.push(genAdd(Stats.pickBucket('add')));
+  qs.push(genSub(Stats.pickBucket('sub')));
+  return shuffleQuiz(qs);
 }
 
 // A quiz built mostly from the child's weakest items.
@@ -832,10 +869,32 @@ function diagnose(q, given) {
       tip: 'Next time, take a guess even if you are not sure — an estimate is better than nothing.'
     };
   }
-  if (q.type === 'mul') return diagMul(q, g);
+  if (q.type === 'mul') return q.big ? diagBigMul(q, g) : diagMul(q, g);
   if (q.type === 'add') return diagAdd(q, g);
   if (q.type === 'sub') return diagSub(q, g);
   if (q.type === 'div') return diagDiv(q, g);
+}
+
+function diagBigMul(q, g) {
+  const a = q.a, b = q.b, ans = a * b;
+  const ones = a % 10, tens = Math.floor(a / 10) * 10;
+  const onesProd = ones * b, tensProd = tens * b;
+  if (g === onesProd) return { why: `You only multiplied the ones: ${ones} × ${b} = ${onesProd}. The tens still need multiplying.`, work: buildBigMulWork(a, b), tip: `Break ${a} into ${tens} + ${ones}, multiply each, then add.` };
+  if (g === tensProd) return { why: `You only multiplied the tens: ${tens} × ${b} = ${tensProd}. Add the ones part too.`, work: buildBigMulWork(a, b), tip: `Don't forget ${ones} × ${b} = ${onesProd}.` };
+  if (g === a + b) return { why: `You added instead of multiplying.`, work: buildBigMulWork(a, b), tip: `× means groups of ${a}, not ${a} + ${b}.` };
+  if (Math.abs(g - ans) <= 9) return { why: `So close — off by ${Math.abs(g - ans)}. Probably a small carrying slip.`, work: buildBigMulWork(a, b), tip: `Multiply the ones, carry, then the tens.` };
+  return { why: `Break the big number into tens and ones and multiply each part.`, work: buildBigMulWork(a, b), tip: `${tens} × ${b} + ${ones} × ${b} = ${ans}.` };
+}
+
+function buildBigMulWork(a, b) {
+  const ones = a % 10, tens = Math.floor(a / 10) * 10;
+  return [
+    `${a} × ${b} = ?`,
+    `Break ${a} into ${tens} + ${ones}`,
+    `${tens} × ${b} = ${tens * b}`,
+    `${ones} × ${b} = ${ones * b}`,
+    `Add: ${tens * b} + ${ones * b} = <b>${a * b}</b>`,
+  ].join('\n');
 }
 
 function diagDiv(q, g) {
@@ -933,7 +992,7 @@ function diagSub(q, g) {
 
 /* ---------- Solution rendering ---------- */
 function buildWork(q) {
-  if (q.type === 'mul') return buildMulWork(q.a, q.b);
+  if (q.type === 'mul') return q.big ? buildBigMulWork(q.a, q.b) : buildMulWork(q.a, q.b);
   if (q.type === 'add') return buildAddWork(q.a, q.b);
   if (q.type === 'sub') return buildSubWork(q.a, q.b);
   if (q.type === 'div') return buildDivWork(q.a, q.b);
@@ -1214,7 +1273,8 @@ function submit(fromTimeout) {
     const isRight = Number(q.given) === q.ans;
     if (isRight) correctCount++;
     const ms = (q._t0 != null && q._t1 != null) ? (q._t1 - q._t0) : undefined;
-    if (q.type === 'mul' && !q.big && q.a <= 12 && q.b <= 12) Stats.recordMul(q.a, q.b, isRight, ms);
+    if (q.type === 'mul' && q.big) Stats.recordSkill('bigmul', isRight, ms);
+    else if (q.type === 'mul' && q.a <= 12 && q.b <= 12) Stats.recordMul(q.a, q.b, isRight, ms);
     else if (q.type === 'div' && q.fam) Stats.recordDiv(q.fam[0], q.fam[1], isRight, ms);
     else if (q.bucket) Stats.recordBucket(q.bucket, isRight);
   });
@@ -1223,7 +1283,7 @@ function submit(fromTimeout) {
   const unlocked = state.isPractice ? null : Stats.checkUnlocks();
   const fc = getFamilyCode();
   if (fc) cloudSave(fc, Stats.exportRaw()).catch(() => {});
-  if (unlocked === 'division') { state.showLesson = 'division'; }
+  if (unlocked) { state.showLesson = unlocked; }
   render();
   // scroll to first wrong (or top if all correct), keeping context visible
   setTimeout(() => {
@@ -1400,7 +1460,8 @@ function renderQuestion(q, idx) {
   // Pre-practice strategy card on review questions (learn, then try)
   if (!state.submitted && q.isReview) {
     let tipText = '';
-    if (q.type === 'mul' && q.a <= 12 && q.b <= 12) tipText = factTip(q.a, q.b);
+    if (q.type === 'mul' && q.big) tipText = `Break ${Math.floor(q.a / 10) * 10} + ${q.a % 10}: multiply each by ${q.b}, then add.`;
+    else if (q.type === 'mul' && q.a <= 12 && q.b <= 12) tipText = factTip(q.a, q.b);
     else if (q.type === 'div') tipText = `Think: ${q.b} × ? = ${q.a}. Use the ${q.b} times table.`;
     if (tipText) {
       const tip = el('div', 'pretip');
@@ -1591,11 +1652,11 @@ function closeLesson() {
   render();
 }
 
-function startDivisionPractice() {
-  Stats.markSeen('divisionLesson');
+function startFocusedQuiz(seenKey, makeQuiz) {
+  Stats.markSeen(seenKey);
   state.showLesson = null;
   state.showStats = false;
-  state.quiz = divisionQuiz();
+  state.quiz = makeQuiz();
   state.isPractice = false;
   state.submitted = false;
   state.timeUp = false;
@@ -1605,6 +1666,8 @@ function startDivisionPractice() {
   render();
   setTimeout(() => { const f = document.querySelector('.ansbox'); if (f) f.focus(); }, 50);
 }
+function startDivisionPractice() { startFocusedQuiz('divisionLesson', divisionQuiz); }
+function startBigmulPractice() { startFocusedQuiz('bigmulLesson', bigmulQuiz); }
 
 // Concrete → Representational → Abstract lesson for a domain.
 function renderLessonModal(domain) {
@@ -1646,6 +1709,37 @@ function renderLessonModal(domain) {
     const actions = el('div', 'lesson-actions');
     const go = el('button', 'btn btn-primary btn-big', '✏️ Practice division');
     go.onclick = startDivisionPractice;
+    const later = el('button', 'btn btn-ghost', 'Later');
+    later.onclick = closeLesson;
+    actions.appendChild(later);
+    actions.appendChild(go);
+    m.appendChild(actions);
+  } else if (domain === 'bigmul') {
+    const fresh = !Stats.hasSeen('bigmulLesson');
+    m.appendChild(el('div', 'ico-big', '🔢'));
+    m.appendChild(el('h2', null, fresh ? '🎉 New skill unlocked: Bigger ×' : 'Multiplying 2-digit numbers'));
+    m.appendChild(el('p', null, "Now you'll multiply a 2-digit number by a 1-digit number. The trick: split it into tens and ones."));
+
+    m.appendChild(el('h3', 'lesson-h', '1) Picture it (area model)'));
+    m.appendChild(el('p', 'lesson-p', 'Think of 23 × 4 as a rectangle split into 20 and 3:'));
+    const area = el('div', 'area-model');
+    const cellT = el('div', 'area-cell'); cellT.innerHTML = '20 × 4<br><b>80</b>';
+    const cellO = el('div', 'area-cell ones'); cellO.innerHTML = '3 × 4<br><b>12</b>';
+    area.appendChild(cellT); area.appendChild(cellO);
+    m.appendChild(area);
+
+    m.appendChild(el('h3', 'lesson-h', '2) Write it'));
+    const eqn = el('div', 'lesson-eqn');
+    eqn.innerHTML = '23 × 4 = (20×4) + (3×4) = 80 + 12 = <b>92</b>';
+    m.appendChild(eqn);
+
+    m.appendChild(el('h3', 'lesson-h', '3) The trick'));
+    m.appendChild(el('p', 'lesson-p', 'Break the big number into tens + ones, multiply each part by the small number, then add the two answers.'));
+    m.appendChild(el('p', 'lesson-note', 'You already know your times tables — that\'s all you need for each part!'));
+
+    const actions = el('div', 'lesson-actions');
+    const go = el('button', 'btn btn-primary btn-big', '✏️ Practice bigger ×');
+    go.onclick = startBigmulPractice;
     const later = el('button', 'btn btn-ghost', 'Later');
     later.onclick = closeLesson;
     actions.appendChild(later);
@@ -1757,6 +1851,24 @@ function renderStatsModal() {
       row.appendChild(learn);
       row.appendChild(prac);
       m.appendChild(row);
+    }
+
+    // Bigger multiplication domain
+    m.appendChild(el('h3', 'stats-h3', '🔢 Bigger × (2-digit)'));
+    if (!s.bigmul.unlocked) {
+      const fluent = Stats.mulFluentCount();
+      m.appendChild(el('p', 'stats-line', `Locked — unlocks at 40 fluent multiplication facts (now ${fluent}/40).`));
+    } else {
+      const stTxt = s.bigmul.state === 'fluent' ? 'fluent 🌟' : s.bigmul.state === 'accurate' ? 'accurate' : 'learning';
+      m.appendChild(el('p', 'stats-line', `${s.bigmul.attempts} attempts · ${s.bigmul.accuracy}% accuracy · ${stTxt}`));
+      const row2 = el('div', 'div-actions');
+      const learn2 = el('button', 'btn btn-ghost', '📖 Lesson');
+      learn2.onclick = () => { state.showLesson = 'bigmul'; render(); };
+      const prac2 = el('button', 'btn btn-primary', '✏️ Practice bigger ×');
+      prac2.onclick = startBigmulPractice;
+      row2.appendChild(learn2);
+      row2.appendChild(prac2);
+      m.appendChild(row2);
     }
 
     if (s.hist.length >= 2) {
