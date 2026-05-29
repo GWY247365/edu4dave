@@ -19,6 +19,7 @@ function describe(p) {
   if (p.type === 'mul') return `${a} × ${b} (the answer is ${a * b})`;
   if (p.type === 'add') return `${a} + ${b} (the answer is ${a + b})`;
   if (p.type === 'sub') return `${a} − ${b} (the answer is ${a - b})`;
+  if (p.type === 'div') return `${a} ÷ ${b} (the answer is ${a / b}); it helps to remember ${b} × ${a / b} = ${a}`;
   return `${a} ? ${b}`;
 }
 
@@ -29,7 +30,7 @@ export default async function handler(req, res) {
   let body = req.body;
   if (typeof body === 'string') { try { body = JSON.parse(body); } catch { body = {}; } }
   const p = body && body.problem;
-  if (!p || !['mul', 'add', 'sub'].includes(p.type) || typeof p.a !== 'number' || typeof p.b !== 'number') {
+  if (!p || !['mul', 'add', 'sub', 'div'].includes(p.type) || typeof p.a !== 'number' || typeof p.b !== 'number') {
     res.status(400).json({ error: 'Missing or invalid problem' });
     return;
   }

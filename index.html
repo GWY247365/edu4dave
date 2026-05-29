@@ -167,6 +167,22 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .teach-out:not(:empty){padding:10px 12px;max-height:600px}
 .teach-out.err{color:var(--bad-deep);border-color:#fecaca}
 .focus-btn{width:100%;margin-top:10px}
+.lesson-modal{max-width:460px;text-align:left}
+.lesson-modal .ico-big{background:var(--brand-soft);color:var(--brand-deep)}
+.lesson-modal h2{text-align:center}
+.lesson-h{margin:14px 0 4px;font-size:14px;font-weight:700;color:var(--brand-deep);text-transform:uppercase;letter-spacing:.04em}
+.lesson-p{margin:4px 0;font-size:14px;line-height:1.5;color:var(--ink-2)}
+.lesson-note{margin:8px 0 0;font-size:13px;color:var(--ink-3);line-height:1.5}
+.lesson-groups{display:flex;gap:10px;justify-content:center;margin:10px 0}
+.lesson-plate{background:#fff;border:2px solid var(--brand-soft-2);border-radius:50%;width:74px;height:74px;display:flex;flex-wrap:wrap;align-content:center;justify-content:center;gap:2px;padding:6px}
+.lesson-dot{font-size:18px;line-height:1}
+.lesson-eqn{font-size:24px;font-weight:700;text-align:center;color:var(--ink);margin:8px 0;font-variant-numeric:tabular-nums}
+.lesson-eqn b{color:var(--ok-deep)}
+.lesson-actions{display:flex;gap:10px;margin-top:18px}
+.lesson-actions .btn-ghost{flex:0 0 auto}
+.lesson-actions .btn-big{flex:1}
+.div-actions{display:flex;gap:10px;margin-top:8px}
+.div-actions .btn{flex:1}
 
 .streak-chip{appearance:none;border:1px solid #fde68a;background:linear-gradient(135deg,#fff7ed,#ffedd5);color:#9a3412;font-family:inherit;font-weight:800;display:inline-flex;align-items:center;gap:4px;padding:6px 10px;border-radius:9999px;cursor:pointer;font-size:14px;box-shadow:var(--shadow-card);transition:transform .15s ease}
 .streak-chip:active{transform:scale(.94)}
@@ -313,14 +329,17 @@ const Stats = (() => {
       const d = JSON.parse(raw);
       return {
         facts: migrateFacts(d.facts || {}),
+        divFacts: migrateFacts(d.divFacts || {}),
         hist: d.hist || [],
         buckets: d.buckets || {},
         streak: d.streak || { current: 0, best: 0, lastDay: null },
+        unlocked: Object.assign({ division: false }, d.unlocked || {}),
+        seen: d.seen || {},
         pin: d.pin || null,
       };
     } catch { return blank(); }
   }
-  function blank() { return { facts: {}, hist: [], buckets: {}, streak: { current: 0, best: 0, lastDay: null }, pin: null }; }
+  function blank() { return { facts: {}, divFacts: {}, hist: [], buckets: {}, streak: { current: 0, best: 0, lastDay: null }, unlocked: { division: false }, seen: {}, pin: null }; }
   function save(d) {
     try { localStorage.setItem(STATS_KEY, JSON.stringify(d)); } catch {}
   }
@@ -353,10 +372,9 @@ const Stats = (() => {
     if (!stat) return 1;
     return Math.max(0.2, Math.min(8, 1 + 2 * (stat.wrong || 0) - 0.5 * (stat.right || 0)));
   }
-  function recordMul(a, b, correct, ms) {
-    const k = mulKey(a, b);
+  function blankFact() { return { right: 0, wrong: 0, lastSeen: 0, stab: 0, last: 0, recent: '', avgT: null, fast: 0 }; }
+  function applyResult(f, correct, ms) {
     const now = Date.now();
-    const f = data.facts[k] || { right: 0, wrong: 0, lastSeen: 0, stab: 0, last: 0, recent: '', avgT: null, fast: 0 };
     const wasFast = correct && typeof ms === 'number' && ms > 0 && ms <= FAST_MS;
     if (correct) {
       f.right++;
@@ -371,9 +389,56 @@ const Stats = (() => {
     }
     f.last = now; f.lastSeen = now;
     f.recent = ((f.recent || '') + (correct ? '1' : '0')).slice(-8);
-    data.facts[k] = f;
+    return f;
+  }
+  function recordMul(a, b, correct, ms) {
+    const k = mulKey(a, b);
+    data.facts[k] = applyResult(data.facts[k] || blankFact(), correct, ms);
     save(data);
   }
+  // Division facts are tracked by their multiplication family (b × quotient).
+  function getDivFact(b, c) { return data.divFacts[mulKey(b, c)]; }
+  function recordDiv(b, c, correct, ms) {
+    const k = mulKey(b, c);
+    data.divFacts[k] = applyResult(data.divFacts[k] || blankFact(), correct, ms);
+    save(data);
+  }
+  function pickDivFacts(n) {
+    const all = [];
+    for (let b = 2; b <= 12; b++) {
+      for (let c = b; c <= 12; c++) {
+        all.push({ b, c, w: mulWeight(getDivFact(b, c)) });
+      }
+    }
+    const out = [];
+    for (let k = 0; k < n && all.length; k++) {
+      const total = all.reduce((s, x) => s + x.w, 0);
+      let r = Math.random() * total, idx = 0;
+      while (idx < all.length - 1 && r > all[idx].w) { r -= all[idx].w; idx++; }
+      out.push(all[idx]);
+      all.splice(idx, 1);
+    }
+    return out;
+  }
+  function mulFluentCount() {
+    const now = Date.now();
+    let m = 0;
+    for (const k in data.facts) if (factState(data.facts[k], now) === 'fluent') m++;
+    return m;
+  }
+  const DIV_UNLOCK_AT = 24; // division unlocks once enough mul facts are fluent
+  function checkUnlocks() {
+    let newly = null;
+    if (!data.unlocked.division && mulFluentCount() >= DIV_UNLOCK_AT) {
+      data.unlocked.division = true;
+      newly = 'division';
+      save(data);
+    }
+    return newly;
+  }
+  function isUnlocked(d) { return !!(data.unlocked && data.unlocked[d]); }
+  function markSeen(k) { data.seen[k] = true; save(data); }
+  function hasSeen(k) { return !!(data.seen && data.seen[k]); }
   function recordBucket(key, correct) {
     const b = data.buckets[key] || { right: 0, wrong: 0 };
     if (correct) b.right++; else b.wrong++;
@@ -457,15 +522,14 @@ const Stats = (() => {
     });
     return out;
   }
-  function summary() {
-    const facts = data.facts;
+  function factMapStats(map) {
     const now = Date.now();
-    let totalAttempts = 0, totalRight = 0, mastered = 0;
+    let attempts = 0, right = 0, mastered = 0;
     const weak = [];
-    for (const k of Object.keys(facts)) {
-      const f = facts[k];
-      totalAttempts += (f.right || 0) + (f.wrong || 0);
-      totalRight += (f.right || 0);
+    for (const k of Object.keys(map)) {
+      const f = map[k];
+      attempts += (f.right || 0) + (f.wrong || 0);
+      right += (f.right || 0);
       if (factState(f, now) === 'fluent') mastered++;
       if ((f.wrong || 0) > 0) {
         const [a, b] = k.split('x').map(Number);
@@ -473,16 +537,32 @@ const Stats = (() => {
       }
     }
     weak.sort((x, y) => y.weight - x.weight || y.wrong - x.wrong);
+    return {
+      attempts, mastered,
+      accuracy: attempts ? Math.round(100 * right / attempts) : 0,
+      weak: weak.slice(0, 6),
+    };
+  }
+  function summary() {
+    const mul = factMapStats(data.facts);
+    const div = factMapStats(data.divFacts);
     const last = data.hist[data.hist.length - 1];
     const avgScore = data.hist.length ? data.hist.reduce((s, h) => s + h.c, 0) / data.hist.length : 0;
     return {
       quizzesDone: data.hist.length,
       lastScore: last ? `${last.c}/${last.n}` : '—',
       avgScore: data.hist.length ? avgScore.toFixed(1) : '—',
-      totalAttempts,
-      totalAccuracy: totalAttempts ? Math.round(100 * totalRight / totalAttempts) : 0,
-      mastered,
-      weak: weak.slice(0, 6),
+      totalAttempts: mul.attempts,
+      totalAccuracy: mul.accuracy,
+      mastered: mul.mastered,
+      weak: mul.weak,
+      division: {
+        unlocked: isUnlocked('division'),
+        attempts: div.attempts,
+        accuracy: div.accuracy,
+        mastered: div.mastered,
+        weak: div.weak,
+      },
       hist: data.hist.slice(-10),
       streak: streakStatus(),
       buckets: bucketSummary(),
@@ -507,13 +587,18 @@ const Stats = (() => {
   function importMerge(remote) {
     if (!remote || typeof remote !== 'object') return;
     data.facts = migrateFacts(mergeCountMap(data.facts, remote.facts));
+    data.divFacts = migrateFacts(mergeCountMap(data.divFacts, remote.divFacts));
     data.buckets = mergeCountMap(data.buckets, remote.buckets);
     data.hist = mergeHist(data.hist, remote.hist);
     data.streak = mergeStreak(data.streak, remote.streak);
+    // unlocks and seen flags are sticky — OR across devices
+    const ru = remote.unlocked || {}, rs = remote.seen || {};
+    for (const k in ru) if (ru[k]) data.unlocked[k] = true;
+    for (const k in rs) if (rs[k]) data.seen[k] = true;
     if (!data.pin && remote.pin) data.pin = remote.pin;
     save(data);
   }
-  return { recordMul, recordBucket, recordQuiz, pickMulFacts, pickBucket, getFact, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced };
+  return { recordMul, recordDiv, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount };
 })();
 
 // Merge helpers for cross-device sync (keep the richer record, union history)
@@ -658,25 +743,52 @@ function genBigMul() {
   return { type: 'mul', a, b, ans: a * b, label: 'Multiplication · ×', big: true };
 }
 
+// Division fact (inverse of a times-table fact, no remainder).
+function genDiv() {
+  const p = Stats.pickDivFacts(1)[0] || { b: rint(2, 12), c: rint(2, 12) };
+  const flip = Math.random() < 0.5;
+  const divisor = flip ? p.c : p.b;
+  const quotient = flip ? p.b : p.c;
+  const dividend = p.b * p.c;
+  const fam = Stats.getDivFact(p.b, p.c);
+  const isReview = !!fam && (fam.wrong || 0) > 0 && Stats.factWeight(fam) > 1.5;
+  return { type: 'div', a: dividend, b: divisor, ans: quotient, fam: [p.b, p.c], label: 'Division · ÷', isReview };
+}
+
+function mulQuestion(a, b) {
+  const stat = Stats.getFact(a, b);
+  const isReview = !!stat && (stat.wrong || 0) > 0 && Stats.factWeight(stat) > 1.5;
+  return { type: 'mul', a, b, ans: a * b, label: 'Multiplication · ×', isReview };
+}
+
 function newQuiz() {
   const qs = [];
+  const divOn = Stats.isUnlocked('division');
+  const mulSlots = divOn ? 4 : 6;
   const advanced = Stats.isAdvanced();
-  // How many of the 6 multiplication slots become bigger problems.
-  const bigCount = advanced ? 2 : 0;
-  const factCount = 6 - bigCount;
-  const picks = Stats.pickMulFacts(factCount);
-  picks.forEach(p => {
-    // randomly flip orientation so kid sees both 7×8 and 8×7
+  const bigCount = advanced ? Math.min(2, mulSlots) : 0;
+  const factCount = mulSlots - bigCount;
+  Stats.pickMulFacts(factCount).forEach(p => {
     const flip = Math.random() < 0.5;
-    const a = flip ? p.b : p.a;
-    const b = flip ? p.a : p.b;
-    const stat = Stats.getFact(a, b);
-    const isReview = !!stat && stat.wrong > 0 && Stats.factWeight(stat) > 1.5;
-    qs.push({ type: 'mul', a, b, ans: a * b, label: 'Multiplication · ×', isReview });
+    qs.push(mulQuestion(flip ? p.b : p.a, flip ? p.a : p.b));
   });
   for (let i = 0; i < bigCount; i++) qs.push(genBigMul());
+  if (divOn) for (let i = 0; i < 2; i++) qs.push(genDiv());
   for (let i = 0; i < 2; i++) qs.push(genAdd(Stats.pickBucket('add')));
   for (let i = 0; i < 2; i++) qs.push(genSub(Stats.pickBucket('sub')));
+  for (let i = qs.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [qs[i], qs[j]] = [qs[j], qs[i]];
+  }
+  return qs.map((q, i) => ({ ...q, id: i, given: '' }));
+}
+
+// Focused division-learning quiz (used right after the lesson, and to "learn until learned").
+function divisionQuiz() {
+  const qs = [];
+  for (let i = 0; i < 8; i++) qs.push(genDiv());
+  qs.push(genAdd(Stats.pickBucket('add')));
+  qs.push(genSub(Stats.pickBucket('sub')));
   for (let i = qs.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [qs[i], qs[j]] = [qs[j], qs[i]];
@@ -723,6 +835,29 @@ function diagnose(q, given) {
   if (q.type === 'mul') return diagMul(q, g);
   if (q.type === 'add') return diagAdd(q, g);
   if (q.type === 'sub') return diagSub(q, g);
+  if (q.type === 'div') return diagDiv(q, g);
+}
+
+function diagDiv(q, g) {
+  const a = q.a, b = q.b, ans = q.ans; // a ÷ b = ans
+  if (g === a * b) return { why: `You multiplied instead of dividing: ${a} × ${b} = ${a * b}. Division shares ${a} into ${b} equal groups.`, work: buildDivWork(a, b), tip: `Ask: "${b} times what makes ${a}?"` };
+  if (g === a - b) return { why: `You subtracted instead of dividing.`, work: buildDivWork(a, b), tip: `÷ means "share into equal groups", not "take away".` };
+  if (g === b) return { why: `You answered the divisor itself (${b}). The question asks how many are in each group.`, work: buildDivWork(a, b), tip: `${b} × ${ans} = ${a}, so ${a} ÷ ${b} = ${ans}.` };
+  if (g > 0 && (g + 1) * b === a) return { why: `So close — you answered ${g}, but ${g} × ${b} = ${g * b}, which is ${b} short of ${a}.`, work: buildDivWork(a, b), tip: `You need one more group: ${ans} × ${b} = ${a}.` };
+  if (g > 0 && (g - 1) * b === a) return { why: `So close — you answered ${g}, but ${g} × ${b} = ${g * b}, which is ${b} too many.`, work: buildDivWork(a, b), tip: `One fewer group: ${ans} × ${b} = ${a}.` };
+  if (g > 0 && a % g === 0 && g !== ans) return { why: `${g} doesn't fit: ${b} × ${g} = ${b * g}, not ${a}.`, work: buildDivWork(a, b), tip: `Find the number that times ${b} equals ${a}.` };
+  return { why: `Not quite. Division asks: how many groups of ${b} are in ${a}?`, work: buildDivWork(a, b), tip: `Use the times table for ${b}: ${b} × ${ans} = ${a}.` };
+}
+
+function buildDivWork(a, b) {
+  const ans = a / b;
+  const lines = [];
+  lines.push(`${a} ÷ ${b} = ?`);
+  lines.push(`Division is the opposite of multiplication.`);
+  lines.push(`Ask: <b>${b} × ? = ${a}</b>`);
+  lines.push(`${b} × ${ans} = ${a}`);
+  lines.push(`So ${a} ÷ ${b} = <b>${ans}</b>`);
+  return lines.join('\n');
 }
 
 function diagMul(q, g) {
@@ -801,6 +936,7 @@ function buildWork(q) {
   if (q.type === 'mul') return buildMulWork(q.a, q.b);
   if (q.type === 'add') return buildAddWork(q.a, q.b);
   if (q.type === 'sub') return buildSubWork(q.a, q.b);
+  if (q.type === 'div') return buildDivWork(q.a, q.b);
 }
 
 function buildMulWork(a, b) {
@@ -972,6 +1108,7 @@ const state = {
   timeUp: false,
   showTimeoutModal: false,
   showStats: false,
+  showLesson: null,
   isPractice: false,
   finalElapsed: null,
 };
@@ -1076,15 +1213,17 @@ function submit(fromTimeout) {
   state.quiz.forEach(q => {
     const isRight = Number(q.given) === q.ans;
     if (isRight) correctCount++;
-    if (q.type === 'mul' && !q.big && q.a <= 12 && q.b <= 12) {
-      const ms = (q._t0 != null && q._t1 != null) ? (q._t1 - q._t0) : undefined;
-      Stats.recordMul(q.a, q.b, isRight, ms);
-    }
+    const ms = (q._t0 != null && q._t1 != null) ? (q._t1 - q._t0) : undefined;
+    if (q.type === 'mul' && !q.big && q.a <= 12 && q.b <= 12) Stats.recordMul(q.a, q.b, isRight, ms);
+    else if (q.type === 'div' && q.fam) Stats.recordDiv(q.fam[0], q.fam[1], isRight, ms);
     else if (q.bucket) Stats.recordBucket(q.bucket, isRight);
   });
   if (!state.isPractice) Stats.recordQuiz(state.quiz.length, correctCount, state.finalElapsed);
+  // Newly cleared a prerequisite? Unlock the next domain and show its lesson.
+  const unlocked = state.isPractice ? null : Stats.checkUnlocks();
   const fc = getFamilyCode();
   if (fc) cloudSave(fc, Stats.exportRaw()).catch(() => {});
+  if (unlocked === 'division') { state.showLesson = 'division'; }
   render();
   // scroll to first wrong (or top if all correct), keeping context visible
   setTimeout(() => {
@@ -1118,6 +1257,7 @@ function render() {
   app.appendChild(renderActionBar());
   if (state.showTimeoutModal) app.appendChild(renderTimeoutModal());
   if (state.showStats) app.appendChild(renderStatsModal());
+  if (state.showLesson) app.appendChild(renderLessonModal(state.showLesson));
   renderTimer();
 }
 
@@ -1207,7 +1347,7 @@ function renderQuestion(q, idx) {
   const row = el('div', 'qrow');
   const expr = el('div', 'expr');
   expr.appendChild(spanTxt(q.a, 'tabular'));
-  expr.appendChild(spanTxt(q.type === 'mul' ? '×' : q.type === 'add' ? '+' : '−', 'op'));
+  expr.appendChild(spanTxt(q.type === 'mul' ? '×' : q.type === 'add' ? '+' : q.type === 'sub' ? '−' : '÷', 'op'));
   expr.appendChild(spanTxt(q.b, 'tabular'));
   expr.appendChild(spanTxt('=', 'eq'));
   row.appendChild(expr);
@@ -1257,12 +1397,17 @@ function renderQuestion(q, idx) {
   }
   card.appendChild(row);
 
-  // Pre-practice strategy card on review multiplication facts (learn, then try)
-  if (!state.submitted && q.isReview && q.type === 'mul' && q.a <= 12 && q.b <= 12) {
-    const tip = el('div', 'pretip');
-    tip.appendChild(spanTxt('💡 ', null));
-    tip.appendChild(spanTxt(factTip(q.a, q.b), null));
-    card.appendChild(tip);
+  // Pre-practice strategy card on review questions (learn, then try)
+  if (!state.submitted && q.isReview) {
+    let tipText = '';
+    if (q.type === 'mul' && q.a <= 12 && q.b <= 12) tipText = factTip(q.a, q.b);
+    else if (q.type === 'div') tipText = `Think: ${q.b} × ? = ${q.a}. Use the ${q.b} times table.`;
+    if (tipText) {
+      const tip = el('div', 'pretip');
+      tip.appendChild(spanTxt('💡 ', null));
+      tip.appendChild(spanTxt(tipText, null));
+      card.appendChild(tip);
+    }
   }
 
   if (wrong) card.appendChild(renderDiag(q));
@@ -1439,6 +1584,79 @@ function renderTimeoutModal() {
   return bg;
 }
 
+function closeLesson() {
+  if (state.showLesson) Stats.markSeen(state.showLesson + 'Lesson');
+  state.showLesson = null;
+  pushIfSynced();
+  render();
+}
+
+function startDivisionPractice() {
+  Stats.markSeen('divisionLesson');
+  state.showLesson = null;
+  state.showStats = false;
+  state.quiz = divisionQuiz();
+  state.isPractice = false;
+  state.submitted = false;
+  state.timeUp = false;
+  state.showTimeoutModal = false;
+  state.finalElapsed = null;
+  startTimer();
+  render();
+  setTimeout(() => { const f = document.querySelector('.ansbox'); if (f) f.focus(); }, 50);
+}
+
+// Concrete → Representational → Abstract lesson for a domain.
+function renderLessonModal(domain) {
+  const bg = el('div', 'modal-bg');
+  bg.addEventListener('click', e => { if (e.target === bg) closeLesson(); });
+  const m = el('div', 'modal lesson-modal');
+
+  if (domain === 'division') {
+    const fresh = !Stats.hasSeen('divisionLesson');
+    m.appendChild(el('div', 'ico-big', '➗'));
+    m.appendChild(el('h2', null, fresh ? '🎉 New skill unlocked: Division' : 'Division — sharing into equal groups'));
+    m.appendChild(el('p', null, 'Division means sharing a number into equal groups. Let\'s see it.'));
+
+    // Concrete
+    m.appendChild(el('h3', 'lesson-h', '1) Picture it'));
+    m.appendChild(el('p', 'lesson-p', '12 cookies shared onto 3 plates — how many on each plate?'));
+    const groups = el('div', 'lesson-groups');
+    for (let g = 0; g < 3; g++) {
+      const plate = el('div', 'lesson-plate');
+      for (let i = 0; i < 4; i++) plate.appendChild(el('span', 'lesson-dot', '🍪'));
+      groups.appendChild(plate);
+    }
+    m.appendChild(groups);
+    m.appendChild(el('p', 'lesson-p', '3 equal plates, 4 cookies on each.'));
+
+    // Representational → Abstract
+    m.appendChild(el('h3', 'lesson-h', '2) Write it'));
+    const eqn = el('div', 'lesson-eqn');
+    eqn.innerHTML = '12 ÷ 3 = <b>4</b>';
+    m.appendChild(eqn);
+
+    m.appendChild(el('h3', 'lesson-h', '3) The trick'));
+    m.appendChild(el('p', 'lesson-p', 'Division is the opposite of multiplication. To do a ÷ b, ask: "b × ? = a".'));
+    const fam = el('div', 'lesson-eqn');
+    fam.innerHTML = 'Because 4 × 3 = 12, we know 12 ÷ 3 = <b>4</b>.';
+    m.appendChild(fam);
+    m.appendChild(el('p', 'lesson-note', 'You already know your times tables — so you already know division! Use the times table to find the missing factor.'));
+
+    const actions = el('div', 'lesson-actions');
+    const go = el('button', 'btn btn-primary btn-big', '✏️ Practice division');
+    go.onclick = startDivisionPractice;
+    const later = el('button', 'btn btn-ghost', 'Later');
+    later.onclick = closeLesson;
+    actions.appendChild(later);
+    actions.appendChild(go);
+    m.appendChild(actions);
+  }
+
+  bg.appendChild(m);
+  return bg;
+}
+
 function renderStatsModal() {
   const s = Stats.summary();
   const bg = el('div', 'modal-bg');
@@ -1522,6 +1740,23 @@ function renderStatsModal() {
         });
       });
       m.appendChild(bgrid);
+    }
+
+    // Division domain
+    m.appendChild(el('h3', 'stats-h3', '➗ Division'));
+    if (!s.division.unlocked) {
+      const fluent = Stats.mulFluentCount();
+      m.appendChild(el('p', 'stats-line', `Locked — unlocks when 24 multiplication facts are fluent (now ${fluent}/24). Keep practicing your times tables!`));
+    } else {
+      m.appendChild(el('p', 'stats-line', `${s.division.attempts} attempts · ${s.division.accuracy}% accuracy · ${s.division.mastered} mastered`));
+      const row = el('div', 'div-actions');
+      const learn = el('button', 'btn btn-ghost', '📖 Lesson');
+      learn.onclick = () => { state.showLesson = 'division'; render(); };
+      const prac = el('button', 'btn btn-primary', '✏️ Practice division');
+      prac.onclick = startDivisionPractice;
+      row.appendChild(learn);
+      row.appendChild(prac);
+      m.appendChild(row);
     }
 
     if (s.hist.length >= 2) {
