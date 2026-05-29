@@ -328,7 +328,7 @@ function dayDiff(a, b) {
 }
 const Stats = (() => {
   // FSRS-lite scheduling constants
-  const FAST_MS = 4000;      // a correct answer faster than this counts toward fluency
+  const FAST_MS = 6000;      // a correct answer faster than this counts toward fluency
   const STAB_FLUENT = 12;    // days of stability needed to count a fact as mastered
   const STAB_MAX = 400;      // cap on stability (days)
 
@@ -390,6 +390,8 @@ const Stats = (() => {
     if (last3ok) return 'accurate';
     return 'learning';
   }
+  // "Mastered" for unlocks/counts = accurate or better (speed is a bonus, not a gate).
+  function isMasteredState(s) { return s === 'accurate' || s === 'fluent'; }
   function mulWeight(f) {
     if (!f || (f.right || 0) + (f.wrong || 0) === 0) return 2.5; // unseen → ensure coverage
     const R = retr(f, Date.now());
@@ -451,7 +453,7 @@ const Stats = (() => {
   function mulFluentCount() {
     const now = Date.now();
     let m = 0;
-    for (const k in data.facts) if (factState(data.facts[k], now) === 'fluent') m++;
+    for (const k in data.facts) if (isMasteredState(factState(data.facts[k], now))) m++;
     return m;
   }
   // Skill-level tracking (for procedures like 2-digit multiplication that
@@ -573,7 +575,7 @@ const Stats = (() => {
       const f = map[k];
       attempts += (f.right || 0) + (f.wrong || 0);
       right += (f.right || 0);
-      if (factState(f, now) === 'fluent') mastered++;
+      if (isMasteredState(factState(f, now))) mastered++;
       if ((f.wrong || 0) > 0) {
         const [a, b] = k.split('x').map(Number);
         weak.push({ a, b, right: f.right || 0, wrong: f.wrong || 0, weight: mulWeight(f), state: factState(f, now) });
@@ -632,7 +634,7 @@ const Stats = (() => {
     const now = Date.now();
     let mastered = 0;
     for (const k of Object.keys(data.facts)) {
-      if (factState(data.facts[k], now) === 'fluent') mastered++;
+      if (isMasteredState(factState(data.facts[k], now))) mastered++;
     }
     return mastered >= 53;
   }
@@ -2104,7 +2106,7 @@ function renderStatsModal() {
     m.appendChild(el('h3', 'stats-h3', '➗ Division'));
     if (!s.division.unlocked) {
       const fluent = Stats.mulFluentCount();
-      m.appendChild(el('p', 'stats-line', `Locked — unlocks when 24 multiplication facts are fluent (now ${fluent}/24). Keep practicing your times tables!`));
+      m.appendChild(el('p', 'stats-line', `Locked — unlocks when 24 multiplication facts are mastered (now ${fluent}/24). Keep practicing your times tables!`));
     } else {
       m.appendChild(el('p', 'stats-line', `${s.division.attempts} attempts · ${s.division.accuracy}% accuracy · ${s.division.mastered} mastered`));
       const row = el('div', 'div-actions');
@@ -2121,7 +2123,7 @@ function renderStatsModal() {
     m.appendChild(el('h3', 'stats-h3', '🔢 Bigger × (2-digit)'));
     if (!s.bigmul.unlocked) {
       const fluent = Stats.mulFluentCount();
-      m.appendChild(el('p', 'stats-line', `Locked — unlocks at 40 fluent multiplication facts (now ${fluent}/40).`));
+      m.appendChild(el('p', 'stats-line', `Locked — unlocks at 40 mastered multiplication facts (now ${fluent}/40).`));
     } else {
       const stTxt = s.bigmul.state === 'fluent' ? 'fluent 🌟' : s.bigmul.state === 'accurate' ? 'accurate' : 'learning';
       m.appendChild(el('p', 'stats-line', `${s.bigmul.attempts} attempts · ${s.bigmul.accuracy}% accuracy · ${stTxt}`));
@@ -2139,7 +2141,7 @@ function renderStatsModal() {
     m.appendChild(el('h3', 'stats-h3', '🍕 Fractions'));
     if (!s.fractions.unlocked) {
       const fluent = Stats.mulFluentCount();
-      m.appendChild(el('p', 'stats-line', `Locked — unlocks at 50 fluent multiplication facts (now ${fluent}/50).`));
+      m.appendChild(el('p', 'stats-line', `Locked — unlocks at 50 mastered multiplication facts (now ${fluent}/50).`));
     } else {
       const stTxt = s.fractions.state === 'fluent' ? 'fluent 🌟' : s.fractions.state === 'accurate' ? 'accurate' : 'learning';
       m.appendChild(el('p', 'stats-line', `${s.fractions.attempts} attempts · ${s.fractions.accuracy}% accuracy · ${stTxt}`));
