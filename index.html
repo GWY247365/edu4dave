@@ -1455,7 +1455,11 @@ function renderTopbar() {
   const mark = el('div', 'brand-mark', '×');
   const txt = el('div', 'brand-text');
   txt.appendChild(el('h1', null, 'Math Quiz · 10 Questions'));
-  txt.appendChild(el('p', null, '6 multiplication · 2 addition · 2 subtraction · 10-minute timer'));
+  const parts = ['Times tables', 'Addition', 'Subtraction'];
+  if (Stats.isUnlocked('division')) parts.push('Division');
+  if (Stats.isUnlocked('bigmul')) parts.push('2-digit ×');
+  if (Stats.isUnlocked('fractions')) parts.push('Fractions');
+  txt.appendChild(el('p', null, parts.join(' · ') + ' · 10-min timer'));
   brand.appendChild(mark); brand.appendChild(txt);
   const sk = Stats.streakStatus();
   if (sk.current > 0) {

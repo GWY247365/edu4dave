@@ -1,6 +1,6 @@
 // Stale-while-revalidate service worker for Math Quiz.
 // Bump CACHE when shipping a release that needs old caches purged.
-const CACHE = 'mathquiz-v14';
+const CACHE = 'mathquiz-v15';
 const ASSETS = [
   './',
   './index.html',
