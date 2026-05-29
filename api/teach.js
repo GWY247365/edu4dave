@@ -14,13 +14,25 @@ Rules:
 - Keep it tiny — it shows in a small box on a tablet.
 - Don't lecture; make it feel easy and fun.`;
 
+function isNum(x) { return typeof x === 'number' && Number.isFinite(x); }
+function validProblem(p) {
+  if (!p || typeof p.type !== 'string') return false;
+  if (['mul', 'add', 'sub', 'div'].includes(p.type)) return isNum(p.a) && isNum(p.b);
+  if (p.type === 'fnam') return isNum(p.shaded) && isNum(p.den);
+  if (p.type === 'feq') return isNum(p.n1) && isNum(p.d1) && isNum(p.d2) && isNum(p.ans);
+  if (p.type === 'fcmp') return isNum(p.n1) && isNum(p.d1) && isNum(p.n2) && isNum(p.d2) && typeof p.ans === 'string';
+  return false;
+}
 function describe(p) {
   const a = p.a, b = p.b;
   if (p.type === 'mul') return `${a} × ${b} (the answer is ${a * b})`;
   if (p.type === 'add') return `${a} + ${b} (the answer is ${a + b})`;
   if (p.type === 'sub') return `${a} − ${b} (the answer is ${a - b})`;
   if (p.type === 'div') return `${a} ÷ ${b} (the answer is ${a / b}); it helps to remember ${b} × ${a / b} = ${a}`;
-  return `${a} ? ${b}`;
+  if (p.type === 'fnam') return `naming the fraction shown by a bar split into ${p.den} equal parts with ${p.shaded} shaded — the answer is the fraction ${p.shaded}/${p.den}`;
+  if (p.type === 'feq') return `finding the missing top number so the fractions are equal: ${p.n1}/${p.d1} = ?/${p.d2} — the answer is ${p.ans}, because you multiply top and bottom by ${p.d2 / p.d1}`;
+  if (p.type === 'fcmp') return `comparing two fractions ${p.n1}/${p.d1} and ${p.n2}/${p.d2} using <, =, or > — the correct comparison is ${p.n1}/${p.d1} ${p.ans} ${p.n2}/${p.d2}`;
+  return 'this problem';
 }
 
 export default async function handler(req, res) {
@@ -30,7 +42,7 @@ export default async function handler(req, res) {
   let body = req.body;
   if (typeof body === 'string') { try { body = JSON.parse(body); } catch { body = {}; } }
   const p = body && body.problem;
-  if (!p || !['mul', 'add', 'sub', 'div'].includes(p.type) || typeof p.a !== 'number' || typeof p.b !== 'number') {
+  if (!validProblem(p)) {
     res.status(400).json({ error: 'Missing or invalid problem' });
     return;
   }

@@ -1710,6 +1710,13 @@ function renderFractionRow(q, idx, right, wrong) {
   return row;
 }
 
+function teachPayload(q) {
+  if (q.type === 'fnam') return { type: 'fnam', shaded: q.shaded, den: q.den };
+  if (q.type === 'feq') return { type: 'feq', n1: q.n1, d1: q.d1, d2: q.d2, ans: q.ans };
+  if (q.type === 'fcmp') return { type: 'fcmp', n1: q.n1, d1: q.d1, n2: q.n2, d2: q.d2, ans: q.ans };
+  return { type: q.type, a: q.a, b: q.b };
+}
+
 function renderDiag(q) {
   const d = diagnose(q, q.given);
   const wrap = el('div', 'diag');
@@ -1731,8 +1738,7 @@ function renderDiag(q) {
   tip.appendChild(spanTxt(d.tip, null));
   wrap.appendChild(tip);
 
-  // AI mini-lesson (kid-facing) — on demand, for numeric problem types
-  if (!['mul', 'add', 'sub', 'div'].includes(q.type)) return wrap;
+  // AI mini-lesson (kid-facing) — on demand, for all question types
   const teachWrap = el('div', 'teach-wrap');
   const teachBtn = el('button', 'btn btn-ghost teach-btn', '🧠 Teach me this');
   const teachOut = el('div', 'teach-out');
@@ -1744,7 +1750,7 @@ function renderDiag(q) {
       const res = await fetch('/api/teach', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ problem: { type: q.type, a: q.a, b: q.b } }),
+        body: JSON.stringify({ problem: teachPayload(q) }),
       });
       if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || ('error ' + res.status)); }
       const data = await res.json();
