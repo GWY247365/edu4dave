@@ -188,6 +188,28 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .area-cell.ones{flex:1;background:var(--ok-soft);border-color:#bbf7d0}
 .area-cell b{font-size:20px;color:var(--brand-deep)}
 .area-cell.ones b{color:var(--ok-deep)}
+/* Fractions */
+.frac-row{align-items:center;gap:16px}
+.frac-q{flex:1;min-width:0}
+.frac-prompt{font-size:15px;font-weight:600;color:var(--ink-2);margin-bottom:8px}
+.frac-vis{display:flex;width:100%;max-width:280px;height:40px;border:2px solid var(--brand-deep);border-radius:6px;overflow:hidden}
+.frac-cell{flex:1;border-right:1px solid var(--brand-soft-2)}
+.frac-cell:last-child{border-right:none}
+.frac-cell.on{background:var(--brand)}
+.frac{display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;font-variant-numeric:tabular-nums;font-weight:700;color:var(--ink)}
+.frac-num,.frac-den{font-size:26px;line-height:1.1;padding:0 6px}
+.frac-line{height:3px;background:var(--ink);width:100%;min-width:28px;margin:2px 0}
+.frac-line.wide{min-width:80px}
+.frac-expr{font-size:30px;display:inline-flex;align-items:center;gap:12px;flex-wrap:wrap}
+.frac-answer{display:inline-flex;flex-direction:column;align-items:center;gap:2px}
+.frac-in{width:74px;height:48px;font-size:24px;text-align:center}
+.frac-num-in{width:64px;height:44px;font-size:22px;text-align:center}
+.fcmp{display:flex;gap:8px}
+.fcmp-btn{width:48px;height:52px;font-size:24px;font-weight:800;border:2px solid var(--border);border-radius:12px;background:#fff;color:var(--ink);cursor:pointer;font-family:inherit}
+.fcmp-btn.chosen{border-color:var(--brand);background:var(--brand-soft);color:var(--brand-deep)}
+.fcmp-btn.correct{border-color:var(--ok);background:var(--ok-soft);color:var(--ok-deep)}
+.fcmp-btn.wrongpick{border-color:var(--bad);background:var(--bad-soft);color:var(--bad-deep);text-decoration:line-through}
+.fcmp-btn:disabled{cursor:default}
 
 .streak-chip{appearance:none;border:1px solid #fde68a;background:linear-gradient(135deg,#fff7ed,#ffedd5);color:#9a3412;font-family:inherit;font-weight:800;display:inline-flex;align-items:center;gap:4px;padding:6px 10px;border-radius:9999px;cursor:pointer;font-size:14px;box-shadow:var(--shadow-card);transition:transform .15s ease}
 .streak-chip:active{transform:scale(.94)}
@@ -339,13 +361,13 @@ const Stats = (() => {
         hist: d.hist || [],
         buckets: d.buckets || {},
         streak: d.streak || { current: 0, best: 0, lastDay: null },
-        unlocked: Object.assign({ division: false, bigmul: false }, d.unlocked || {}),
+        unlocked: Object.assign({ division: false, bigmul: false, fractions: false }, d.unlocked || {}),
         seen: d.seen || {},
         pin: d.pin || null,
       };
     } catch { return blank(); }
   }
-  function blank() { return { facts: {}, divFacts: {}, skills: {}, hist: [], buckets: {}, streak: { current: 0, best: 0, lastDay: null }, unlocked: { division: false, bigmul: false }, seen: {}, pin: null }; }
+  function blank() { return { facts: {}, divFacts: {}, skills: {}, hist: [], buckets: {}, streak: { current: 0, best: 0, lastDay: null }, unlocked: { division: false, bigmul: false, fractions: false }, seen: {}, pin: null }; }
   function save(d) {
     try { localStorage.setItem(STATS_KEY, JSON.stringify(d)); } catch {}
   }
@@ -442,6 +464,7 @@ const Stats = (() => {
   function skillState(name) { return factState(data.skills[name], Date.now()); }
   const DIV_UNLOCK_AT = 24;    // division unlocks once enough mul facts are fluent
   const BIGMUL_UNLOCK_AT = 40; // 2-digit multiplication unlocks with strong table fluency
+  const FRAC_UNLOCK_AT = 50;   // fractions unlock once tables are very solid
   function checkUnlocks() {
     let newly = null;
     const fluent = mulFluentCount();
@@ -450,6 +473,9 @@ const Stats = (() => {
     }
     if (!data.unlocked.bigmul && fluent >= BIGMUL_UNLOCK_AT) {
       data.unlocked.bigmul = true; newly = newly || 'bigmul'; save(data);
+    }
+    if (!data.unlocked.fractions && fluent >= FRAC_UNLOCK_AT) {
+      data.unlocked.fractions = true; newly = newly || 'fractions'; save(data);
     }
     return newly;
   }
@@ -560,6 +586,16 @@ const Stats = (() => {
       weak: weak.slice(0, 6),
     };
   }
+  function skillSummary(name) {
+    const f = data.skills[name];
+    const attempts = f ? (f.right || 0) + (f.wrong || 0) : 0;
+    return {
+      unlocked: isUnlocked(name),
+      attempts,
+      accuracy: attempts ? Math.round(100 * (f.right || 0) / attempts) : 0,
+      state: f ? factState(f, Date.now()) : 'new',
+    };
+  }
   function summary() {
     const mul = factMapStats(data.facts);
     const div = factMapStats(data.divFacts);
@@ -580,16 +616,8 @@ const Stats = (() => {
         mastered: div.mastered,
         weak: div.weak,
       },
-      bigmul: (() => {
-        const f = data.skills.bigmul;
-        const attempts = f ? (f.right || 0) + (f.wrong || 0) : 0;
-        return {
-          unlocked: isUnlocked('bigmul'),
-          attempts,
-          accuracy: attempts ? Math.round(100 * (f.right || 0) / attempts) : 0,
-          state: f ? factState(f, Date.now()) : 'new',
-        };
-      })(),
+      bigmul: skillSummary('bigmul'),
+      fractions: skillSummary('fractions'),
       hist: data.hist.slice(-10),
       streak: streakStatus(),
       buckets: bucketSummary(),
@@ -790,6 +818,48 @@ function mulQuestion(a, b) {
   return { type: 'mul', a, b, ans: a * b, label: 'Multiplication · ×', isReview };
 }
 
+// ---------- Fractions (CC grade 3: denominators 2,3,4,6,8) ----------
+const FRAC_DENS = [2, 3, 4, 6, 8];
+const fracReview = () => Stats.skillState('fractions') !== 'fluent';
+function genFracName() {
+  const den = FRAC_DENS[rint(0, FRAC_DENS.length - 1)];
+  const shaded = rint(1, den - 1);
+  return { type: 'fnam', den, shaded, ansNum: shaded, ansDen: den, label: 'Fractions · name', isReview: fracReview() };
+}
+function genFracEquiv() {
+  const pairs = [[2, 4], [2, 6], [2, 8], [3, 6], [4, 8]];
+  const [d1, d2] = pairs[rint(0, pairs.length - 1)];
+  const m = d2 / d1;
+  const n1 = rint(1, d1 - 1);
+  return { type: 'feq', n1, d1, d2, ans: n1 * m, label: 'Fractions · equal', isReview: fracReview() };
+}
+function genFracCompare() {
+  let n1, d1, n2, d2;
+  const c = rint(0, 2);
+  if (c === 0) { // same numerator, different denominator
+    const n = rint(1, 2); d1 = FRAC_DENS[rint(0, 4)]; do { d2 = FRAC_DENS[rint(0, 4)]; } while (d2 === d1);
+    n1 = Math.min(n, d1 - 1) || 1; n2 = Math.min(n, d2 - 1) || 1;
+  } else if (c === 1) { // same denominator, different numerator
+    d1 = d2 = FRAC_DENS[rint(1, 4)];
+    n1 = rint(1, d1 - 1); do { n2 = rint(1, d1 - 1); } while (n2 === n1);
+  } else { // equivalent → '='
+    const pairs = [[1, 2, 2, 4], [1, 2, 3, 6], [1, 3, 2, 6], [2, 4, 1, 2], [2, 8, 1, 4]];
+    [n1, d1, n2, d2] = pairs[rint(0, pairs.length - 1)];
+  }
+  const lhs = n1 * d2, rhs = n2 * d1;
+  const ans = lhs < rhs ? '<' : lhs > rhs ? '>' : '=';
+  return { type: 'fcmp', n1, d1, n2, d2, ans, label: 'Fractions · compare', isReview: fracReview() };
+}
+function genFraction() {
+  const r = rint(0, 2);
+  return r === 0 ? genFracName() : r === 1 ? genFracEquiv() : genFracCompare();
+}
+function fracTip(q) {
+  if (q.type === 'fnam') return 'Top = shaded parts. Bottom = total equal parts.';
+  if (q.type === 'feq') return `Multiply top and bottom by the same number (×${q.d2 / q.d1}).`;
+  return 'Same top? More pieces means each is smaller. Same bottom? Bigger top wins.';
+}
+
 function shuffleQuiz(qs) {
   for (let i = qs.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -800,18 +870,25 @@ function shuffleQuiz(qs) {
 
 function newQuiz() {
   const qs = [];
-  // Always 2 addition + 2 subtraction; the other 6 slots are mul/div/bigmul.
-  const divOn = Stats.isUnlocked('division');
-  const bigOn = Stats.isUnlocked('bigmul');
-  const divCount = divOn ? 2 : 0;
-  const bigCount = bigOn ? (Stats.skillState('bigmul') === 'fluent' ? 1 : 2) : 0;
-  const factCount = Math.max(2, 6 - divCount - bigCount); // keep tables warm
-  Stats.pickMulFacts(factCount).forEach(p => {
+  // Always 2 addition + 2 subtraction; the other 6 slots split across unlocked domains.
+  let div = Stats.isUnlocked('division') ? 2 : 0;
+  let big = Stats.isUnlocked('bigmul') ? (Stats.skillState('bigmul') === 'fluent' ? 1 : 2) : 0;
+  let frac = Stats.isUnlocked('fractions') ? (Stats.skillState('fractions') === 'fluent' ? 1 : 2) : 0;
+  let mul = 6 - div - big - frac;
+  // Keep at least 1 multiplication-fact slot to maintain the tables.
+  while (mul < 1) {
+    if (div > 1) { div--; mul++; }
+    else if (big > 1) { big--; mul++; }
+    else if (frac > 1) { frac--; mul++; }
+    else break;
+  }
+  Stats.pickMulFacts(mul).forEach(p => {
     const flip = Math.random() < 0.5;
     qs.push(mulQuestion(flip ? p.b : p.a, flip ? p.a : p.b));
   });
-  for (let i = 0; i < bigCount; i++) qs.push(genBigMul());
-  for (let i = 0; i < divCount; i++) qs.push(genDiv());
+  for (let i = 0; i < big; i++) qs.push(genBigMul());
+  for (let i = 0; i < div; i++) qs.push(genDiv());
+  for (let i = 0; i < frac; i++) qs.push(genFraction());
   for (let i = 0; i < 2; i++) qs.push(genAdd(Stats.pickBucket('add')));
   for (let i = 0; i < 2; i++) qs.push(genSub(Stats.pickBucket('sub')));
   return shuffleQuiz(qs);
@@ -828,6 +905,16 @@ function divisionQuiz() {
 function bigmulQuiz() {
   const qs = [];
   for (let i = 0; i < 8; i++) qs.push(genBigMul());
+  qs.push(genAdd(Stats.pickBucket('add')));
+  qs.push(genSub(Stats.pickBucket('sub')));
+  return shuffleQuiz(qs);
+}
+function fractionQuiz() {
+  const qs = [];
+  // a balanced spread of the three fraction skills
+  for (let i = 0; i < 3; i++) qs.push(genFracName());
+  for (let i = 0; i < 3; i++) qs.push(genFracEquiv());
+  for (let i = 0; i < 2; i++) qs.push(genFracCompare());
   qs.push(genAdd(Stats.pickBucket('add')));
   qs.push(genSub(Stats.pickBucket('sub')));
   return shuffleQuiz(qs);
@@ -860,7 +947,32 @@ function focusQuiz() {
 }
 
 /* ---------- Diagnostic engine ---------- */
+function diagFraction(q) {
+  if (q.type === 'fnam') {
+    const gn = Number(q.givenNum), gd = Number(q.givenDen);
+    const work = `${q.shaded} of ${q.den} equal parts are shaded → <b>${q.shaded}/${q.den}</b>.`;
+    if (q.givenNum === '' && q.givenDen === '' || q.givenNum == null) return { why: 'You left this blank.', work, tip: 'Top = shaded parts, bottom = total parts.' };
+    if (gn === q.den && gd === q.shaded) return { why: `You flipped it. The top is the shaded parts (${q.shaded}), the bottom is the total parts (${q.den}).`, work, tip: 'Top = part you have. Bottom = whole.' };
+    return { why: `Count carefully: ${q.shaded} shaded out of ${q.den} equal parts.`, work, tip: 'Top counts the shaded parts; bottom counts all the parts.' };
+  }
+  if (q.type === 'feq') {
+    const g = Number(q.given), m = q.d2 / q.d1, work = `${q.n1}/${q.d1}: multiply top and bottom by ${m} → ${q.n1 * m}/${q.d2}.`;
+    if (q.given === '' || !Number.isFinite(g)) return { why: 'You left this blank.', work, tip: `Multiply top and bottom by ${m}.` };
+    if (g === q.d2) return { why: `${q.d2} is the bottom number. You need the new top.`, work, tip: `Multiply the top (${q.n1}) by ${m}.` };
+    if (g === q.n1) return { why: `You kept the top the same. The bottom grew ${m}×, so the top must too.`, work, tip: `${q.n1} × ${m} = ${q.ans}.` };
+    return { why: `To keep the same value, multiply top and bottom by the same number (${m}).`, work, tip: `${q.n1} × ${m} = ${q.ans}.` };
+  }
+  // fcmp
+  const work = `Make the bottoms match: ${q.n1}/${q.d1} = ${q.n1 * q.d2}/${q.d1 * q.d2}, ${q.n2}/${q.d2} = ${q.n2 * q.d1}/${q.d1 * q.d2}. So ${q.n1}/${q.d1} <b>${q.ans}</b> ${q.n2}/${q.d2}.`;
+  let tip;
+  if (q.d1 === q.d2) tip = 'Same bottom — the bigger top is bigger.';
+  else if (q.n1 === q.n2) tip = 'Same top — more pieces means each piece is smaller.';
+  else tip = 'Give both fractions the same bottom number, then compare the tops.';
+  return { why: q.given ? `Not quite — ${q.n1}/${q.d1} ${q.ans} ${q.n2}/${q.d2}.` : 'You didn\'t pick one.', work, tip };
+}
+
 function diagnose(q, given) {
+  if (q.type === 'fnam' || q.type === 'feq' || q.type === 'fcmp') return diagFraction(q);
   const g = Number(given);
   if (given === '' || !Number.isFinite(g)) {
     return {
@@ -1242,7 +1354,7 @@ function startFocus() {
 }
 
 function retryWrong() {
-  const wrong = state.quiz.filter(q => Number(q.given) !== q.ans);
+  const wrong = state.quiz.filter(q => !answerCorrect(q));
   if (!wrong.length) { startNew(); return; }
   state.quiz = wrong.map((q, i) => ({ ...q, id: i, given: '' }));
   state.isPractice = true; // don't log a partial set to history/streak
@@ -1270,12 +1382,13 @@ function submit(fromTimeout) {
   // Persist per-fact / per-bucket stats
   let correctCount = 0;
   state.quiz.forEach(q => {
-    const isRight = Number(q.given) === q.ans;
+    const isRight = answerCorrect(q);
     if (isRight) correctCount++;
     const ms = (q._t0 != null && q._t1 != null) ? (q._t1 - q._t0) : undefined;
     if (q.type === 'mul' && q.big) Stats.recordSkill('bigmul', isRight, ms);
     else if (q.type === 'mul' && q.a <= 12 && q.b <= 12) Stats.recordMul(q.a, q.b, isRight, ms);
     else if (q.type === 'div' && q.fam) Stats.recordDiv(q.fam[0], q.fam[1], isRight, ms);
+    else if (q.type === 'fnam' || q.type === 'feq' || q.type === 'fcmp') Stats.recordSkill('fractions', isRight, ms);
     else if (q.bucket) Stats.recordBucket(q.bucket, isRight);
   });
   if (!state.isPractice) Stats.recordQuiz(state.quiz.length, correctCount, state.finalElapsed);
@@ -1367,14 +1480,28 @@ function renderTopbar() {
   return bar;
 }
 
+// Unified answer checking (fractions/compare aren't single numbers).
+function answerCorrect(q) {
+  if (q.type === 'fnam') return Number(q.givenNum) === q.ansNum && Number(q.givenDen) === q.ansDen;
+  if (q.type === 'fcmp') return q.given === q.ans;
+  return Number(q.given) === q.ans;
+}
+function answerText(q) {
+  if (q.type === 'fnam') return q.ansNum + '/' + q.ansDen;
+  return String(q.ans);
+}
+function answered(q) {
+  if (q.type === 'fnam') return (q.givenNum || '') !== '' || (q.givenDen || '') !== '';
+  return (q.given || '') !== '';
+}
+
 function renderProgress() {
   const wrap = el('div', 'progress');
   state.quiz.forEach(q => {
     const seg = el('div', 'seg');
     if (state.submitted) {
-      const right = Number(q.given) === q.ans;
-      seg.classList.add(right ? 'ok' : 'bad');
-    } else if ((q.given || '') !== '') {
+      seg.classList.add(answerCorrect(q) ? 'ok' : 'bad');
+    } else if (answered(q)) {
       seg.classList.add('filled');
     }
     wrap.appendChild(seg);
@@ -1384,8 +1511,8 @@ function renderProgress() {
 
 function renderQuestion(q, idx) {
   const card = el('div', 'qcard');
-  const right = state.submitted && Number(q.given) === q.ans;
-  const wrong = state.submitted && Number(q.given) !== q.ans;
+  const right = state.submitted && answerCorrect(q);
+  const wrong = state.submitted && !answerCorrect(q);
   if (right) card.classList.add('ok');
   if (wrong) card.classList.add('bad');
 
@@ -1403,6 +1530,18 @@ function renderQuestion(q, idx) {
     head.appendChild(st);
   }
   card.appendChild(head);
+
+  if (q.type === 'fnam' || q.type === 'feq' || q.type === 'fcmp') {
+    card.appendChild(renderFractionRow(q, idx, right, wrong));
+    if (!state.submitted && q.isReview) {
+      const tip = el('div', 'pretip');
+      tip.appendChild(spanTxt('💡 ', null));
+      tip.appendChild(spanTxt(fracTip(q), null));
+      card.appendChild(tip);
+    }
+    if (wrong) card.appendChild(renderDiag(q));
+    return card;
+  }
 
   const row = el('div', 'qrow');
   const expr = el('div', 'expr');
@@ -1452,7 +1591,7 @@ function renderQuestion(q, idx) {
   if (wrong) {
     const pill = el('div', 'correct-pill');
     pill.appendChild(spanTxt('Answer', 'ar'));
-    pill.appendChild(spanTxt(q.ans, 'tabular'));
+    pill.appendChild(spanTxt(answerText(q), 'tabular'));
     row.appendChild(pill);
   }
   card.appendChild(row);
@@ -1488,6 +1627,89 @@ function factTip(a, b) {
   return `Skip-count by ${lo}, ${hi} times.`;
 }
 
+function fracMini(num, den, cls) {
+  const f = el('span', 'frac ' + (cls || ''));
+  f.appendChild(el('span', 'frac-num', String(num)));
+  f.appendChild(el('span', 'frac-line'));
+  f.appendChild(el('span', 'frac-den', String(den)));
+  return f;
+}
+function barEl(den, shaded) {
+  const bar = el('div', 'frac-vis');
+  for (let i = 0; i < den; i++) bar.appendChild(el('div', 'frac-cell' + (i < shaded ? ' on' : '')));
+  return bar;
+}
+function fracInput(q, idx, field, ph) {
+  const inp = document.createElement('input');
+  inp.className = 'ansbox frac-in';
+  inp.type = 'number'; inp.inputMode = 'numeric'; inp.autocomplete = 'off';
+  inp.placeholder = ph || '?';
+  inp.value = q[field] != null ? q[field] : '';
+  if (state.submitted) inp.readOnly = true;
+  inp.addEventListener('focus', () => { if (state.quiz[idx]._t0 == null) state.quiz[idx]._t0 = Date.now(); });
+  inp.addEventListener('input', e => {
+    state.quiz[idx][field] = e.target.value;
+    const t = Date.now(); state.quiz[idx]._t1 = t; if (state.quiz[idx]._t0 == null) state.quiz[idx]._t0 = t;
+    const segs = document.querySelectorAll('.progress .seg');
+    if (segs[idx]) segs[idx].classList.toggle('filled', answered(state.quiz[idx]));
+  });
+  return inp;
+}
+function renderFractionRow(q, idx, right, wrong) {
+  const row = el('div', 'qrow frac-row');
+  if (q.type === 'fnam') {
+    const left = el('div', 'frac-q');
+    left.appendChild(el('div', 'frac-prompt', 'What fraction is shaded?'));
+    left.appendChild(barEl(q.den, q.shaded));
+    row.appendChild(left);
+    const fin = el('div', 'frac-answer');
+    const numI = fracInput(q, idx, 'givenNum', '▢');
+    const denI = fracInput(q, idx, 'givenDen', '▢');
+    if (state.submitted) { numI.classList.add(right ? 'ok' : 'bad'); denI.classList.add(right ? 'ok' : 'bad'); }
+    fin.appendChild(numI); fin.appendChild(el('div', 'frac-line wide')); fin.appendChild(denI);
+    row.appendChild(fin);
+    if (wrong) { const pill = el('div', 'correct-pill'); pill.appendChild(spanTxt('Answer', 'ar')); pill.appendChild(spanTxt(q.ansNum + '/' + q.ansDen, 'tabular')); row.appendChild(pill); }
+  } else if (q.type === 'feq') {
+    const expr = el('div', 'expr frac-expr');
+    expr.appendChild(fracMini(q.n1, q.d1));
+    expr.appendChild(spanTxt('=', 'eq'));
+    const target = el('span', 'frac');
+    const numI = fracInput(q, idx, 'given', '▢'); numI.classList.add('frac-num-in');
+    if (state.submitted) numI.classList.add(right ? 'ok' : 'bad');
+    target.appendChild(numI); target.appendChild(el('span', 'frac-line')); target.appendChild(el('span', 'frac-den', String(q.d2)));
+    expr.appendChild(target);
+    row.appendChild(expr);
+    if (wrong) { const pill = el('div', 'correct-pill'); pill.appendChild(spanTxt('Answer', 'ar')); pill.appendChild(spanTxt(String(q.ans), 'tabular')); row.appendChild(pill); }
+  } else { // fcmp
+    const expr = el('div', 'expr frac-expr');
+    expr.appendChild(fracMini(q.n1, q.d1));
+    const choices = el('div', 'fcmp');
+    ['<', '=', '>'].forEach(sym => {
+      const b = el('button', 'fcmp-btn', sym);
+      if (state.submitted) {
+        b.disabled = true;
+        if (sym === q.ans) b.classList.add('correct');
+        if (q.given === sym && sym !== q.ans) b.classList.add('wrongpick');
+      } else {
+        if (q.given === sym) b.classList.add('chosen');
+        b.onclick = () => {
+          state.quiz[idx].given = sym;
+          const t = Date.now(); if (state.quiz[idx]._t0 == null) state.quiz[idx]._t0 = t; state.quiz[idx]._t1 = t;
+          choices.querySelectorAll('.fcmp-btn').forEach(x => x.classList.remove('chosen'));
+          b.classList.add('chosen');
+          const segs = document.querySelectorAll('.progress .seg');
+          if (segs[idx]) segs[idx].classList.add('filled');
+        };
+      }
+      choices.appendChild(b);
+    });
+    expr.appendChild(choices);
+    expr.appendChild(fracMini(q.n2, q.d2));
+    row.appendChild(expr);
+  }
+  return row;
+}
+
 function renderDiag(q) {
   const d = diagnose(q, q.given);
   const wrap = el('div', 'diag');
@@ -1509,7 +1731,8 @@ function renderDiag(q) {
   tip.appendChild(spanTxt(d.tip, null));
   wrap.appendChild(tip);
 
-  // AI mini-lesson (kid-facing) — on demand
+  // AI mini-lesson (kid-facing) — on demand, for numeric problem types
+  if (!['mul', 'add', 'sub', 'div'].includes(q.type)) return wrap;
   const teachWrap = el('div', 'teach-wrap');
   const teachBtn = el('button', 'btn btn-ghost teach-btn', '🧠 Teach me this');
   const teachOut = el('div', 'teach-out');
@@ -1542,7 +1765,7 @@ function renderDiag(q) {
 
 function renderSummary() {
   const total = state.quiz.length;
-  const correct = state.quiz.filter(q => Number(q.given) === q.ans).length;
+  const correct = state.quiz.filter(q => answerCorrect(q)).length;
   const wrong = total - correct;
   const ratio = total ? correct / total : 0;
   const wrap = el('div', 'summary');
@@ -1608,7 +1831,7 @@ function renderActionBar() {
 
   const submitBtn = el('button', 'btn btn-primary btn-big');
   if (state.submitted) {
-    const missed = state.quiz.filter(q => Number(q.given) !== q.ans).length;
+    const missed = state.quiz.filter(q => !answerCorrect(q)).length;
     if (missed > 0) {
       submitBtn.textContent = `🔁 Retry missed (${missed})`;
       submitBtn.onclick = retryWrong;
@@ -1668,6 +1891,7 @@ function startFocusedQuiz(seenKey, makeQuiz) {
 }
 function startDivisionPractice() { startFocusedQuiz('divisionLesson', divisionQuiz); }
 function startBigmulPractice() { startFocusedQuiz('bigmulLesson', bigmulQuiz); }
+function startFractionPractice() { startFocusedQuiz('fractionsLesson', fractionQuiz); }
 
 // Concrete → Representational → Abstract lesson for a domain.
 function renderLessonModal(domain) {
@@ -1740,6 +1964,36 @@ function renderLessonModal(domain) {
     const actions = el('div', 'lesson-actions');
     const go = el('button', 'btn btn-primary btn-big', '✏️ Practice bigger ×');
     go.onclick = startBigmulPractice;
+    const later = el('button', 'btn btn-ghost', 'Later');
+    later.onclick = closeLesson;
+    actions.appendChild(later);
+    actions.appendChild(go);
+    m.appendChild(actions);
+  } else if (domain === 'fractions') {
+    const fresh = !Stats.hasSeen('fractionsLesson');
+    m.appendChild(el('div', 'ico-big', '🍕'));
+    m.appendChild(el('h2', null, fresh ? '🎉 New skill unlocked: Fractions' : 'Fractions — equal parts of a whole'));
+    m.appendChild(el('p', null, 'A fraction names equal parts of a whole.'));
+
+    m.appendChild(el('h3', 'lesson-h', '1) Picture it'));
+    m.appendChild(el('p', 'lesson-p', 'This bar is split into 4 equal parts, and 3 are shaded:'));
+    m.appendChild(barEl(4, 3));
+    const eqn = el('div', 'lesson-eqn');
+    eqn.appendChild(spanTxt('= ', null));
+    eqn.appendChild(fracMini(3, 4));
+    eqn.appendChild(spanTxt(' (three quarters)', null));
+    m.appendChild(eqn);
+
+    m.appendChild(el('h3', 'lesson-h', '2) What the numbers mean'));
+    m.appendChild(el('p', 'lesson-p', 'Top number = how many parts you have. Bottom number = how many equal parts in the whole.'));
+
+    m.appendChild(el('h3', 'lesson-h', '3) Two handy tricks'));
+    m.appendChild(el('p', 'lesson-p', 'Equal fractions: split every piece the same way — 1/2 = 2/4 (multiply top and bottom by the same number).'));
+    m.appendChild(el('p', 'lesson-p', 'Comparing: with the same top, more pieces means each piece is smaller, so 1/4 < 1/3.'));
+
+    const actions = el('div', 'lesson-actions');
+    const go = el('button', 'btn btn-primary btn-big', '✏️ Practice fractions');
+    go.onclick = startFractionPractice;
     const later = el('button', 'btn btn-ghost', 'Later');
     later.onclick = closeLesson;
     actions.appendChild(later);
@@ -1869,6 +2123,24 @@ function renderStatsModal() {
       row2.appendChild(learn2);
       row2.appendChild(prac2);
       m.appendChild(row2);
+    }
+
+    // Fractions domain
+    m.appendChild(el('h3', 'stats-h3', '🍕 Fractions'));
+    if (!s.fractions.unlocked) {
+      const fluent = Stats.mulFluentCount();
+      m.appendChild(el('p', 'stats-line', `Locked — unlocks at 50 fluent multiplication facts (now ${fluent}/50).`));
+    } else {
+      const stTxt = s.fractions.state === 'fluent' ? 'fluent 🌟' : s.fractions.state === 'accurate' ? 'accurate' : 'learning';
+      m.appendChild(el('p', 'stats-line', `${s.fractions.attempts} attempts · ${s.fractions.accuracy}% accuracy · ${stTxt}`));
+      const row3 = el('div', 'div-actions');
+      const learn3 = el('button', 'btn btn-ghost', '📖 Lesson');
+      learn3.onclick = () => { state.showLesson = 'fractions'; render(); };
+      const prac3 = el('button', 'btn btn-primary', '✏️ Practice fractions');
+      prac3.onclick = startFractionPractice;
+      row3.appendChild(learn3);
+      row3.appendChild(prac3);
+      m.appendChild(row3);
     }
 
     if (s.hist.length >= 2) {
