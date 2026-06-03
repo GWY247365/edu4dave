@@ -385,9 +385,14 @@ const Stats = (() => {
     if (!f || (f.right || 0) + (f.wrong || 0) === 0) return 'new';
     const rec = f.recent || '';
     const last3ok = rec.length >= 3 && rec.slice(-3) === '111';
+    // Pre-engine data may have fewer than 3 recent records — fall back to the
+    // overall right/wrong ratio so legacy accounts still count as accurate.
+    const lastNotWrong = rec.length === 0 || rec.slice(-1) !== '0';
+    const legacyOk = rec.length < 3 && (f.right || 0) >= 3 && (f.right || 0) >= 3 * (f.wrong || 0) && lastNotWrong;
+    const accurate = last3ok || legacyOk;
     const fluentSpeed = f.avgT != null && f.avgT <= FAST_MS;
-    if (last3ok && fluentSpeed && (f.stab || 0) >= STAB_FLUENT) return 'fluent';
-    if (last3ok) return 'accurate';
+    if (accurate && fluentSpeed && (f.stab || 0) >= STAB_FLUENT) return 'fluent';
+    if (accurate) return 'accurate';
     return 'learning';
   }
   // "Mastered" for unlocks/counts = accurate or better (speed is a bonus, not a gate).
