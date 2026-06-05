@@ -2107,6 +2107,10 @@ function renderStatsModal() {
       m.appendChild(bgrid);
     }
 
+    // Defensive: if rendering still says Locked but a threshold has already
+    // been crossed (e.g. legacy data, upgraded mastery rules), unlock now.
+    if (Stats.checkUnlocks()) { setTimeout(() => render(), 0); }
+
     // Division domain
     m.appendChild(el('h3', 'stats-h3', '➗ Division'));
     if (!s.division.unlocked) {
@@ -2391,11 +2395,23 @@ setTimeout(() => {
   if (first) first.focus();
 }, 100);
 
+// Catch up on any thresholds already crossed by accumulated history (e.g.
+// after a stats-engine upgrade), so unlocks happen on App open — not only
+// at the end of the next quiz. Show the new-skill lesson if anything fires.
+(function initCheckUnlocks() {
+  const unlocked = Stats.checkUnlocks();
+  if (unlocked) { state.showLesson = unlocked; render(); }
+})();
+
 // On load, if a family code is set, pull + merge cloud progress
 (function initCloudSync() {
   const code = getFamilyCode();
   if (!code) return;
-  cloudSync(code).then(() => render()).catch(() => {});
+  cloudSync(code).then(() => {
+    const unlocked = Stats.checkUnlocks();
+    if (unlocked) state.showLesson = unlocked;
+    render();
+  }).catch(() => {});
 })();
 
 // PWA: register service worker for offline use
