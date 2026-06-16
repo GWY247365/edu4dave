@@ -248,6 +248,18 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .mastery-fill{height:100%;background:var(--brand);border-radius:5px;transition:width .4s ease}
 .mastery-fill.high{background:var(--ok)}
 .mastery-fill.low{background:var(--warn)}
+.mine-modal{max-width:460px;text-align:left}
+.mine-modal h2{text-align:left}
+.mine-streak{margin:0 0 14px;font-size:15px;color:var(--brand-deep);font-weight:600;line-height:1.4}
+.mine-card{background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:12px 14px;margin-bottom:10px}
+.mine-card-top{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.mine-emoji{font-size:22px}
+.mine-name{font-size:17px;font-weight:700;color:var(--ink);flex:1}
+.mine-stage{font-size:14px;font-weight:700;color:var(--ink-2)}
+.mine-card .mastery-meter{height:12px;margin:0 0 10px}
+.mine-go{width:100%;height:48px;font-size:16px}
+.mine-next{margin:6px 0 0;font-size:14px;color:var(--ink-3);text-align:center}
+.mine-done{width:100%;margin-top:14px}
 .stats-h3{margin:14px 0 8px;font-size:14px;color:var(--ink-2);text-transform:uppercase;letter-spacing:.05em;font-weight:700}
 .weak-list{display:flex;flex-direction:column;gap:6px}
 .weak-row{display:flex;align-items:center;gap:10px;font-size:14px}
@@ -1351,6 +1363,7 @@ const state = {
   timeUp: false,
   showTimeoutModal: false,
   showStats: false,
+  showMine: false,
   showLesson: null,
   isPractice: false,
   finalElapsed: null,
@@ -1425,6 +1438,7 @@ function startFocus() {
   state.submitted = false;
   state.timeUp = false;
   state.showStats = false;
+  state.showMine = false;
   state.showTimeoutModal = false;
   state.finalElapsed = null;
   startTimer();
@@ -1514,6 +1528,7 @@ function render() {
   app.appendChild(renderActionBar());
   if (state.showTimeoutModal) app.appendChild(renderTimeoutModal());
   if (state.showStats) app.appendChild(renderStatsModal());
+  if (state.showMine) app.appendChild(renderMineModal());
   if (state.showLesson) app.appendChild(renderLessonModal(state.showLesson));
   renderTimer();
 }
@@ -1552,19 +1567,24 @@ function renderTopbar() {
     chip.setAttribute('aria-label', 'Daily streak');
     chip.appendChild(spanTxt('🔥', 'fire'));
     chip.appendChild(spanTxt(String(sk.current), 'streak-num'));
-    chip.onclick = () => { state.showStats = true; render(); };
+    chip.onclick = () => { state.showMine = true; render(); };
     if (sk.current >= 7) chip.classList.add('hot');
     bar.appendChild(brand); bar.appendChild(chip);
   } else {
     bar.appendChild(brand);
   }
+  const mine = el('button', 'iconbtn');
+  mine.title = 'My progress';
+  mine.setAttribute('aria-label', 'My progress');
+  mine.textContent = '🌱';
+  mine.onclick = () => { state.showMine = true; render(); };
   const stats = el('button', 'iconbtn');
-  stats.title = 'Stats';
-  stats.setAttribute('aria-label', 'Stats');
+  stats.title = 'Stats (for grown-ups)';
+  stats.setAttribute('aria-label', 'Stats for grown-ups');
   stats.textContent = '📊';
   stats.onclick = () => { state.showStats = true; render(); };
   const timer = el('div', 'timer'); timer.id = 'timer';
-  bar.appendChild(stats); bar.appendChild(timer);
+  bar.appendChild(mine); bar.appendChild(stats); bar.appendChild(timer);
   return bar;
 }
 
@@ -2014,6 +2034,7 @@ function startFocusedQuiz(seenKey, makeQuiz) {
   Stats.markSeen(seenKey);
   state.showLesson = null;
   state.showStats = false;
+  state.showMine = false;
   state.quiz = makeQuiz();
   state.isPractice = false;
   state.submitted = false;
@@ -2135,6 +2156,69 @@ function renderLessonModal(domain) {
     actions.appendChild(go);
     m.appendChild(actions);
   }
+
+  bg.appendChild(m);
+  return bg;
+}
+
+function closeMine() { state.showMine = false; render(); }
+function masteryStage(pct) {
+  if (pct >= 90) return { emoji: '⭐', label: 'Star' };
+  if (pct >= 70) return { emoji: '🌳', label: 'Strong' };
+  if (pct >= 40) return { emoji: '🌿', label: 'Growing' };
+  return { emoji: '🌱', label: 'Seedling' };
+}
+// Kid-facing open learner model: shows growth and lets the child choose what
+// to practice (autonomy + competence). Encouraging, growth-mindset framing.
+function renderMineModal() {
+  const s = Stats.summary();
+  const bg = el('div', 'modal-bg');
+  bg.addEventListener('click', e => { if (e.target === bg) closeMine(); });
+  const m = el('div', 'modal mine-modal');
+
+  const head = el('div', 'stats-head');
+  head.appendChild(el('h2', null, '🌱 My Progress'));
+  const closeBtn = el('button', 'iconbtn close', '✕');
+  closeBtn.onclick = closeMine;
+  head.appendChild(closeBtn);
+  m.appendChild(head);
+
+  const sk = s.streak;
+  if (sk.current > 0) m.appendChild(el('p', 'mine-streak', `🔥 ${sk.current}-day streak — you keep showing up. That's how brains grow!`));
+  else m.appendChild(el('p', 'mine-streak', `Every quiz makes your math brain stronger. Pick something to grow! 🌱`));
+
+  // Build the list of skills the child can see/choose.
+  const rows = [];
+  rows.push({ name: 'Times tables', emoji: '✖️', mastery: s.mastery, start: startFocus, cta: 'Practice my tricky ones' });
+  if (s.division.unlocked) rows.push({ name: 'Division', emoji: '➗', mastery: s.division.mastery, start: startDivisionPractice, cta: 'Practice' });
+  if (s.bigmul.unlocked) rows.push({ name: 'Bigger ×', emoji: '🔢', mastery: s.bigmul.mastery, start: startBigmulPractice, cta: 'Practice' });
+  if (s.fractions.unlocked) rows.push({ name: 'Fractions', emoji: '🍕', mastery: s.fractions.mastery, start: startFractionPractice, cta: 'Practice' });
+
+  rows.forEach(r => {
+    const stg = masteryStage(r.mastery);
+    const card = el('div', 'mine-card');
+    const top = el('div', 'mine-card-top');
+    top.appendChild(el('span', 'mine-emoji', r.emoji));
+    top.appendChild(el('span', 'mine-name', r.name));
+    top.appendChild(el('span', 'mine-stage', `${stg.emoji} ${stg.label}`));
+    card.appendChild(top);
+    card.appendChild(masteryMeter(r.mastery));
+    const btn = el('button', 'btn btn-primary mine-go', '✏️ ' + r.cta);
+    btn.onclick = r.start;
+    card.appendChild(btn);
+    m.appendChild(card);
+  });
+
+  // Locked teasers — show what's coming, framed as a goal.
+  const next = [];
+  if (!s.division.unlocked) next.push('Division');
+  else if (!s.bigmul.unlocked) next.push('Bigger ×');
+  else if (!s.fractions.unlocked) next.push('Fractions');
+  if (next.length) m.appendChild(el('p', 'mine-next', `🔒 Keep practicing your times tables to unlock ${next[0]}!`));
+
+  const done = el('button', 'btn btn-ghost mine-done', 'Done');
+  done.onclick = closeMine;
+  m.appendChild(done);
 
   bg.appendChild(m);
   return bg;
