@@ -936,7 +936,21 @@ function genDiv() {
 function mulQuestion(a, b) {
   const stat = Stats.getFact(a, b);
   const isReview = !!stat && (stat.wrong || 0) > 0 && Stats.factWeight(stat) > 1.5;
-  return { type: 'mul', a, b, ans: a * b, label: 'Multiplication · ×', isReview };
+  // Procedural scaffolds for novices: only on facts the child is still
+  // learning (state ∈ new|learning), and never with the smallest operands
+  // (those are easy enough without scaffolding).
+  const fState = Stats.itemState({ type: 'mul', a, b });
+  const scaffoldable = (fState === 'new' || fState === 'learning') &&
+                       Math.min(a, b) >= 3 && Math.max(a, b) >= 4;
+  let scaffold = null;
+  if (scaffoldable && Math.random() < 0.65) {
+    // Two scaffolds: 'addition' (concrete: repeated add) and 'split'
+    // (use a known fact to reach the unknown). Pick by which fits the operands.
+    const lo = Math.min(a, b), hi = Math.max(a, b);
+    if (lo <= 6) scaffold = { kind: 'addition', lo, hi };
+    else scaffold = { kind: 'split', lo, hi };
+  }
+  return { type: 'mul', a, b, ans: a * b, label: 'Multiplication · ×', isReview, scaffold };
 }
 
 // ---------- Fractions (CC grade 3: denominators 2,3,4,6,8) ----------
@@ -996,7 +1010,7 @@ function difficultyBand() {
   const m = Stats.overallMulMastery(); // 0..1
   if (m < 0.45) return 'novice';
   if (m < 0.70) return 'developing';
-  if (m < 0.88) return 'practicing';
+  if (m < 0.92) return 'practicing';
   return 'expert';
 }
 function newQuiz() {
@@ -1741,6 +1755,19 @@ function renderQuestion(q, idx) {
     const tens = Math.floor(q.a / 10) * 10, ones = q.a % 10;
     expr.classList.add('expr-scaffold');
     expr.appendChild(spanTxt(`${q.a} × ${q.b} = ${tens}×${q.b} + ${ones}×${q.b} = ${tens * q.b} + ${ones * q.b} =`, 'scaffold-line'));
+  } else if (q.scaffold && q.type === 'mul') {
+    // Novice scaffolds for table facts: repeated addition or split-known.
+    expr.classList.add('expr-scaffold');
+    const s = q.scaffold;
+    if (s.kind === 'addition') {
+      const parts = Array(s.hi).fill(s.lo).join(' + ');
+      expr.appendChild(spanTxt(`${q.a} × ${q.b} = ${parts} =`, 'scaffold-line'));
+    } else { // split-known
+      const half = Math.floor(s.hi / 2);
+      const rest = s.hi - half;
+      const partA = s.lo * half, partB = s.lo * rest;
+      expr.appendChild(spanTxt(`${q.a} × ${q.b} = (${s.lo}×${half}) + (${s.lo}×${rest}) = ${partA} + ${partB} =`, 'scaffold-line'));
+    }
   } else {
     expr.appendChild(spanTxt(q.a, 'tabular'));
     expr.appendChild(spanTxt(q.type === 'mul' ? '×' : q.type === 'add' ? '+' : q.type === 'sub' ? '−' : '÷', 'op'));
