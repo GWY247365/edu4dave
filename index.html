@@ -243,7 +243,11 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .stat-tile{background:var(--brand-soft);border:1px solid var(--brand-soft-2);border-radius:10px;padding:10px 8px;text-align:center}
 .stat-val{font-size:22px;font-weight:800;color:var(--brand-deep);font-variant-numeric:tabular-nums;line-height:1.1}
 .stat-label{font-size:11px;color:var(--ink-3);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-top:2px}
-.stats-line{margin:6px 0 10px;font-size:13px;color:var(--ink-3)}
+.stats-line{margin:6px 0 4px;font-size:13px;color:var(--ink-3)}
+.mastery-meter{height:8px;background:var(--border-soft);border-radius:5px;overflow:hidden;margin:0 0 10px}
+.mastery-fill{height:100%;background:var(--brand);border-radius:5px;transition:width .4s ease}
+.mastery-fill.high{background:var(--ok)}
+.mastery-fill.low{background:var(--warn)}
 .stats-h3{margin:14px 0 8px;font-size:14px;color:var(--ink-2);text-transform:uppercase;letter-spacing:.05em;font-weight:700}
 .weak-list{display:flex;flex-direction:column;gap:6px}
 .weak-row{display:flex;align-items:center;gap:10px;font-size:14px}
@@ -336,6 +340,15 @@ const Stats = (() => {
   const FAST_MS = 6000;      // a correct answer faster than this counts toward fluency
   const STAB_FLUENT = 12;    // days of stability needed to count a fact as mastered
   const STAB_MAX = 400;      // cap on stability (days)
+  // Bayesian Knowledge Tracing params → a calibrated P(known) per fact.
+  const BKT = { L0: 0.2, T: 0.15, S: 0.1, G: 0.2 }; // prior, learn, slip, guess
+  function bktUpdate(pL, correct) {
+    const prior = (pL == null) ? BKT.L0 : pL;
+    const cond = correct
+      ? (prior * (1 - BKT.S)) / (prior * (1 - BKT.S) + (1 - prior) * BKT.G)
+      : (prior * BKT.S) / (prior * BKT.S + (1 - prior) * (1 - BKT.G));
+    return cond + (1 - cond) * BKT.T; // account for learning this opportunity
+  }
 
   // Migrate an old {right,wrong,lastSeen} fact to the FSRS-lite shape.
   function migrateFact(f) {
@@ -347,7 +360,9 @@ const Stats = (() => {
     else if (right > wrong) stab = 2;
     else if (right > 0) stab = 1;
     else stab = 0.5;
-    return { right, wrong, lastSeen: last, stab, last, recent: '', avgT: null, fast: 0 };
+    // Seed P(known) from Laplace-smoothed accuracy; live BKT refines it.
+    const pL = (right + 1) / (right + wrong + 2);
+    return { right, wrong, lastSeen: last, stab, last, recent: '', avgT: null, fast: 0, pL };
   }
   function migrateFacts(facts) {
     facts = facts || {};
@@ -412,9 +427,10 @@ const Stats = (() => {
     if (!stat) return 1;
     return Math.max(0.2, Math.min(8, 1 + 2 * (stat.wrong || 0) - 0.5 * (stat.right || 0)));
   }
-  function blankFact() { return { right: 0, wrong: 0, lastSeen: 0, stab: 0, last: 0, recent: '', avgT: null, fast: 0 }; }
+  function blankFact() { return { right: 0, wrong: 0, lastSeen: 0, stab: 0, last: 0, recent: '', avgT: null, fast: 0, pL: BKT.L0 }; }
   function applyResult(f, correct, ms) {
     const now = Date.now();
+    f.pL = bktUpdate(f.pL, correct); // calibrated P(known)
     const wasFast = correct && typeof ms === 'number' && ms > 0 && ms <= FAST_MS;
     if (correct) {
       f.right++;
@@ -586,14 +602,16 @@ const Stats = (() => {
     });
     return out;
   }
-  function factMapStats(map) {
+  function factMapStats(map, total) {
     const now = Date.now();
-    let attempts = 0, right = 0, mastered = 0;
+    let attempts = 0, right = 0, mastered = 0, pSum = 0, seen = 0;
     const weak = [];
     for (const k of Object.keys(map)) {
       const f = map[k];
       attempts += (f.right || 0) + (f.wrong || 0);
       right += (f.right || 0);
+      pSum += (f.pL != null ? f.pL : BKT.L0);
+      seen++;
       if (isMasteredState(factState(f, now))) mastered++;
       if ((f.wrong || 0) > 0) {
         const [a, b] = k.split('x').map(Number);
@@ -601,8 +619,12 @@ const Stats = (() => {
       }
     }
     weak.sort((x, y) => y.weight - x.weight || y.wrong - x.wrong);
+    // Mastery % over the WHOLE fact set (unseen facts count as the BKT prior),
+    // so it reflects progress through the curriculum, not just practiced items.
+    const denom = total || seen || 1;
+    const mastery = Math.round(100 * (pSum + (denom - seen) * BKT.L0) / denom);
     return {
-      attempts, mastered,
+      attempts, mastered, mastery,
       accuracy: attempts ? Math.round(100 * right / attempts) : 0,
       weak: weak.slice(0, 6),
     };
@@ -614,12 +636,13 @@ const Stats = (() => {
       unlocked: isUnlocked(name),
       attempts,
       accuracy: attempts ? Math.round(100 * (f.right || 0) / attempts) : 0,
+      mastery: Math.round(100 * (f && f.pL != null ? f.pL : BKT.L0)),
       state: f ? factState(f, Date.now()) : 'new',
     };
   }
   function summary() {
-    const mul = factMapStats(data.facts);
-    const div = factMapStats(data.divFacts);
+    const mul = factMapStats(data.facts, 66);   // 2..12 × 2..12, a≤b
+    const div = factMapStats(data.divFacts, 66); // same family count
     const last = data.hist[data.hist.length - 1];
     const avgScore = data.hist.length ? data.hist.reduce((s, h) => s + h.c, 0) / data.hist.length : 0;
     return {
@@ -629,12 +652,14 @@ const Stats = (() => {
       totalAttempts: mul.attempts,
       totalAccuracy: mul.accuracy,
       mastered: mul.mastered,
+      mastery: mul.mastery,
       weak: mul.weak,
       division: {
         unlocked: isUnlocked('division'),
         attempts: div.attempts,
         accuracy: div.accuracy,
         mastered: div.mastered,
+        mastery: div.mastery,
         weak: div.weak,
       },
       bigmul: skillSummary('bigmul'),
@@ -2140,12 +2165,13 @@ function renderStatsModal() {
     tiles.appendChild(streakTile);
     tiles.appendChild(statTile('Quizzes', s.quizzesDone));
     tiles.appendChild(statTile('Last score', s.lastScore));
-    tiles.appendChild(statTile('Mul accuracy', s.totalAccuracy + '%'));
+    tiles.appendChild(statTile('Mul mastery', s.mastery + '%'));
     m.appendChild(tiles);
 
     const factsLine = el('p', 'stats-line',
-      `Multiplication: ${s.totalAttempts} attempts · ${s.mastered} mastered`);
+      `Multiplication: ${s.totalAttempts} attempts · ${s.totalAccuracy}% accurate · ${s.mastered}/66 facts mastered`);
     m.appendChild(factsLine);
+    m.appendChild(masteryMeter(s.mastery));
 
     if (s.weak.length) {
       m.appendChild(el('h3', 'stats-h3', 'Practice these next'));
@@ -2210,7 +2236,8 @@ function renderStatsModal() {
       const fluent = Stats.mulFluentCount();
       m.appendChild(el('p', 'stats-line', `Locked — unlocks when 24 multiplication facts are mastered (now ${fluent}/24). Keep practicing your times tables!`));
     } else {
-      m.appendChild(el('p', 'stats-line', `${s.division.attempts} attempts · ${s.division.accuracy}% accuracy · ${s.division.mastered} mastered`));
+      m.appendChild(el('p', 'stats-line', `${s.division.attempts} attempts · ${s.division.accuracy}% accurate · ${s.division.mastery}% mastery`));
+      m.appendChild(masteryMeter(s.division.mastery));
       const row = el('div', 'div-actions');
       const learn = el('button', 'btn btn-ghost', '📖 Lesson');
       learn.onclick = () => { state.showLesson = 'division'; render(); };
@@ -2228,7 +2255,8 @@ function renderStatsModal() {
       m.appendChild(el('p', 'stats-line', `Locked — unlocks at 40 mastered multiplication facts (now ${fluent}/40).`));
     } else {
       const stTxt = s.bigmul.state === 'fluent' ? 'fluent 🌟' : s.bigmul.state === 'accurate' ? 'accurate' : 'learning';
-      m.appendChild(el('p', 'stats-line', `${s.bigmul.attempts} attempts · ${s.bigmul.accuracy}% accuracy · ${stTxt}`));
+      m.appendChild(el('p', 'stats-line', `${s.bigmul.attempts} attempts · ${s.bigmul.accuracy}% accurate · ${s.bigmul.mastery}% mastery · ${stTxt}`));
+      m.appendChild(masteryMeter(s.bigmul.mastery));
       const row2 = el('div', 'div-actions');
       const learn2 = el('button', 'btn btn-ghost', '📖 Lesson');
       learn2.onclick = () => { state.showLesson = 'bigmul'; render(); };
@@ -2246,7 +2274,8 @@ function renderStatsModal() {
       m.appendChild(el('p', 'stats-line', `Locked — unlocks at 50 mastered multiplication facts (now ${fluent}/50).`));
     } else {
       const stTxt = s.fractions.state === 'fluent' ? 'fluent 🌟' : s.fractions.state === 'accurate' ? 'accurate' : 'learning';
-      m.appendChild(el('p', 'stats-line', `${s.fractions.attempts} attempts · ${s.fractions.accuracy}% accuracy · ${stTxt}`));
+      m.appendChild(el('p', 'stats-line', `${s.fractions.attempts} attempts · ${s.fractions.accuracy}% accurate · ${s.fractions.mastery}% mastery · ${stTxt}`));
+      m.appendChild(masteryMeter(s.fractions.mastery));
       const row3 = el('div', 'div-actions');
       const learn3 = el('button', 'btn btn-ghost', '📖 Lesson');
       learn3.onclick = () => { state.showLesson = 'fractions'; render(); };
@@ -2391,6 +2420,16 @@ function statTile(label, value) {
   t.appendChild(el('div', 'stat-val', String(value)));
   t.appendChild(el('div', 'stat-label', label));
   return t;
+}
+// Calibrated BKT mastery meter (0-100%).
+function masteryMeter(pct) {
+  const wrap = el('div', 'mastery-meter');
+  const fill = el('div', 'mastery-fill');
+  fill.style.width = Math.max(0, Math.min(100, pct)) + '%';
+  if (pct >= 80) fill.classList.add('high');
+  else if (pct < 40) fill.classList.add('low');
+  wrap.appendChild(fill);
+  return wrap;
 }
 
 function closeStats() { state.showStats = false; render(); }
