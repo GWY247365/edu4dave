@@ -116,6 +116,7 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .diag p{margin:4px 0;font-size:14px;line-height:1.5;color:var(--ink-2)}
 .diag .why{font-weight:600;color:var(--warn-deep)}
 .diag .work{margin-top:8px;font-family:'JetBrains Mono','SF Mono',Menlo,monospace;font-size:14px;line-height:1.55;background:#fff;border:1px dashed #fed7aa;border-radius:8px;padding:10px 12px;white-space:pre-wrap;color:var(--ink-1);overflow-x:auto}
+.diag .work-toggle{margin-top:8px;font-size:13px;padding:6px 12px;background:transparent;border:1px dashed #fed7aa;color:var(--warn-deep)}
 .diag .work b{color:var(--brand-deep);font-weight:700}
 .wgrid{--cell:32px;display:inline-block;margin:6px 0 12px;background:#fbfdff;border:1px solid #c7d4e2;border-radius:4px;background-image:linear-gradient(#dde6f0 1px,transparent 1px),linear-gradient(90deg,#dde6f0 1px,transparent 1px);background-size:var(--cell) var(--cell);background-position:0 0;vertical-align:top}
 .wrow{display:flex;align-items:center;height:var(--cell);margin:0;padding:0}
@@ -578,9 +579,13 @@ const Stats = (() => {
   function bucketWeight(key) {
     return countWeight(data.buckets[key]);
   }
-  function pickBucket(prefix) {
+  function pickBucket(prefix, bias) {
+    // Buckets are 0 (no carry/borrow, easiest) → 2 (two, hardest). Default is
+    // accuracy-weighted; 'easy' tips toward 0, 'hard' tips toward 2.
     const opts = [0, 1, 2];
-    const weights = opts.map(k => bucketWeight(`${prefix}:${k}`));
+    let weights = opts.map(k => bucketWeight(`${prefix}:${k}`));
+    if (bias === 'easy') weights = [weights[0] * 3, weights[1], weights[2] * 0.3];
+    else if (bias === 'hard') weights = [weights[0] * 0.3, weights[1], weights[2] * 3];
     const total = weights.reduce((s, x) => s + x, 0);
     let r = Math.random() * total;
     for (let i = 0; i < opts.length; i++) {
@@ -589,11 +594,22 @@ const Stats = (() => {
     }
     return opts[opts.length - 1];
   }
-  function pickMulFacts(n) {
+  function pickMulFacts(n, bias) {
+    // bias: 'easy' aggressively favors high-pL facts (target 85% success);
+    // 'hard' favors weak/due; 'auto' uses retrievability.
     const all = [];
     for (let a = 2; a <= 12; a++) {
       for (let b = a; b <= 12; b++) {
-        all.push({ a, b, w: mulWeight(getFact(a, b)) });
+        const f = getFact(a, b);
+        const pL = f && f.pL != null ? f.pL : BKT.L0;
+        let w = mulWeight(f);
+        if (bias === 'easy') {
+          // Want items the child likely gets right. p^4 makes the bias steep.
+          w = 0.05 + 4 * Math.pow(pL, 4);
+        } else if (bias === 'hard') {
+          w = w * 1.4;
+        }
+        all.push({ a, b, w });
       }
     }
     const out = [];
@@ -605,6 +621,19 @@ const Stats = (() => {
       all.splice(idx, 1);
     }
     return out;
+  }
+  // Overall p(known) for the difficulty controller. We *only* average over
+  // facts the child has been exposed to — including unseen facts at the BKT
+  // prior would peg every learner near 0.2 regardless of skill.
+  function overallMulMastery() {
+    let p = 0, n = 0;
+    for (const k in data.facts) {
+      const f = data.facts[k];
+      if ((f.right || 0) + (f.wrong || 0) === 0) continue;
+      p += (f.pL != null ? f.pL : BKT.L0);
+      n++;
+    }
+    return n >= 5 ? p / n : 0.4; // tiny early sample → middle band
   }
   function bucketSummary() {
     const out = {};
@@ -720,7 +749,7 @@ const Stats = (() => {
     if (!data.pin && remote.pin) data.pin = remote.pin;
     save(data);
   }
-  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount };
+  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery };
 })();
 
 // Merge helpers for cross-device sync (keep the richer record, union history)
@@ -960,29 +989,62 @@ function shuffleQuiz(qs) {
   return qs.map((q, i) => ({ ...q, id: i, given: '' }));
 }
 
+// Difficulty controller targeting the 85% rule (Wilson et al., Nature Comms
+// 2019): allocate the 6 non-add/sub slots by a band derived from the child's
+// overall multiplication mastery, and bias fact selection within mul/div.
+function difficultyBand() {
+  const m = Stats.overallMulMastery(); // 0..1
+  if (m < 0.45) return 'novice';
+  if (m < 0.70) return 'developing';
+  if (m < 0.88) return 'practicing';
+  return 'expert';
+}
 function newQuiz() {
   const qs = [];
-  // Always 2 addition + 2 subtraction; the other 6 slots split across unlocked domains.
-  let div = Stats.isUnlocked('division') ? 2 : 0;
-  let big = Stats.isUnlocked('bigmul') ? (Stats.skillState('bigmul') === 'fluent' ? 1 : 2) : 0;
-  let frac = Stats.isUnlocked('fractions') ? (Stats.skillState('fractions') === 'fluent' ? 1 : 2) : 0;
-  let mul = 6 - div - big - frac;
-  // Keep at least 1 multiplication-fact slot to maintain the tables.
-  while (mul < 1) {
-    if (div > 1) { div--; mul++; }
-    else if (big > 1) { big--; mul++; }
-    else if (frac > 1) { frac--; mul++; }
-    else break;
+  const band = difficultyBand();
+  const divOn = Stats.isUnlocked('division');
+  const bigOn = Stats.isUnlocked('bigmul');
+  const fracOn = Stats.isUnlocked('fractions');
+
+  // Allocate 6 non-add/sub slots by band — more mul-fact reps for novices
+  // (easier, builds confidence), more challenge slots for experts.
+  let mul, big, div, frac;
+  if (band === 'novice') {
+    mul = 6 - (divOn ? 1 : 0); big = 0; div = divOn ? 1 : 0; frac = 0;
+  } else if (band === 'developing') {
+    mul = 4 - (fracOn ? 1 : 0); big = bigOn ? 1 : 0; div = divOn ? 1 : 0; frac = fracOn ? 1 : 0;
+  } else if (band === 'practicing') {
+    mul = 2; big = bigOn ? 2 : 0; div = divOn ? 1 : 0; frac = fracOn ? 1 : 0;
+  } else { // expert
+    mul = 1; big = bigOn ? 2 : 0; div = divOn ? 2 : 0; frac = fracOn ? 2 : 0;
   }
-  Stats.pickMulFacts(mul).forEach(p => {
+  // Backfill into mul if some domains are still locked.
+  const target = 6;
+  let used = mul + big + div + frac;
+  if (used < target) mul += (target - used);
+  // Trim to exactly 6 by dropping from the hardest available domain.
+  used = mul + big + div + frac;
+  while (used > target) {
+    if (frac > 0 && band !== 'expert') frac--;
+    else if (big > 0) big--;
+    else if (div > 0) div--;
+    else if (mul > 1) mul--;
+    else break;
+    used = mul + big + div + frac;
+  }
+  // Bias mul-fact selection: novices get easier, experts get harder.
+  const mulBias = band === 'novice' || band === 'developing' ? 'easy'
+              : band === 'expert' ? 'hard' : 'auto';
+  Stats.pickMulFacts(mul, mulBias).forEach(p => {
     const flip = Math.random() < 0.5;
     qs.push(mulQuestion(flip ? p.b : p.a, flip ? p.a : p.b));
   });
   for (let i = 0; i < big; i++) qs.push(genBigMul());
   for (let i = 0; i < div; i++) qs.push(genDiv());
   for (let i = 0; i < frac; i++) qs.push(genFraction());
-  for (let i = 0; i < 2; i++) qs.push(genAdd(Stats.pickBucket('add')));
-  for (let i = 0; i < 2; i++) qs.push(genSub(Stats.pickBucket('sub')));
+  const bucketBias = band === 'novice' ? 'easy' : band === 'expert' ? 'hard' : 'auto';
+  for (let i = 0; i < 2; i++) qs.push(genAdd(Stats.pickBucket('add', bucketBias)));
+  for (let i = 0; i < 2; i++) qs.push(genSub(Stats.pickBucket('sub', bucketBias)));
   return shuffleQuiz(qs);
 }
 
@@ -1156,19 +1218,19 @@ function diagAdd(q, g) {
   if (g === noCarry && noCarry !== ans) {
     const cols = whichColumnsNeedCarry(a, b);
     return {
-      why: `You added each column but forgot to carry. The ${cols.join(' and ')} column added up to 10 or more, so 1 needs to carry over to the next column.`,
+      why: `You forgot to carry. The ${cols.join(' and ')} column went over 10.`,
       work: buildAddWork(a, b),
-      tip: 'When a column adds to 10 or more, write the ones digit and carry the 1 to the next column on the left.'
+      tip: 'When a column adds to 10 or more, carry the 1 to the next column.'
     };
   }
 
-  if (diff === -10) return { why: 'You forgot one carry — from the ones to the tens (off by 10).', work: buildAddWork(a, b), tip: 'When the ones add to 10 or more, add 1 to the tens column.' };
-  if (diff === -100) return { why: 'You forgot one carry — from the tens to the hundreds (off by 100).', work: buildAddWork(a, b), tip: 'When the tens add to 10 or more, add 1 to the hundreds column.' };
-  if (diff === -110) return { why: 'You missed both carries (off by 110).', work: buildAddWork(a, b), tip: 'After adding each column, check from right to left: did any column reach 10? Carry 1 to the next.' };
+  if (diff === -10) return { why: 'You missed the carry from ones to tens (off by 10).', work: buildAddWork(a, b), tip: 'When the ones add to 10 or more, add 1 to the tens.' };
+  if (diff === -100) return { why: 'You missed the carry from tens to hundreds (off by 100).', work: buildAddWork(a, b), tip: 'When the tens add to 10 or more, add 1 to the hundreds.' };
+  if (diff === -110) return { why: 'You missed both carries (off by 110).', work: buildAddWork(a, b), tip: 'Check each column right-to-left: any column ≥ 10? Carry 1.' };
 
-  if (Math.abs(diff) <= 3) return { why: `Only off by ${Math.abs(diff)} — a small slip in one column.`, work: buildAddWork(a, b), tip: 'Write each column total down on scratch paper and double-check it.' };
+  if (Math.abs(diff) <= 3) return { why: `So close — off by ${Math.abs(diff)}. A small slip in one column.`, work: buildAddWork(a, b), tip: 'Double-check each column total on scratch paper.' };
 
-  return { why: `You were off by ${Math.abs(diff)} — likely a misalignment or a missed digit.`, work: buildAddWork(a, b), tip: 'Stack the numbers vertically: ones under ones, tens under tens, hundreds under hundreds.' };
+  return { why: `Off by ${Math.abs(diff)} — probably lined up the columns wrong.`, work: buildAddWork(a, b), tip: 'Line up ones under ones, tens under tens, hundreds under hundreds.' };
 }
 
 function diagSub(q, g) {
@@ -1178,20 +1240,20 @@ function diagSub(q, g) {
   const noBorrow = subAbsPerColumn(a, b);
   if (g === noBorrow && noBorrow !== ans) {
     return {
-      why: 'You took the bigger digit minus the smaller digit in each column instead of borrowing.',
+      why: 'You did bigger-minus-smaller in each column instead of borrowing.',
       work: buildSubWork(a, b),
-      tip: 'Subtraction is "top minus bottom". When the top is smaller, borrow 1 from the next column (it becomes +10).'
+      tip: 'When the top is smaller, borrow 1 (worth 10) from the column to its left.'
     };
   }
-  if (diff === 10) return { why: 'You forgot one borrow — when the ones column was too small to subtract, you should have borrowed from the tens (off by 10).', work: buildSubWork(a, b), tip: 'When the top digit is smaller than the bottom, borrow 1 (worth 10) from the column to its left.' };
-  if (diff === 100) return { why: 'You forgot one borrow — from the hundreds to the tens (off by 100).', work: buildSubWork(a, b), tip: 'When borrowing from the hundreds, remember to subtract 1 from the hundreds digit.' };
-  if (diff === 110) return { why: 'You missed both borrows (off by 110).', work: buildSubWork(a, b), tip: 'Check each column: if the top is smaller than the bottom, you must borrow.' };
+  if (diff === 10) return { why: 'You missed the borrow from tens (off by 10).', work: buildSubWork(a, b), tip: 'Top smaller than bottom? Borrow 1 — it becomes +10.' };
+  if (diff === 100) return { why: 'You missed the borrow from hundreds (off by 100).', work: buildSubWork(a, b), tip: 'When you borrow from the hundreds, subtract 1 from that hundreds digit.' };
+  if (diff === 110) return { why: 'You missed both borrows (off by 110).', work: buildSubWork(a, b), tip: 'Check each column: top smaller than bottom? Borrow.' };
 
-  if (g === b - a) return { why: 'You swapped the two numbers — you computed the smaller minus the bigger.', work: buildSubWork(a, b), tip: `${a} − ${b} means "start with ${a} and take away ${b}", not the other way around.` };
+  if (g === b - a) return { why: 'You swapped the numbers — that was smaller minus bigger.', work: buildSubWork(a, b), tip: `${a} − ${b} means: start with ${a}, take away ${b}.` };
 
-  if (Math.abs(diff) <= 3) return { why: `Only off by ${Math.abs(diff)} — a small slip in one column.`, work: buildSubWork(a, b), tip: 'Double-check each column, especially the one right after a borrow.' };
+  if (Math.abs(diff) <= 3) return { why: `So close — off by ${Math.abs(diff)}. A small slip in one column.`, work: buildSubWork(a, b), tip: 'Double-check the column right after a borrow.' };
 
-  return { why: `You were off by ${Math.abs(diff)} — likely a misalignment.`, work: buildSubWork(a, b), tip: 'Stack the numbers vertically and start subtracting from the ones column.' };
+  return { why: `Off by ${Math.abs(diff)} — probably lined up the columns wrong.`, work: buildSubWork(a, b), tip: 'Line up ones under ones, tens under tens, hundreds under hundreds.' };
 }
 
 /* ---------- Solution rendering ---------- */
@@ -1326,9 +1388,9 @@ function buildSubWork(a, b) {
     `<div class="wline"></div>` +
     gridRow(sCells) +
     `</div><div class="wsteps">` +
-    `Ones: ${o} − ${bo}${b1 ? ` → too small, <b>borrow 1 from tens</b> → ${newO} − ${bo}` : ''} = ${newO - bo}<br>` +
-    `Tens: ${b1 ? `${t} − 1 = ${t-1}` : t} − ${bt}${b2 ? ` → too small, <b>borrow 1 from hundreds</b> → ${newT} − ${bt}` : ''} = ${newT - bt}<br>` +
-    `Hundreds: ${b2 ? `${h} − 1 = ${h-1}` : h} − ${bh} = ${newH - bh}` +
+    `Ones: ${b1 ? `${o} can't take ${bo}. <b>Borrow 1 from tens</b> → ${newO} − ${bo}` : `${o} − ${bo}`} = ${newO - bo}<br>` +
+    `Tens: ${b1 ? `after lending, the tens digit is ${t - 1}. ` : ''}${b2 ? `${t - (b1?1:0)} can't take ${bt}. <b>Borrow 1 from hundreds</b> → ${newT} − ${bt}` : `${t - (b1?1:0)} − ${bt}`} = ${newT - bt}<br>` +
+    `Hundreds: ${b2 ? `after lending, hundreds digit is ${h - 1}. ${h - 1} − ${bh}` : `${h} − ${bh}`} = ${newH - bh}` +
     (anyBorrow ? `<br><span style="color:var(--ink-3)">(Numbers above each column show its value after borrowing.)</span>` : '') +
     `</div>`;
 }
@@ -1866,23 +1928,33 @@ function renderDiag(q) {
   const why = el('p', 'why', d.why);
   wrap.appendChild(why);
 
-  // Expertise reversal: a child who already knows this (slipped) doesn't need
-  // the full worked solution — show a one-line reminder. Novices get all steps.
+  const tip = el('div', 'tip');
+  tip.appendChild(spanTxt('💡 ', null));
+  tip.appendChild(spanTxt(d.tip, null));
+  wrap.appendChild(tip);
+
+  // Progressive disclosure (cognitive load theory): the short why+tip is
+  // always shown; the longer worked solution is one tap away. A child who
+  // already knows this (slipped) gets a one-line reminder instead of steps.
   const known = q._priorState === 'accurate' || q._priorState === 'fluent';
   if (known) {
     const reminder = el('div', 'work');
     reminder.innerHTML = `Quick check — you know this one: <b>${exprText(q)} = ${answerText(q)}</b>.`;
     wrap.appendChild(reminder);
   } else {
+    const toggle = el('button', 'btn btn-ghost work-toggle', '📐 Show the steps');
     const work = el('div', 'work');
+    work.style.display = 'none';
     work.innerHTML = d.work;
+    let open = false;
+    toggle.onclick = () => {
+      open = !open;
+      work.style.display = open ? '' : 'none';
+      toggle.textContent = open ? '📐 Hide the steps' : '📐 Show the steps';
+    };
+    wrap.appendChild(toggle);
     wrap.appendChild(work);
   }
-
-  const tip = el('div', 'tip');
-  tip.appendChild(spanTxt('💡 ', null));
-  tip.appendChild(spanTxt(d.tip, null));
-  wrap.appendChild(tip);
 
   // AI mini-lesson (kid-facing) — on demand, for all question types
   const teachWrap = el('div', 'teach-wrap');
