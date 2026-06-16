@@ -115,7 +115,7 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .diag-head .ico{width:22px;height:22px;border-radius:6px;background:var(--warn);color:#fff;display:grid;place-items:center;font-size:14px;font-weight:800}
 .diag p{margin:4px 0;font-size:14px;line-height:1.5;color:var(--ink-2)}
 .diag .why{font-weight:600;color:var(--warn-deep)}
-.diag .work{margin-top:8px;font-family:'JetBrains Mono','SF Mono',Menlo,monospace;font-size:14px;line-height:1.55;background:#fff;border:1px dashed #fed7aa;border-radius:8px;padding:10px 12px;white-space:pre-wrap;color:var(--ink-1);overflow-x:auto}
+.diag .work{margin-top:8px;font-family:'JetBrains Mono','SF Mono',Menlo,monospace;font-size:14px;line-height:1.55;background:#fff;border:1px dashed #fed7aa;border-radius:8px;padding:10px 12px;white-space:pre-wrap;color:var(--ink);overflow-x:auto}
 .diag .work-toggle{margin-top:8px;font-size:13px;padding:6px 12px;background:transparent;border:1px dashed #fed7aa;color:var(--warn-deep)}
 .diag .work b{color:var(--brand-deep);font-weight:700}
 .wgrid{--cell:32px;display:inline-block;margin:6px 0 12px;background:#fbfdff;border:1px solid #c7d4e2;border-radius:4px;background-image:linear-gradient(#dde6f0 1px,transparent 1px),linear-gradient(90deg,#dde6f0 1px,transparent 1px);background-size:var(--cell) var(--cell);background-position:0 0;vertical-align:top}
@@ -125,7 +125,7 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .wcell.bw{color:var(--brand-deep);font-weight:700;font-size:12px;align-items:flex-start;padding-top:3px;letter-spacing:-.5px}
 .wcell.sign{color:var(--brand);font-weight:700;font-size:18px}
 .wcell.sum{color:var(--brand-deep);font-weight:800;font-size:20px}
-.wline{height:2px;background:var(--ink-1);margin:0;width:100%;align-self:end}
+.wline{height:2px;background:var(--ink-2);margin:0;width:100%;align-self:end}
 .wsteps{margin-top:6px;font-size:13px;color:var(--ink-2);line-height:1.5}
 .wsteps b{color:var(--brand-deep)}
 .diag .tip{margin-top:8px;font-size:13px;color:var(--warn-deep);display:flex;gap:6px;align-items:flex-start}
@@ -290,6 +290,11 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .sync-status.ok{color:var(--ok-deep)}
 .sync-status.err{color:var(--bad-deep)}
 .sync-hint{margin-top:6px;font-size:12px;color:var(--ink-4);line-height:1.45}
+.snap-section{margin-top:14px}
+.plan-history{margin-top:8px;font-size:13px}
+.plan-history summary{cursor:pointer;color:var(--brand-deep);font-weight:600;padding:6px 0}
+.plan-history-item{margin-top:10px;border-top:1px solid var(--border-soft);padding-top:8px}
+.plan-history-head{font-size:12px;color:var(--ink-3);font-weight:600;margin-bottom:4px}
 .plan-section{margin-top:14px}
 .plan-btn{width:100%;margin-top:4px}
 .plan-loading{margin-top:10px;font-size:14px;color:var(--ink-3);text-align:center;padding:14px}
@@ -396,15 +401,17 @@ const Stats = (() => {
         divFacts: migrateFacts(d.divFacts || {}),
         skills: migrateFacts(d.skills || {}),
         hist: d.hist || [],
+        snaps: d.snaps || [],
         buckets: d.buckets || {},
         streak: d.streak || { current: 0, best: 0, lastDay: null },
         unlocked: Object.assign({ division: false, bigmul: false, fractions: false }, d.unlocked || {}),
         seen: d.seen || {},
+        plans: d.plans || [],
         pin: d.pin || null,
       };
     } catch { return blank(); }
   }
-  function blank() { return { facts: {}, divFacts: {}, skills: {}, hist: [], buckets: {}, streak: { current: 0, best: 0, lastDay: null }, unlocked: { division: false, bigmul: false, fractions: false }, seen: {}, pin: null }; }
+  function blank() { return { facts: {}, divFacts: {}, skills: {}, hist: [], snaps: [], buckets: {}, streak: { current: 0, best: 0, lastDay: null }, unlocked: { division: false, bigmul: false, fractions: false }, seen: {}, plans: [], pin: null }; }
   function save(d) {
     try { localStorage.setItem(STATS_KEY, JSON.stringify(d)); } catch {}
   }
@@ -573,8 +580,53 @@ const Stats = (() => {
     data.hist.push({ d: Date.now(), n: total, c: correct, t: elapsedSec });
     if (data.hist.length > 100) data.hist = data.hist.slice(-100);
     bumpStreak();
+    rollWeeklySnap();
     save(data);
   }
+  // Weekly snapshot: capture the headline numbers once a week so the parent
+  // can see trends without regenerating the AI plan.
+  function isoWeekKey(d) {
+    d = d || new Date();
+    // ISO week-year: Thursday in current week decides the year.
+    const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+    const day = t.getUTCDay() || 7;
+    t.setUTCDate(t.getUTCDate() + 4 - day);
+    const yearStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+    const week = Math.ceil((((t - yearStart) / 86400000) + 1) / 7);
+    return `${t.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+  }
+  function rollWeeklySnap() {
+    const w = isoWeekKey();
+    const list = data.snaps || (data.snaps = []);
+    const last = list[list.length - 1];
+    const mul = factMapStats(data.facts, 66);
+    const div = factMapStats(data.divFacts, 66);
+    const snap = {
+      week: w,
+      ts: Date.now(),
+      quizzes: data.hist.length,
+      mulMastery: mul.mastery,
+      mulAccuracy: mul.accuracy,
+      mulMastered: mul.mastered,
+      divMastery: div.mastery,
+      bigmulMastery: skillSummary('bigmul').mastery,
+      fracMastery: skillSummary('fractions').mastery,
+      streakBest: (data.streak && data.streak.best) || 0,
+    };
+    if (last && last.week === w) list[list.length - 1] = snap; // update current
+    else list.push(snap);
+    if (list.length > 26) data.snaps = list.slice(-26);
+  }
+  function getSnaps() { return (data.snaps || []).slice(); }
+  // AI plan history persisted, so the parent can scroll through past weeks
+  // without regenerating (the API is metered).
+  function savePlan(text) {
+    const list = data.plans || (data.plans = []);
+    list.push({ ts: Date.now(), week: isoWeekKey(), text });
+    if (list.length > 12) data.plans = list.slice(-12);
+    save(data);
+  }
+  function getPlans() { return (data.plans || []).slice(); }
   const factWeight = mulWeight; // alias used by the frontend's review-badge check
   function bucketWeight(key) {
     return countWeight(data.buckets[key]);
@@ -747,9 +799,21 @@ const Stats = (() => {
     for (const k in ru) if (ru[k]) data.unlocked[k] = true;
     for (const k in rs) if (rs[k]) data.seen[k] = true;
     if (!data.pin && remote.pin) data.pin = remote.pin;
+    // Snaps/plans: union by week-key/timestamp, keep newest per week.
+    data.snaps = mergeByKey(data.snaps, remote.snaps, x => x.week, 'ts').slice(-26);
+    data.plans = mergeByKey(data.plans, remote.plans, x => `${x.week}|${x.ts}`, 'ts').slice(-12);
     save(data);
   }
-  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery };
+  function mergeByKey(a, b, keyFn, tsField) {
+    const all = [...(a || []), ...(b || [])];
+    const byKey = {};
+    for (const x of all) {
+      const k = keyFn(x);
+      if (!byKey[k] || (x[tsField] || 0) > (byKey[k][tsField] || 0)) byKey[k] = x;
+    }
+    return Object.values(byKey).sort((x, y) => (x[tsField] || 0) - (y[tsField] || 0));
+  }
+  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery, getSnaps, savePlan, getPlans };
 })();
 
 // Merge helpers for cross-device sync (keep the richer record, union history)
@@ -838,6 +902,41 @@ function pushIfSynced() {
 }
 
 // ---------- Parent gate (4-digit PIN, with a math fallback) ----------
+// ---------- Sound feedback (Web Audio, no asset download) ----------
+const SOUND_KEY = 'mathquiz.soundOn';
+function getSoundOn() { try { return localStorage.getItem(SOUND_KEY) === '1'; } catch { return false; } }
+function setSoundOn(v) { try { v ? localStorage.setItem(SOUND_KEY, '1') : localStorage.removeItem(SOUND_KEY); } catch {} if (v) playTone([{ f: 880, ms: 80, type: 'sine' }]); }
+let _audioCtx = null;
+function audioCtx() {
+  if (!_audioCtx) {
+    try { _audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+    catch { _audioCtx = null; }
+  }
+  return _audioCtx;
+}
+function playTone(notes) {
+  if (!getSoundOn()) return;
+  const ac = audioCtx(); if (!ac) return;
+  let t = ac.currentTime;
+  for (const n of notes) {
+    const osc = ac.createOscillator();
+    const gain = ac.createGain();
+    osc.type = n.type || 'sine';
+    osc.frequency.setValueAtTime(n.f, t);
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(0.18, t + 0.01);
+    gain.gain.linearRampToValueAtTime(0, t + (n.ms / 1000));
+    osc.connect(gain); gain.connect(ac.destination);
+    osc.start(t); osc.stop(t + (n.ms / 1000) + 0.02);
+    t += (n.ms / 1000);
+  }
+}
+const Sound = {
+  right() { playTone([{ f: 880, ms: 70 }, { f: 1320, ms: 110 }]); },           // bright up-chime
+  wrong() { playTone([{ f: 220, ms: 120, type: 'triangle' }]); },               // soft low — gentle, not punishing
+  perfect() { playTone([{ f: 880, ms: 80 }, { f: 1108, ms: 80 }, { f: 1320, ms: 80 }, { f: 1760, ms: 160 }]); },
+};
+
 function pinHash(s) {
   // Lightweight non-crypto hash — a deterrent, not real security.
   let h = 2166136261;
@@ -1603,6 +1702,11 @@ function submit(fromTimeout) {
     else if (q.bucket) Stats.recordBucket(q.bucket, isRight);
   });
   if (!state.isPractice) Stats.recordQuiz(state.quiz.length, correctCount, state.finalElapsed);
+  // Sound feedback (opt-in via topbar): perfect → triumphant; mostly right →
+  // happy chime; otherwise gentle low tone — never punishing.
+  if (correctCount === state.quiz.length) Sound.perfect();
+  else if (correctCount / state.quiz.length >= 0.7) Sound.right();
+  else Sound.wrong();
   // Newly cleared a prerequisite? Unlock the next domain and show its lesson.
   const unlocked = state.isPractice ? null : Stats.checkUnlocks();
   pushIfSynced();
@@ -1693,13 +1797,19 @@ function renderTopbar() {
   mine.setAttribute('aria-label', 'My progress');
   mine.textContent = '🌱';
   mine.onclick = () => { state.showMine = true; render(); };
+  const sound = el('button', 'iconbtn');
+  const sOn = getSoundOn();
+  sound.title = sOn ? 'Sounds on (tap to mute)' : 'Sounds off (tap to enable)';
+  sound.setAttribute('aria-label', 'Toggle sound feedback');
+  sound.textContent = sOn ? '🔊' : '🔇';
+  sound.onclick = () => { setSoundOn(!getSoundOn()); render(); };
   const stats = el('button', 'iconbtn');
   stats.title = 'Stats (for grown-ups)';
   stats.setAttribute('aria-label', 'Stats for grown-ups');
   stats.textContent = '📊';
   stats.onclick = () => { state.showStats = true; render(); };
   const timer = el('div', 'timer'); timer.id = 'timer';
-  bar.appendChild(mine); bar.appendChild(stats); bar.appendChild(timer);
+  bar.appendChild(mine); bar.appendChild(sound); bar.appendChild(stats); bar.appendChild(timer);
   return bar;
 }
 
@@ -2547,9 +2657,58 @@ function renderStatsModal() {
   }
 
   if (s.quizzesDone > 0) {
+    // Weekly snapshot trend — passive, no API call.
+    const snaps = Stats.getSnaps();
+    if (snaps.length >= 2) {
+      const sect = el('div', 'snap-section');
+      sect.appendChild(el('h3', 'stats-h3', '📈 Weekly snapshots'));
+      const last = snaps[snaps.length - 1];
+      const prior = snaps.length >= 2 ? snaps[snaps.length - 2] : null;
+      const delta = (a, b) => { if (b == null) return ''; const d = a - b; if (!d) return ' (—)'; return d > 0 ? ` (+${d})` : ` (${d})`; };
+      const row = el('p', 'stats-line');
+      row.innerHTML = `Mul mastery: <b>${last.mulMastery}%</b>${delta(last.mulMastery, prior && prior.mulMastery)} · ` +
+                      `Mul accuracy: <b>${last.mulAccuracy}%</b>${delta(last.mulAccuracy, prior && prior.mulAccuracy)} · ` +
+                      `Quizzes: <b>${last.quizzes}</b>${delta(last.quizzes, prior && prior.quizzes)}`;
+      sect.appendChild(row);
+      // tiny sparkline of mulMastery over recent snaps
+      const spark = el('div', 'mini-chart');
+      const vals = snaps.slice(-10).map(x => x.mulMastery || 0);
+      vals.forEach(v => {
+        const col = el('div', 'chart-col');
+        const bar = el('div', 'chart-bar');
+        bar.style.height = (v) + '%';
+        bar.title = v + '%';
+        if (v >= 80) bar.classList.add('good');
+        else if (v < 40) bar.classList.add('low');
+        col.appendChild(bar);
+        col.appendChild(el('div', 'chart-num', String(v)));
+        spark.appendChild(col);
+      });
+      sect.appendChild(spark);
+      m.appendChild(sect);
+    }
+
     const planSection = el('div', 'plan-section');
     planSection.appendChild(el('h3', 'stats-h3', '✨ AI Learning Plan'));
     const planContainer = el('div', 'plan-container');
+    // Past plans (persisted) — collapsed expander.
+    const plans = Stats.getPlans();
+    if (plans.length) {
+      const past = el('details', 'plan-history');
+      const sum = document.createElement('summary');
+      sum.textContent = `📚 Past plans (${plans.length})`;
+      past.appendChild(sum);
+      plans.slice().reverse().forEach(p => {
+        const item = el('div', 'plan-history-item');
+        const head = el('div', 'plan-history-head');
+        head.textContent = `${p.week} · ${new Date(p.ts).toLocaleDateString()}`;
+        const body = el('div', 'plan-body');
+        body.innerHTML = renderMarkdown(p.text || '');
+        item.appendChild(head); item.appendChild(body);
+        past.appendChild(item);
+      });
+      planSection.appendChild(past);
+    }
     const genBtn = el('button', 'btn btn-primary plan-btn', 'Generate weekly report & plan');
     genBtn.onclick = () => generatePlan(planContainer, genBtn);
     planSection.appendChild(genBtn);
@@ -2560,6 +2719,8 @@ function renderStatsModal() {
   m.appendChild(renderPinRow());
 
   const actions = el('div', 'stats-actions');
+  const printBtn = el('button', 'btn btn-ghost', '🖨️ Print progress');
+  printBtn.onclick = openPrintView;
   const reset = el('button', 'btn btn-ghost', 'Reset progress (parent only)');
   reset.onclick = () => {
     if (!parentGate()) return;
@@ -2571,12 +2732,71 @@ function renderStatsModal() {
   };
   const ok = el('button', 'btn btn-primary', 'Close');
   ok.onclick = closeStats;
+  actions.appendChild(printBtn);
   actions.appendChild(reset);
   actions.appendChild(ok);
   m.appendChild(actions);
 
   bg.appendChild(m);
   return bg;
+}
+
+// Opens a clean, printable progress sheet in a new window (for sharing with
+// a teacher, sticking on the fridge, etc.). All inline — no external assets.
+function openPrintView() {
+  const s = Stats.summary();
+  const snaps = Stats.getSnaps();
+  const today = new Date().toLocaleDateString();
+  const weak = s.weak.slice(0, 5).map(w => `${w.a}×${w.b} (${w.right}/${w.right + w.wrong})`).join(', ') || 'None right now — well done!';
+  const dom = (label, m, acc) => `<tr><td>${label}</td><td>${m.unlocked === false ? 'Locked' : (m.attempts || 0) + ' attempts'}</td><td>${acc != null ? acc + '%' : '—'}</td><td>${m.mastery != null ? m.mastery + '%' : '—'}</td></tr>`;
+  const snapRows = snaps.slice(-8).map(x => `<tr><td>${x.week}</td><td>${x.quizzes}</td><td>${x.mulMastery}%</td><td>${x.mulAccuracy}%</td><td>${x.streakBest}</td></tr>`).join('') || '<tr><td colspan="5">No weekly snapshots yet.</td></tr>';
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Math Quiz · Progress · ${today}</title>
+<style>
+  body{font-family:-apple-system,system-ui,Arial,sans-serif;color:#0f172a;max-width:760px;margin:24px auto;padding:0 18px;line-height:1.5}
+  h1{margin:0 0 4px;font-size:22px}
+  h2{margin:18px 0 6px;font-size:16px;color:#0578ae;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid #cdebf8;padding-bottom:4px}
+  .meta{color:#6b7280;font-size:13px;margin-bottom:8px}
+  .tiles{display:flex;gap:8px;margin:8px 0}
+  .tile{flex:1;border:1px solid #e1e6ec;border-radius:8px;padding:10px;text-align:center}
+  .tile b{display:block;font-size:22px;color:#0578ae}
+  table{width:100%;border-collapse:collapse;font-size:14px;margin-top:4px}
+  th,td{border-bottom:1px solid #eef1f4;padding:6px 8px;text-align:left}
+  th{background:#f4f8fb;font-weight:600;font-size:12px;text-transform:uppercase;color:#6b7280}
+  .small{font-size:12px;color:#6b7280}
+  @media print{button{display:none}body{margin:0}}
+</style></head><body>
+<div style="display:flex;align-items:center;justify-content:space-between">
+  <div><h1>📐 Math Quiz · Progress Report</h1><div class="meta">Generated ${today}</div></div>
+  <button onclick="window.print()" style="padding:8px 14px;border:1px solid #0698da;background:#0698da;color:#fff;border-radius:8px;cursor:pointer;font-weight:600">🖨️ Print</button>
+</div>
+<h2>This week at a glance</h2>
+<div class="tiles">
+  <div class="tile"><b>${s.quizzesDone}</b>Quizzes done</div>
+  <div class="tile"><b>${s.lastScore}</b>Last score</div>
+  <div class="tile"><b>${s.totalAccuracy}%</b>Mul accuracy</div>
+  <div class="tile"><b>${s.mastery}%</b>Mul mastery</div>
+  <div class="tile"><b>${s.streak.best}</b>Best streak</div>
+</div>
+<h2>By domain</h2>
+<table><thead><tr><th>Domain</th><th>Attempts</th><th>Accuracy</th><th>Mastery</th></tr></thead>
+<tbody>
+  ${dom('Multiplication facts (×)', { attempts: s.totalAttempts, mastery: s.mastery }, s.totalAccuracy)}
+  ${dom('Division (÷)', s.division, s.division.unlocked ? s.division.accuracy : null)}
+  ${dom('2-digit multiplication', s.bigmul, s.bigmul.unlocked ? s.bigmul.accuracy : null)}
+  ${dom('Fractions', s.fractions, s.fractions.unlocked ? s.fractions.accuracy : null)}
+</tbody></table>
+<h2>Practice these next</h2>
+<p>${weak}</p>
+<h2>Weekly trend</h2>
+<table><thead><tr><th>Week</th><th>Quizzes</th><th>Mul mastery</th><th>Mul accuracy</th><th>Best streak</th></tr></thead>
+<tbody>${snapRows}</tbody></table>
+<p class="small" style="margin-top:24px">Generated by Math Quiz · localStorage data only; nothing was uploaded.</p>
+</body></html>`;
+  const w = window.open('', '_blank');
+  if (!w) { alert('Pop-up blocked. Please allow pop-ups for this site.'); return; }
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
 }
 
 async function generatePlan(container, btn) {
@@ -2612,6 +2832,7 @@ async function generatePlan(container, btn) {
       throw new Error(errBody.error || `server returned ${res.status}`);
     }
     const data = await res.json();
+    if (data.plan) { Stats.savePlan(data.plan); pushIfSynced(); }
     container.innerHTML = '';
     const body = el('div', 'plan-body');
     body.innerHTML = renderMarkdown(data.plan || '');
