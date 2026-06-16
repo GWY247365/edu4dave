@@ -154,7 +154,7 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .modal p{margin:0 0 20px;color:var(--ink-3);font-size:15px;line-height:1.5}
 
 /* ---------- Stats UI ---------- */
-.iconbtn{appearance:none;border:1px solid var(--border);background:#fff;width:38px;height:38px;border-radius:10px;display:grid;place-items:center;font-size:18px;cursor:pointer;box-shadow:var(--shadow-card);transition:transform .15s ease, background .2s}
+.iconbtn{appearance:none;border:1px solid var(--border);background:#fff;width:44px;height:44px;border-radius:10px;display:grid;place-items:center;font-size:18px;cursor:pointer;box-shadow:var(--shadow-card);transition:transform .15s ease, background .2s}
 .iconbtn:hover{background:var(--bg)}
 .iconbtn:active{transform:scale(.94)}
 .iconbtn.close{width:32px;height:32px;font-size:14px;border-radius:8px;color:var(--ink-3)}
@@ -667,16 +667,25 @@ const Stats = (() => {
 // Merge helpers for cross-device sync (keep the richer record, union history)
 function mergeCountMap(a, b) {
   a = a || {}; b = b || {};
-  const out = { ...a };
-  for (const k in b) {
-    const x = out[k], y = b[k];
+  const out = {};
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const k of keys) {
+    const x = a[k], y = b[k];
     if (!x) { out[k] = y; continue; }
-    const ta = (x.right || 0) + (x.wrong || 0);
-    const tb = (y.right || 0) + (y.wrong || 0);
-    out[k] = { ...(tb > ta ? y : x) };
-    if (x.lastSeen != null || y.lastSeen != null) {
-      out[k].lastSeen = Math.max(x.lastSeen || 0, y.lastSeen || 0);
-    }
+    if (!y) { out[k] = x; continue; }
+    // The record touched most recently holds the latest scheduling truth;
+    // use it as the base but never let attempt counts go backward, and keep
+    // a non-null avgT if either side has one.
+    const xt = x.lastSeen || x.last || 0, yt = y.lastSeen || y.last || 0;
+    const newer = yt >= xt ? y : x, older = yt >= xt ? x : y;
+    const m = { ...older, ...newer };
+    m.right = Math.max(x.right || 0, y.right || 0);
+    m.wrong = Math.max(x.wrong || 0, y.wrong || 0);
+    m.stab = Math.max(newer.stab || 0, 0) || older.stab || 0;
+    if (m.avgT == null) m.avgT = older.avgT != null ? older.avgT : x.avgT != null ? x.avgT : y.avgT;
+    const ts = Math.max(xt, yt);
+    m.lastSeen = ts; m.last = ts; // keep the two timestamps in lock-step
+    out[k] = m;
   }
   return out;
 }
@@ -1292,21 +1301,31 @@ const state = {
 };
 
 let tickHandle = null;
-function startTimer() {
+function runTicker() {
   clearInterval(tickHandle);
-  state.startedAt = Date.now();
-  state.remaining = TIME_LIMIT_SEC;
   tickHandle = setInterval(() => {
-    if (state.submitted) { clearInterval(tickHandle); return; }
+    if (state.submitted) { clearInterval(tickHandle); tickHandle = null; return; }
     const elapsed = Math.floor((Date.now() - state.startedAt) / 1000);
     state.remaining = TIME_LIMIT_SEC - elapsed; // may go negative — overtime
     if (state.remaining <= 0 && !state.timeUp) {
       state.timeUp = true;
       state.showTimeoutModal = true;
+      render();
     }
     renderTimer();
   }, 250);
 }
+function startTimer() {
+  state.startedAt = Date.now();
+  state.remaining = TIME_LIMIT_SEC;
+  runTicker();
+}
+// Pause the 250ms interval while the tab is hidden (saves battery on iPad).
+// startedAt is wall-clock, so elapsed is correct when we resume.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { clearInterval(tickHandle); tickHandle = null; }
+  else if (!state.submitted && state.startedAt) { runTicker(); renderTimer(); }
+});
 
 function fmt(sec) {
   const sign = sec < 0 ? '+' : '';
@@ -1571,6 +1590,7 @@ function renderQuestion(q, idx) {
   inp.dataset.id = String(idx);
   inp.value = q.given;
   inp.placeholder = '?';
+  inp.setAttribute('aria-label', `Question ${idx + 1}: ${q.a} ${q.type === 'mul' ? 'times' : q.type === 'add' ? 'plus' : q.type === 'sub' ? 'minus' : 'divided by'} ${q.b}`);
   if (state.submitted) {
     inp.readOnly = true;
     if (right) inp.classList.add('ok');
@@ -2410,7 +2430,11 @@ setTimeout(() => {
   cloudSync(code).then(() => {
     const unlocked = Stats.checkUnlocks();
     if (unlocked) state.showLesson = unlocked;
-    render();
+    // Don't rebuild the DOM (and steal the cursor) if the child is mid-answer;
+    // the merged stats will surface on the next natural render.
+    const typing = document.activeElement && document.activeElement.classList &&
+      document.activeElement.classList.contains('ansbox');
+    if (unlocked || !typing) render();
   }).catch(() => {});
 })();
 
