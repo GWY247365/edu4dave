@@ -222,6 +222,8 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .streak-chip .streak-num{font-variant-numeric:tabular-nums}
 .streak-chip.hot{background:linear-gradient(135deg,#fee2e2,#fecaca);border-color:#fca5a5;color:#991b1b}
 .streak-chip.hot .fire{font-size:16px;animation:flicker 1.6s ease-in-out infinite}
+.streak-chip.atrisk{background:linear-gradient(135deg,#fff7ed,#fed7aa);border-color:#fb923c;color:#9a3412}
+.mine-streak.atrisk{color:var(--warn-deep)}
 @keyframes flicker{0%,100%{transform:scale(1) rotate(-2deg);opacity:1}50%{transform:scale(1.15) rotate(3deg);opacity:.85}}
 
 .bucket-grid{display:flex;flex-direction:column;gap:4px;margin-top:4px}
@@ -340,11 +342,13 @@ const rint = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
 const STATS_KEY = 'mathquiz.stats.v1';
 function todayKey(d) {
   d = d || new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  // UTC so all devices agree on "what day is it" — picks one rollover moment
+  // worldwide instead of letting timezone swings break the streak.
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
 }
 function dayDiff(a, b) {
-  const da = new Date(a + 'T00:00:00');
-  const db = new Date(b + 'T00:00:00');
+  const da = new Date(a + 'T00:00:00Z');
+  const db = new Date(b + 'T00:00:00Z');
   return Math.round((db - da) / 86400000);
 }
 const Stats = (() => {
@@ -544,8 +548,10 @@ const Stats = (() => {
     if (!s.lastDay) s.current = 1;
     else {
       const diff = dayDiff(s.lastDay, today);
-      if (diff === 1) s.current += 1;
-      else if (diff > 1) s.current = 1;
+      // One day of grace: missing one calendar day still counts as continued
+      // (kids miss a day; researchers + every streak app of note give grace).
+      if (diff <= 2) s.current += 1;
+      else s.current = 1;
     }
     s.lastDay = today;
     s.best = Math.max(s.best, s.current);
@@ -554,11 +560,13 @@ const Stats = (() => {
   }
   function streakStatus() {
     const s = data.streak;
-    if (!s.lastDay) return { current: 0, best: s.best, active: false };
+    if (!s.lastDay) return { current: 0, best: s.best, active: false, atRisk: false };
     const diff = dayDiff(s.lastDay, todayKey());
-    // If kid hasn't played in >1 day, streak is broken (display as 0 until they play today)
-    const active = diff <= 1;
-    return { current: active ? s.current : 0, best: s.best, active, lastDay: s.lastDay };
+    // Active up to 2 days (1 day of grace matches the bump rule). Day 2 is
+    // "atRisk" so the UI can prompt "play today to keep it alive".
+    const active = diff <= 2;
+    const atRisk = active && diff === 2;
+    return { current: active ? s.current : 0, best: s.best, active, atRisk, lastDay: s.lastDay };
   }
   function recordQuiz(total, correct, elapsedSec) {
     data.hist.push({ d: Date.now(), n: total, c: correct, t: elapsedSec });
@@ -1563,12 +1571,15 @@ function renderTopbar() {
   const sk = Stats.streakStatus();
   if (sk.current > 0) {
     const chip = el('button', 'streak-chip');
-    chip.title = `${sk.current}-day streak · best ${sk.best}`;
+    chip.title = sk.atRisk
+      ? `${sk.current}-day streak — play today to keep it!`
+      : `${sk.current}-day streak · best ${sk.best}`;
     chip.setAttribute('aria-label', 'Daily streak');
-    chip.appendChild(spanTxt('🔥', 'fire'));
+    chip.appendChild(spanTxt(sk.atRisk ? '⚠️' : '🔥', 'fire'));
     chip.appendChild(spanTxt(String(sk.current), 'streak-num'));
     chip.onclick = () => { state.showMine = true; render(); };
     if (sk.current >= 7) chip.classList.add('hot');
+    if (sk.atRisk) chip.classList.add('atrisk');
     bar.appendChild(brand); bar.appendChild(chip);
   } else {
     bar.appendChild(brand);
@@ -2184,7 +2195,8 @@ function renderMineModal() {
   m.appendChild(head);
 
   const sk = s.streak;
-  if (sk.current > 0) m.appendChild(el('p', 'mine-streak', `🔥 ${sk.current}-day streak — you keep showing up. That's how brains grow!`));
+  if (sk.current > 0 && sk.atRisk) m.appendChild(el('p', 'mine-streak atrisk', `⚠️ Your ${sk.current}-day streak is on the line — play any quiz today to keep it alive!`));
+  else if (sk.current > 0) m.appendChild(el('p', 'mine-streak', `🔥 ${sk.current}-day streak — you keep showing up. That's how brains grow!`));
   else m.appendChild(el('p', 'mine-streak', `Every quiz makes your math brain stronger. Pick something to grow! 🌱`));
 
   // Build the list of skills the child can see/choose.
