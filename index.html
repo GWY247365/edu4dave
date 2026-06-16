@@ -70,10 +70,12 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .btn-ghost:hover{background:var(--bg)}
 
 .progress{display:flex;gap:5px;margin-bottom:10px}
-.progress .seg{flex:1;height:5px;border-radius:3px;background:#e5edf3;transition:background .25s ease}
+.progress .seg{flex:1;height:6px;border-radius:3px;background:#e5edf3;transition:background .25s ease}
 .progress .seg.filled{background:var(--brand)}
 .progress .seg.ok{background:var(--ok)}
-.progress .seg.bad{background:var(--bad)}
+/* Hatch texture so correct vs incorrect is distinguishable without relying on
+   red/green hue (color-blind friendly). */
+.progress .seg.bad{background-color:var(--bad);background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.65) 0,rgba(255,255,255,.65) 2px,transparent 2px,transparent 4px)}
 
 .qgrid{display:grid;gap:8px;margin-bottom:8px}
 @media (min-width:720px){.qgrid:not(.review){grid-template-columns:1fr 1fr}}
@@ -727,14 +729,26 @@ async function cloudSave(code, data) {
   });
   if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || ('save ' + res.status)); }
 }
+// True once we've successfully pulled+merged the cloud copy this session.
+// Until then we must not blind-overwrite the cloud (local could be near-blank,
+// e.g. corrupted localStorage or a fresh device that was offline at load).
+let syncedThisSession = false;
 async function cloudSync(code) {
   const remote = await cloudLoad(code);
   Stats.importMerge(remote);
   await cloudSave(code, Stats.exportRaw());
+  syncedThisSession = true;
 }
 function pushIfSynced() {
   const fc = getFamilyCode();
-  if (fc) cloudSave(fc, Stats.exportRaw()).catch(() => {});
+  if (!fc) return;
+  if (syncedThisSession) {
+    cloudSave(fc, Stats.exportRaw()).catch(() => {});
+  } else {
+    // Never confirmed the cloud copy this session — merge instead of overwrite
+    // so a small/blank local state can't wipe good cloud data.
+    cloudSync(fc).catch(() => {});
+  }
 }
 
 // ---------- Parent gate (4-digit PIN, with a math fallback) ----------
@@ -1420,8 +1434,7 @@ function submit(fromTimeout) {
   if (!state.isPractice) Stats.recordQuiz(state.quiz.length, correctCount, state.finalElapsed);
   // Newly cleared a prerequisite? Unlock the next domain and show its lesson.
   const unlocked = state.isPractice ? null : Stats.checkUnlocks();
-  const fc = getFamilyCode();
-  if (fc) cloudSave(fc, Stats.exportRaw()).catch(() => {});
+  pushIfSynced();
   if (unlocked) { state.showLesson = unlocked; }
   render();
   // scroll to first wrong (or top if all correct), keeping context visible
