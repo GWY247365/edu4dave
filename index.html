@@ -890,23 +890,45 @@ function genAdd(targetCarries) {
   for (let t = 0; t < 80; t++) {
     const a = rint(120, 899), b = rint(120, 899);
     if (targetCarries == null || countCarries(a, b) === targetCarries) {
-      return { type: 'add', a, b, ans: a + b, label: 'Addition · +', bucket: `add:${countCarries(a, b)}` };
+      const bk = countCarries(a, b);
+      const scaffold = shouldScaffoldBucket('add', bk) ? { kind: 'expand-add' } : null;
+      return { type: 'add', a, b, ans: a + b, label: 'Addition · +', bucket: `add:${bk}`, scaffold };
     }
   }
   const a = rint(120, 899), b = rint(120, 899);
-  return { type: 'add', a, b, ans: a + b, label: 'Addition · +', bucket: `add:${countCarries(a, b)}` };
+  const bk = countCarries(a, b);
+  const scaffold = shouldScaffoldBucket('add', bk) ? { kind: 'expand-add' } : null;
+  return { type: 'add', a, b, ans: a + b, label: 'Addition · +', bucket: `add:${bk}`, scaffold };
 }
 function genSub(targetBorrows) {
   for (let t = 0; t < 80; t++) {
     const a = rint(300, 999);
     const b = rint(120, a - 100);
     if (targetBorrows == null || countBorrows(a, b) === targetBorrows) {
-      return { type: 'sub', a, b, ans: a - b, label: 'Subtraction · −', bucket: `sub:${countBorrows(a, b)}` };
+      const bk = countBorrows(a, b);
+      const scaffold = shouldScaffoldBucket('sub', bk) ? { kind: 'expand-sub' } : null;
+      return { type: 'sub', a, b, ans: a - b, label: 'Subtraction · −', bucket: `sub:${bk}`, scaffold };
     }
   }
   const a = rint(300, 999);
   const b = rint(120, a - 100);
-  return { type: 'sub', a, b, ans: a - b, label: 'Subtraction · −', bucket: `sub:${countBorrows(a, b)}` };
+  const bk = countBorrows(a, b);
+  const scaffold = shouldScaffoldBucket('sub', bk) ? { kind: 'expand-sub' } : null;
+  return { type: 'sub', a, b, ans: a - b, label: 'Subtraction · −', bucket: `sub:${bk}`, scaffold };
+}
+
+// Whether a weak add/sub bucket gets a scaffold. Only when the band is
+// novice/developing, and either the bucket is unseen or its weight is high
+// (weak). Once the bucket is consistently accurate, the scaffold disappears.
+function shouldScaffoldBucket(prefix, bucket) {
+  const band = difficultyBand();
+  if (band === 'expert' || band === 'practicing') return false;
+  const w = Stats.bucketWeight(`${prefix}:${bucket}`); // 1 unseen; high = weak
+  // Always scaffold novices on harder buckets (1+) when not yet mastered.
+  // For 0-carry/0-borrow buckets we don't need scaffolding even for novices.
+  if (bucket === 0) return false;
+  if (w < 0.6) return false; // bucket is solid → no scaffold
+  return Math.random() < (band === 'novice' ? 0.7 : 0.45);
 }
 
 // Two-digit × one-digit multiplication (its own unlocked skill domain).
@@ -930,7 +952,13 @@ function genDiv() {
   const dividend = p.b * p.c;
   const fam = Stats.getDivFact(p.b, p.c);
   const isReview = !!fam && (fam.wrong || 0) > 0 && Stats.factWeight(fam) > 1.5;
-  return { type: 'div', a: dividend, b: divisor, ans: quotient, fam: [p.b, p.c], label: 'Division · ÷', isReview };
+  // Novice scaffold: turn division into the inverse-multiplication question
+  // the child has already learned ("7 × ? = 56"). Only when the family is
+  // still new/learning so it disappears with mastery.
+  const fState = Stats.itemState({ type: 'div', fam: [p.b, p.c] });
+  const scaffold = (fState === 'new' || fState === 'learning') && Math.random() < 0.6
+    ? { kind: 'inverse', divisor, dividend } : null;
+  return { type: 'div', a: dividend, b: divisor, ans: quotient, fam: [p.b, p.c], label: 'Division · ÷', isReview, scaffold };
 }
 
 function mulQuestion(a, b) {
@@ -1768,6 +1796,22 @@ function renderQuestion(q, idx) {
       const partA = s.lo * half, partB = s.lo * rest;
       expr.appendChild(spanTxt(`${q.a} × ${q.b} = (${s.lo}×${half}) + (${s.lo}×${rest}) = ${partA} + ${partB} =`, 'scaffold-line'));
     }
+  } else if (q.scaffold && q.type === 'div' && q.scaffold.kind === 'inverse') {
+    // Reframe division as inverse multiplication ("7 × ? = 56"), the form
+    // the child has already mastered.
+    expr.classList.add('expr-scaffold');
+    expr.appendChild(spanTxt(`${q.a} ÷ ${q.b} → ${q.b} × ▢ = ${q.a}, so the answer is`, 'scaffold-line'));
+  } else if (q.scaffold && q.type === 'add' && q.scaffold.kind === 'expand-add') {
+    // Expanded form: show each place separately, child adds three small sums.
+    const ah = Math.floor(q.a/100), at = Math.floor(q.a/10)%10, ao = q.a%10;
+    const bh = Math.floor(q.b/100), bt = Math.floor(q.b/10)%10, bo = q.b%10;
+    expr.classList.add('expr-scaffold');
+    expr.appendChild(spanTxt(`(${ah*100}+${at*10}+${ao}) + (${bh*100}+${bt*10}+${bo}) =`, 'scaffold-line'));
+  } else if (q.scaffold && q.type === 'sub' && q.scaffold.kind === 'expand-sub') {
+    const ah = Math.floor(q.a/100), at = Math.floor(q.a/10)%10, ao = q.a%10;
+    const bh = Math.floor(q.b/100), bt = Math.floor(q.b/10)%10, bo = q.b%10;
+    expr.classList.add('expr-scaffold');
+    expr.appendChild(spanTxt(`(${ah*100}+${at*10}+${ao}) − (${bh*100}+${bt*10}+${bo}) =`, 'scaffold-line'));
   } else {
     expr.appendChild(spanTxt(q.a, 'tabular'));
     expr.appendChild(spanTxt(q.type === 'mul' ? '×' : q.type === 'add' ? '+' : q.type === 'sub' ? '−' : '÷', 'op'));
