@@ -265,6 +265,24 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .mine-card .mastery-meter{height:12px;margin:0 0 10px}
 .mine-go{width:100%;height:48px;font-size:16px}
 .mine-next{margin:6px 0 0;font-size:14px;color:var(--ink-3);text-align:center}
+.mine-week{margin:-6px 0 12px;font-size:13.5px;color:var(--ink-2);font-weight:600;line-height:1.4}
+.mine-chips{display:flex;gap:6px;margin:0 0 10px}
+.mine-chip{flex:1;text-align:center;font-size:12px;font-weight:600;border:1px solid var(--border);border-radius:8px;padding:4px 2px;color:var(--ink-2);background:#fff}
+.fact-map-wrap{margin:2px 0 10px;background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:10px 14px}
+.fact-map-wrap summary{cursor:pointer;font-size:14px;font-weight:700;color:var(--brand-deep)}
+.fact-map{display:grid;grid-template-columns:repeat(12,1fr);gap:2px;margin-top:10px}
+.fm-h{font-size:10px;font-weight:700;color:var(--ink-3);display:flex;align-items:center;justify-content:center}
+.fm-cell{aspect-ratio:1;border-radius:3px;background:#e5e7eb}
+.fm-learning{background:#fde68a}
+.fm-accurate{background:#a7f3d0}
+.fm-fluent{background:#34d399}
+.fm-legend{display:flex;gap:12px;margin-top:8px;font-size:11px;color:var(--ink-3);flex-wrap:wrap}
+.fm-legend span{display:flex;align-items:center;gap:4px}
+.fm-legend i.fm-cell{width:10px;height:10px;aspect-ratio:auto;display:inline-block}
+.unlock-card{background:var(--bg);border:1px dashed var(--border);border-radius:14px;padding:10px 14px;margin-top:2px}
+.unlock-title{font-size:14px;font-weight:700;color:var(--ink-2)}
+.unlock-meter{height:10px;margin:8px 0 6px}
+.unlock-sub{font-size:12.5px;color:var(--ink-3)}
 .mine-done{width:100%;margin-top:14px}
 .stats-h3{margin:14px 0 8px;font-size:14px;color:var(--ink-2);text-transform:uppercase;letter-spacing:.05em;font-weight:700}
 .weak-list{display:flex;flex-direction:column;gap:6px}
@@ -600,6 +618,15 @@ const Stats = (() => {
     return newly;
   }
   function isUnlocked(d) { return !!(data.unlocked && data.unlocked[d]); }
+  // The next locked domain plus concrete progress toward it — lets the kid
+  // page show "24/40 facts" instead of a vague "keep practicing".
+  function nextUnlock() {
+    const fluent = mulFluentCount();
+    if (!data.unlocked.division) return { name: 'Division', emoji: '➗', have: fluent, need: DIV_UNLOCK_AT };
+    if (!data.unlocked.bigmul) return { name: 'Bigger ×', emoji: '🔢', have: fluent, need: BIGMUL_UNLOCK_AT };
+    if (!data.unlocked.fractions) return { name: 'Fractions', emoji: '🍕', have: fluent, need: FRAC_UNLOCK_AT };
+    return null;
+  }
   function markSeen(k) { data.seen[k] = true; save(data); }
   function hasSeen(k) { return !!(data.seen && data.seen[k]); }
   function recordBucket(key, correct) {
@@ -891,7 +918,7 @@ const Stats = (() => {
     }
     return Object.values(byKey).sort((x, y) => (x[tsField] || 0) - (y[tsField] || 0));
   }
-  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery, mulSeenCount, recentAccuracy, getSnaps, savePlan, getPlans };
+  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery, mulSeenCount, recentAccuracy, nextUnlock, getSnaps, savePlan, getPlans };
 })();
 
 // Merge helpers for cross-device sync (keep the richer record, union history)
@@ -1687,7 +1714,7 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v35';
+const APP_VERSION = 'v36';
 const APP_UPDATED = '2026-07-21';
 // In-progress quiz survives refreshes/crashes/SW updates: every answer
 // keystroke snapshots the session to localStorage; a fresh page load resumes
@@ -2617,6 +2644,16 @@ function renderMineModal() {
   else if (sk.current > 0) m.appendChild(el('p', 'mine-streak', `🔥 ${sk.current}-day streak — you keep showing up. That's how brains grow!`));
   else m.appendChild(el('p', 'mine-streak', `Every quiz makes your math brain stronger. Pick something to grow! 🌱`));
 
+  // Growth since last week — change motivates more than state.
+  const snaps = Stats.getSnaps();
+  if (snaps.length >= 2) {
+    const cur = snaps[snaps.length - 1], prev = snaps[snaps.length - 2];
+    const dm = (cur.mulMastered || 0) - (prev.mulMastered || 0);
+    const dq = (cur.quizzes || 0) - (prev.quizzes || 0);
+    if (dm > 0) m.appendChild(el('p', 'mine-week', `🌟 Since last week: ${dm} new fact${dm > 1 ? 's' : ''} mastered${dq > 0 ? ` · ${dq} quiz${dq > 1 ? 'zes' : ''}` : ''} — your practice is working!`));
+    else if (dq > 0) m.appendChild(el('p', 'mine-week', `🌟 This week: ${dq} quiz${dq > 1 ? 'zes' : ''} done — every one grows your brain!`));
+  }
+
   // Build the list of skills the child can see/choose.
   const rows = [];
   rows.push({ name: 'Times tables', emoji: '✖️', mastery: s.mastery, start: startFocus, cta: 'Practice my tricky ones' });
@@ -2641,18 +2678,64 @@ function renderMineModal() {
     top.appendChild(el('span', 'mine-stage', `${stg.emoji} ${stg.label}`));
     card.appendChild(top);
     card.appendChild(masteryMeter(r.mastery));
+    if (r.name === 'Fractions') {
+      // Sub-skill chips — the engine tracks name/equiv/compare separately;
+      // let the child see which one needs work too.
+      const stEmoji = { new: '⚪', learning: '🌱', accurate: '⭐', fluent: '🚀' };
+      const chips = el('div', 'mine-chips');
+      [['frac.fnam', 'Naming'], ['frac.feq', 'Equal'], ['frac.fcmp', 'Compare']].forEach(([k, label]) => {
+        chips.appendChild(el('span', 'mine-chip', `${stEmoji[Stats.skillState(k)] || '⚪'} ${label}`));
+      });
+      card.appendChild(chips);
+    }
     const btn = el('button', (isRec || rows.length === 1 ? 'btn btn-primary mine-go' : 'btn btn-ghost mine-go'), '✏️ ' + r.cta);
     btn.onclick = r.start;
     card.appendChild(btn);
     m.appendChild(card);
   });
 
-  // Locked teasers — show what's coming, framed as a goal.
-  const next = [];
-  if (!s.division.unlocked) next.push('Division');
-  else if (!s.bigmul.unlocked) next.push('Bigger ×');
-  else if (!s.fractions.unlocked) next.push('Fractions');
-  if (next.length) m.appendChild(el('p', 'mine-next', `🔒 Keep practicing your times tables to unlock ${next[0]}!`));
+  // Times-table map: territory the child can literally watch turn green.
+  const mapWrap = document.createElement('details');
+  mapWrap.className = 'fact-map-wrap';
+  const mapSum = document.createElement('summary');
+  mapSum.textContent = '🗺️ My times-table map';
+  mapWrap.appendChild(mapSum);
+  const grid = el('div', 'fact-map');
+  grid.appendChild(el('div', 'fm-h', '×'));
+  for (let b = 2; b <= 12; b++) grid.appendChild(el('div', 'fm-h', String(b)));
+  for (let a = 2; a <= 12; a++) {
+    grid.appendChild(el('div', 'fm-h', String(a)));
+    for (let b = 2; b <= 12; b++) {
+      const st = Stats.itemState({ type: 'mul', a, b });
+      const cell = el('div', 'fm-cell fm-' + st);
+      cell.title = `${a}×${b}`;
+      grid.appendChild(cell);
+    }
+  }
+  mapWrap.appendChild(grid);
+  const leg = el('div', 'fm-legend');
+  [['fm-new', 'New'], ['fm-learning', 'Learning'], ['fm-accurate', 'Got it'], ['fm-fluent', 'Fast!']].forEach(([cls, label]) => {
+    const item = el('span', null);
+    item.appendChild(el('i', 'fm-cell ' + cls));
+    item.appendChild(el('span', null, label));
+    leg.appendChild(item);
+  });
+  mapWrap.appendChild(leg);
+  m.appendChild(mapWrap);
+
+  // Concrete unlock goal — "24/40 facts" beats "keep practicing!".
+  const nu = Stats.nextUnlock();
+  if (nu) {
+    const uc = el('div', 'unlock-card');
+    uc.appendChild(el('div', 'unlock-title', `🔒 Next up: ${nu.emoji} ${nu.name}`));
+    const meter = el('div', 'mastery-meter unlock-meter');
+    const fill = el('div', 'mastery-fill high');
+    fill.style.width = Math.min(100, Math.round(100 * nu.have / nu.need)) + '%';
+    meter.appendChild(fill);
+    uc.appendChild(meter);
+    uc.appendChild(el('div', 'unlock-sub', `⚡ ${nu.have} of ${nu.need} facts fast & steady — ${nu.need - nu.have} to go!`));
+    m.appendChild(uc);
+  }
 
   const done = el('button', 'btn btn-ghost mine-done', 'Done');
   done.onclick = closeMine;
