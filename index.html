@@ -136,6 +136,7 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .btn-big.btn-primary{box-shadow:0 6px 20px -4px rgba(6,152,218,.45)}
 
 .foot{text-align:center;color:var(--ink-4);font-size:12px;font-weight:500;letter-spacing:.04em;padding:8px 0 4px;margin-top:4px}
+.foot-version{margin-top:4px;font-size:11px;font-weight:400;color:var(--ink-4);opacity:.8}
 .foot .heart{color:#dc2626}
 
 .summary{background:#fff;border:1px solid var(--border);border-radius:16px;padding:14px 18px;margin-bottom:10px;box-shadow:var(--shadow-card);display:flex;align-items:center;gap:14px;flex-wrap:wrap}
@@ -1683,9 +1684,11 @@ function subAbsPerColumn(a, b) {
 }
 
 /* ---------- App state + render ---------- */
-// Keep in step with CACHE in sw.js — shown in the stats footer so a stale
-// service-worker install is diagnosable from the device itself.
-const APP_VERSION = 'v33';
+// Keep in step with CACHE in sw.js — shown in the page footer so a stale
+// service-worker install is diagnosable from the device itself. Bump both
+// on every release, and stamp APP_UPDATED with the release date.
+const APP_VERSION = 'v34';
+const APP_UPDATED = '2026-07-21';
 const state = {
   quiz: newQuiz(),
   startedAt: Date.now(),
@@ -1877,6 +1880,7 @@ function renderFooter() {
   f.appendChild(spanTxt('Made with ', null));
   f.appendChild(spanTxt('♥', 'heart'));
   f.appendChild(spanTxt(' by Dad', null));
+  f.appendChild(el('div', 'foot-version', `Math Quiz ${APP_VERSION} · updated ${APP_UPDATED}`));
   return f;
 }
 
@@ -2872,7 +2876,7 @@ function renderStatsModal() {
   actions.appendChild(printBtn);
   actions.appendChild(reset);
   actions.appendChild(ok);
-  m.appendChild(el('div', 'app-version', `Math Quiz ${APP_VERSION}`));
+  m.appendChild(el('div', 'app-version', `Math Quiz ${APP_VERSION} · updated ${APP_UPDATED}`));
   m.appendChild(actions);
 
   bg.appendChild(m);
