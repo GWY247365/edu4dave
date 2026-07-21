@@ -868,7 +868,7 @@ const Stats = (() => {
     data.skills = migrateFacts(mergeCountMap(data.skills, remote.skills));
     data.buckets = mergeCountMap(data.buckets, remote.buckets);
     data.hist = mergeHist(data.hist, remote.hist);
-    data.streak = mergeStreak(data.streak, remote.streak);
+    data.streak = mergeStreak(data.streak, remote.streak, data.hist);
     // unlocks and seen flags are sticky — OR across devices
     const ru = remote.unlocked || {}, rs = remote.seen || {};
     for (const k in ru) if (ru[k]) data.unlocked[k] = true;
@@ -922,14 +922,35 @@ function mergeHist(a, b) {
   for (const h of all) { if (!seen.has(h.d)) { seen.add(h.d); out.push(h); } }
   return out.slice(-100);
 }
-function mergeStreak(a, b) {
+function mergeStreak(a, b, hist) {
   a = a || { current: 0, best: 0, lastDay: null };
   b = b || { current: 0, best: 0, lastDay: null };
   let s;
   if (!a.lastDay) s = b;
   else if (!b.lastDay) s = a;
+  else if (a.lastDay === b.lastDay) s = (a.current || 0) >= (b.current || 0) ? a : b;
   else s = (a.lastDay >= b.lastDay) ? a : b;
-  return { current: s.current || 0, best: Math.max(a.best || 0, b.best || 0), lastDay: s.lastDay || null };
+  let current = s.current || 0;
+  let lastDay = s.lastDay || null;
+  let best = Math.max(a.best || 0, b.best || 0);
+  // Two devices often hold halves of ONE continuous run (played on the old
+  // device through yesterday, on the new one today). Picking a side would
+  // drop the other half — so recompute the chain from the merged quiz
+  // history's distinct play days (same 1-day grace as bumpStreak) and keep
+  // whichever count is larger. hist is capped at 100 entries, so this can
+  // only undercount far history — never worsen the picked side.
+  if (hist && hist.length) {
+    const days = [...new Set(hist.map(h => todayKey(new Date(h.d))))].sort();
+    let cur = 0, prev = null, bestH = 0;
+    for (const day of days) {
+      cur = prev == null || dayDiff(prev, day) > 2 ? 1 : cur + 1;
+      bestH = Math.max(bestH, cur);
+      prev = day;
+    }
+    if (prev && (!lastDay || prev >= lastDay) && cur > current) { current = cur; lastDay = prev; }
+    best = Math.max(best, bestH);
+  }
+  return { current, best: Math.max(best, current), lastDay };
 }
 
 // ---------- Cloud sync (family code + Upstash via /api/progress) ----------
@@ -3062,7 +3083,9 @@ function renderSyncSection() {
       await cloudSync(code);
       status.textContent = '✓ Synced to the cloud, refreshing…';
       status.className = 'sync-status ok';
-      setTimeout(() => { if (state.showStats) render(); }, 900);
+      // Re-render unconditionally: the topbar streak flame must reflect the
+      // merged data even if the user closed the modal while sync ran.
+      setTimeout(() => render(), 900);
     } catch (e) {
       status.textContent = 'Sync failed: ' + e.message + ' (Upstash must be configured).';
       status.className = 'sync-status err';
