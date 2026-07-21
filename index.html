@@ -292,6 +292,8 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .sync-status.ok{color:var(--ok-deep)}
 .sync-status.err{color:var(--bad-deep)}
 .sync-hint{margin-top:6px;font-size:12px;color:var(--ink-4);line-height:1.45}
+.app-version{margin-top:10px;text-align:center;font-size:11px;color:var(--ink-3)}
+.update-chip{margin-left:8px;padding:6px 10px;font-size:13px}
 .snap-section{margin-top:14px}
 .plan-history{margin-top:8px;font-size:13px}
 .plan-history summary{cursor:pointer;color:var(--brand-deep);font-weight:600;padding:6px 0}
@@ -1681,6 +1683,9 @@ function subAbsPerColumn(a, b) {
 }
 
 /* ---------- App state + render ---------- */
+// Keep in step with CACHE in sw.js — shown in the stats footer so a stale
+// service-worker install is diagnosable from the device itself.
+const APP_VERSION = 'v33';
 const state = {
   quiz: newQuiz(),
   startedAt: Date.now(),
@@ -1928,6 +1933,12 @@ function renderTopbar() {
   stats.onclick = () => { state.showStats = true; render(); };
   const timer = el('div', 'timer'); timer.id = 'timer';
   bar.appendChild(mine); bar.appendChild(sound); bar.appendChild(stats); bar.appendChild(timer);
+  if (state.updateReady) {
+    const up = el('button', 'btn btn-primary update-chip', '🔄 Update ready');
+    up.title = 'A new version is ready — tap to reload';
+    up.onclick = () => location.reload();
+    bar.appendChild(up);
+  }
   return bar;
 }
 
@@ -2861,6 +2872,7 @@ function renderStatsModal() {
   actions.appendChild(printBtn);
   actions.appendChild(reset);
   actions.appendChild(ok);
+  m.appendChild(el('div', 'app-version', `Math Quiz ${APP_VERSION}`));
   m.appendChild(actions);
 
   bg.appendChild(m);
@@ -3081,7 +3093,14 @@ function renderSyncSection() {
     status.className = 'sync-status';
     try {
       await cloudSync(code);
-      status.textContent = '✓ Synced to the cloud, refreshing…';
+      // Report the merged streak right here — the #1 sync question is
+      // "where is the flame", and the answer is in the merged data.
+      const sk = Stats.streakStatus();
+      status.textContent = sk.current > 0
+        ? `✓ Synced — 🔥 ${sk.current}-day streak, refreshing…`
+        : sk.lastDay
+          ? `✓ Synced — last quiz was ${sk.lastDay} (UTC), so the streak has expired. Play today to start a new one!`
+          : '✓ Synced — no quiz history in the cloud copy yet.';
       status.className = 'sync-status ok';
       // Re-render unconditionally: the topbar streak flame must reflect the
       // merged data even if the user closed the modal while sync ran.
@@ -3138,10 +3157,29 @@ setTimeout(() => {
   }).catch(() => {});
 })();
 
-// PWA: register service worker for offline use
+// PWA: register service worker for offline use. The fetch strategy is
+// cache-first, so without an explicit update flow a long-lived install can
+// run stale code for days — check for updates on every launch and again
+// periodically, and swap in the new version as soon as it's safe.
+function quizUntouched() {
+  return !state.submitted && state.quiz.every(q => !q.given && !q.givenNum && !q.givenDen);
+}
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
+    navigator.serviceWorker.register('./sw.js').then(reg => {
+      reg.update().catch(() => {});
+      // Long-lived PWA sessions never navigate; poll while visible.
+      setInterval(() => { if (!document.hidden) reg.update().catch(() => {}); }, 60 * 60 * 1000);
+      reg.addEventListener('updatefound', () => {
+        const nw = reg.installing;
+        if (!nw) return;
+        nw.addEventListener('statechange', () => {
+          if (nw.state !== 'activated') return;
+          if (quizUntouched()) location.reload(); // nothing to lose — jump to the new version
+          else { state.updateReady = true; render(); }
+        });
+      });
+    }).catch(() => {});
   });
 }
 </script>
