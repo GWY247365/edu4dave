@@ -255,6 +255,8 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .mine-modal h2{text-align:left}
 .mine-streak{margin:0 0 14px;font-size:15px;color:var(--brand-deep);font-weight:600;line-height:1.4}
 .mine-card{background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:12px 14px;margin-bottom:10px}
+.mine-card.rec{border-color:var(--brand);box-shadow:0 0 0 3px rgba(6,152,218,.10)}
+.mine-rec-badge{font-size:12px;font-weight:700;color:var(--brand-deep);margin-bottom:6px}
 .mine-card-top{display:flex;align-items:center;gap:8px;margin-bottom:8px}
 .mine-emoji{font-size:22px}
 .mine-name{font-size:17px;font-weight:700;color:var(--ink);flex:1}
@@ -1112,9 +1114,18 @@ function genFracCompare() {
   const ans = lhs < rhs ? '<' : lhs > rhs ? '>' : '=';
   return { type: 'fcmp', n1, d1, n2, d2, ans, label: 'Fractions · compare', isReview: fracReview() };
 }
+// Pick which fraction sub-skill to test, weighted by weakness (spaced-
+// repetition weight; unseen sub-skills weigh 2.5 so coverage is guaranteed).
+function pickFracType() {
+  const types = ['fnam', 'feq', 'fcmp'];
+  const ws = types.map(t => Stats.factWeight(Stats.getSkill('frac.' + t)));
+  let r = Math.random() * ws.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < types.length; i++) { r -= ws[i]; if (r <= 0) return types[i]; }
+  return types[2];
+}
 function genFraction() {
-  const r = rint(0, 2);
-  return r === 0 ? genFracName() : r === 1 ? genFracEquiv() : genFracCompare();
+  const t = pickFracType();
+  return t === 'fnam' ? genFracName() : t === 'feq' ? genFracEquiv() : genFracCompare();
 }
 function fracTip(q) {
   if (q.type === 'fnam') return 'Top = shaded parts. Bottom = total equal parts.';
@@ -1206,10 +1217,10 @@ function bigmulQuiz() {
 }
 function fractionQuiz() {
   const qs = [];
-  // a balanced spread of the three fraction skills
-  for (let i = 0; i < 3; i++) qs.push(genFracName());
-  for (let i = 0; i < 3; i++) qs.push(genFracEquiv());
-  for (let i = 0; i < 2; i++) qs.push(genFracCompare());
+  // One of each sub-skill guaranteed (coverage), then five more weighted
+  // toward whichever sub-skill is weakest right now.
+  qs.push(genFracName()); qs.push(genFracEquiv()); qs.push(genFracCompare());
+  for (let i = 0; i < 5; i++) qs.push(genFraction());
   qs.push(genAdd(Stats.pickBucket('add')));
   qs.push(genSub(Stats.pickBucket('sub')));
   return shuffleQuiz(qs);
@@ -1698,7 +1709,10 @@ function submit(fromTimeout) {
     if (q.type === 'mul' && q.big) Stats.recordSkill('bigmul', isRight, ms);
     else if (q.type === 'mul' && q.a <= 12 && q.b <= 12) Stats.recordMul(q.a, q.b, isRight, ms);
     else if (q.type === 'div' && q.fam) Stats.recordDiv(q.fam[0], q.fam[1], isRight, ms);
-    else if (q.type === 'fnam' || q.type === 'feq' || q.type === 'fcmp') Stats.recordSkill('fractions', isRight, ms);
+    else if (q.type === 'fnam' || q.type === 'feq' || q.type === 'fcmp') {
+      Stats.recordSkill('fractions', isRight, ms);          // aggregate (drives unlock/summary)
+      Stats.recordSkill('frac.' + q.type, isRight, ms);     // sub-skill (drives adaptive selection)
+    }
     else if (q.bucket) Stats.recordBucket(q.bucket, isRight);
   });
   if (!state.isPractice) Stats.recordQuiz(state.quiz.length, correctCount, state.finalElapsed);
@@ -2459,16 +2473,24 @@ function renderMineModal() {
   if (s.bigmul.unlocked) rows.push({ name: 'Bigger ×', emoji: '🔢', mastery: s.bigmul.mastery, start: startBigmulPractice, cta: 'Practice' });
   if (s.fractions.unlocked) rows.push({ name: 'Fractions', emoji: '🍕', mastery: s.fractions.mastery, start: startFractionPractice, cta: 'Practice' });
 
-  rows.forEach(r => {
+  // The engine recommends ONE practice: the weakest domain right now (ties →
+  // earliest in the curriculum, foundations first). Kids left to choose freely
+  // pick what they're already good at — steer the default, keep the choice.
+  let recIdx = 0;
+  rows.forEach((r, i) => { if ((r.mastery || 0) < (rows[recIdx].mastery || 0)) recIdx = i; });
+
+  rows.forEach((r, i) => {
+    const isRec = i === recIdx && rows.length > 1;
     const stg = masteryStage(r.mastery);
-    const card = el('div', 'mine-card');
+    const card = el('div', isRec ? 'mine-card rec' : 'mine-card');
+    if (isRec) card.appendChild(el('div', 'mine-rec-badge', "⭐ Today's pick — this one needs you most!"));
     const top = el('div', 'mine-card-top');
     top.appendChild(el('span', 'mine-emoji', r.emoji));
     top.appendChild(el('span', 'mine-name', r.name));
     top.appendChild(el('span', 'mine-stage', `${stg.emoji} ${stg.label}`));
     card.appendChild(top);
     card.appendChild(masteryMeter(r.mastery));
-    const btn = el('button', 'btn btn-primary mine-go', '✏️ ' + r.cta);
+    const btn = el('button', (isRec || rows.length === 1 ? 'btn btn-primary mine-go' : 'btn btn-ghost mine-go'), '✏️ ' + r.cta);
     btn.onclick = r.start;
     card.appendChild(btn);
     m.appendChild(card);
