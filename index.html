@@ -1687,20 +1687,44 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v34';
+const APP_VERSION = 'v35';
 const APP_UPDATED = '2026-07-21';
+// In-progress quiz survives refreshes/crashes/SW updates: every answer
+// keystroke snapshots the session to localStorage; a fresh page load resumes
+// it (questions, typed answers, wall-clock timer) unless it's gone stale.
+const SESSION_KEY = 'mathquiz.session.v1';
+function loadSession() {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw);
+    if (!s || !Array.isArray(s.quiz) || !s.quiz.length) return null;
+    if (Date.now() - (s.savedAt || 0) > 12 * 3600 * 1000) return null; // stale — start fresh
+    return s;
+  } catch { return null; }
+}
+function saveSession() {
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify({
+      quiz: state.quiz, startedAt: state.startedAt, submitted: state.submitted,
+      timeUp: state.timeUp, isPractice: state.isPractice,
+      finalElapsed: state.finalElapsed, savedAt: Date.now(),
+    }));
+  } catch {}
+}
+const _resumed = loadSession();
 const state = {
-  quiz: newQuiz(),
-  startedAt: Date.now(),
-  remaining: TIME_LIMIT_SEC,
-  submitted: false,
-  timeUp: false,
+  quiz: _resumed ? _resumed.quiz : newQuiz(),
+  startedAt: _resumed && _resumed.startedAt ? _resumed.startedAt : Date.now(),
+  remaining: TIME_LIMIT_SEC, // ticker recomputes from startedAt (wall clock)
+  submitted: _resumed ? !!_resumed.submitted : false,
+  timeUp: _resumed ? !!_resumed.timeUp : false,
   showTimeoutModal: false,
   showStats: false,
   showMine: false,
   showLesson: null,
-  isPractice: false,
-  finalElapsed: null,
+  isPractice: _resumed ? !!_resumed.isPractice : false,
+  finalElapsed: _resumed && _resumed.finalElapsed != null ? _resumed.finalElapsed : null,
 };
 
 let tickHandle = null;
@@ -1759,6 +1783,7 @@ function startNew() {
   state.showTimeoutModal = false;
   state.finalElapsed = null;
   startTimer();
+  saveSession();
   render();
   setTimeout(() => {
     const first = document.querySelector('.ansbox');
@@ -1776,6 +1801,7 @@ function startFocus() {
   state.showTimeoutModal = false;
   state.finalElapsed = null;
   startTimer();
+  saveSession();
   render();
   setTimeout(() => {
     const first = document.querySelector('.ansbox');
@@ -1793,6 +1819,7 @@ function retryWrong() {
   state.showTimeoutModal = false;
   state.finalElapsed = null;
   startTimer();
+  saveSession();
   render();
   setTimeout(() => {
     const first = document.querySelector('.ansbox');
@@ -1837,6 +1864,7 @@ function submit(fromTimeout) {
   const unlocked = state.isPractice ? null : Stats.checkUnlocks();
   pushIfSynced();
   if (unlocked) { state.showLesson = unlocked; }
+  saveSession();
   render();
   // scroll to first wrong (or top if all correct), keeping context visible
   setTimeout(() => {
@@ -2087,6 +2115,7 @@ function renderQuestion(q, idx) {
     state.quiz[idx].given = e.target.value;
     state.quiz[idx]._t1 = Date.now();
     if (state.quiz[idx]._t0 == null) state.quiz[idx]._t0 = state.quiz[idx]._t1;
+    saveSession();
     const segs = document.querySelectorAll('.progress .seg');
     if (segs[idx]) segs[idx].classList.toggle('filled', e.target.value !== '');
   });
@@ -2163,6 +2192,7 @@ function fracInput(q, idx, field, ph) {
   inp.addEventListener('input', e => {
     state.quiz[idx][field] = e.target.value;
     const t = Date.now(); state.quiz[idx]._t1 = t; if (state.quiz[idx]._t0 == null) state.quiz[idx]._t0 = t;
+    saveSession();
     const segs = document.querySelectorAll('.progress .seg');
     if (segs[idx]) segs[idx].classList.toggle('filled', answered(state.quiz[idx]));
   });
@@ -2208,6 +2238,7 @@ function renderFractionRow(q, idx, right, wrong) {
         b.onclick = () => {
           state.quiz[idx].given = sym;
           const t = Date.now(); if (state.quiz[idx]._t0 == null) state.quiz[idx]._t0 = t; state.quiz[idx]._t1 = t;
+          saveSession();
           choices.querySelectorAll('.fcmp-btn').forEach(x => x.classList.remove('chosen'));
           b.classList.add('chosen');
           const segs = document.querySelectorAll('.progress .seg');
@@ -2439,6 +2470,7 @@ function startFocusedQuiz(seenKey, makeQuiz) {
   state.showTimeoutModal = false;
   state.finalElapsed = null;
   startTimer();
+  saveSession();
   render();
   setTimeout(() => { const f = document.querySelector('.ansbox'); if (f) f.focus(); }, 50);
 }
@@ -3131,7 +3163,8 @@ function spanTxt(text, cls) {
   return s;
 }
 
-startTimer();
+if (_resumed) { if (!state.submitted) runTicker(); } else { startTimer(); }
+saveSession();
 render();
 setTimeout(() => {
   const first = document.querySelector('.ansbox');
