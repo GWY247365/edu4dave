@@ -361,7 +361,10 @@ function dayDiff(a, b) {
 }
 const Stats = (() => {
   // FSRS-lite scheduling constants
-  const FAST_MS = 6000;      // a correct answer faster than this counts toward fluency
+  const FAST_MS = 6000;      // fluency threshold for single mul facts
+  // Multi-step questions take longer even when fluent — one global 6s bar
+  // made 'fluent' unreachable for them and suppressed stability growth.
+  const FAST_BY_SKILL = { div: 8000, bigmul: 25000, fractions: 15000 };
   const STAB_FLUENT = 12;    // days of stability needed to count a fact as mastered
   const STAB_MAX = 400;      // cap on stability (days)
   // Bayesian Knowledge Tracing params → a calibrated P(known) per fact.
@@ -427,7 +430,9 @@ const Stats = (() => {
     const days = (now - (f.last || f.lastSeen || 0)) / 86400000;
     return Math.exp(-days / f.stab);
   }
-  function factState(f, now) {
+  function skillFast(name) { return name === 'bigmul' ? FAST_BY_SKILL.bigmul : name.indexOf('frac') === 0 ? FAST_BY_SKILL.fractions : FAST_MS; }
+  function factState(f, now, fastMs) {
+    fastMs = fastMs || FAST_MS;
     if (!f || (f.right || 0) + (f.wrong || 0) === 0) return 'new';
     const rec = f.recent || '';
     const last3ok = rec.length >= 3 && rec.slice(-3) === '111';
@@ -436,7 +441,7 @@ const Stats = (() => {
     const lastNotWrong = rec.length === 0 || rec.slice(-1) !== '0';
     const legacyOk = rec.length < 3 && (f.right || 0) >= 3 && (f.right || 0) >= 3 * (f.wrong || 0) && lastNotWrong;
     const accurate = last3ok || legacyOk;
-    const fluentSpeed = f.avgT != null && f.avgT <= FAST_MS;
+    const fluentSpeed = f.avgT != null && f.avgT <= fastMs;
     if (accurate && fluentSpeed && (f.stab || 0) >= STAB_FLUENT) return 'fluent';
     if (accurate) return 'accurate';
     return 'learning';
@@ -449,15 +454,27 @@ const Stats = (() => {
     const recentWrong = (f.recent || '').slice(-1) === '0' ? 0.8 : 0;
     return Math.max(0.2, 0.3 + 2.5 * (1 - R) + recentWrong);
   }
-  function countWeight(stat) { // legacy weight for add/sub buckets
+  function countWeight(stat) { // weight for add/sub buckets
     if (!stat) return 1;
+    const rec = stat.recent || '';
+    if (rec.length >= 3) {
+      // Recency-first: weight by miss rate over the last 8 answers, not
+      // lifetime counts — a wrong answer from months ago shouldn't chase the
+      // child forever, and one recent miss should resurface the bucket.
+      const miss = rec.split('0').length - 1;
+      const missRate = miss / rec.length;
+      const lastWrong = rec.slice(-1) === '0' ? 1 : 0;
+      return Math.max(0.2, 0.5 + 4 * missRate + lastWrong);
+    }
+    // Legacy fallback until enough recent history accumulates.
     return Math.max(0.2, Math.min(8, 1 + 2 * (stat.wrong || 0) - 0.5 * (stat.right || 0)));
   }
   function blankFact() { return { right: 0, wrong: 0, lastSeen: 0, stab: 0, last: 0, recent: '', avgT: null, fast: 0, pL: BKT.L0 }; }
-  function applyResult(f, correct, ms) {
+  function applyResult(f, correct, ms, fastMs) {
     const now = Date.now();
+    fastMs = fastMs || FAST_MS;
     f.pL = bktUpdate(f.pL, correct); // calibrated P(known)
-    const wasFast = correct && typeof ms === 'number' && ms > 0 && ms <= FAST_MS;
+    const wasFast = correct && typeof ms === 'number' && ms > 0 && ms <= fastMs;
     if (correct) {
       f.right++;
       f.stab = f.stab > 0 ? Math.min(STAB_MAX, f.stab * (wasFast ? 2.6 : 1.8)) : (wasFast ? 3 : 1.2);
@@ -482,7 +499,7 @@ const Stats = (() => {
   function getDivFact(b, c) { return data.divFacts[mulKey(b, c)]; }
   function recordDiv(b, c, correct, ms) {
     const k = mulKey(b, c);
-    data.divFacts[k] = applyResult(data.divFacts[k] || blankFact(), correct, ms);
+    data.divFacts[k] = applyResult(data.divFacts[k] || blankFact(), correct, ms, FAST_BY_SKILL.div);
     save(data);
   }
   function pickDivFacts(n) {
@@ -502,6 +519,43 @@ const Stats = (() => {
     }
     return out;
   }
+  // ---- Curriculum-ordered fact introduction ----
+  // Standard times-table teaching sequence: 2s/5s/10s first (skip-counting,
+  // pattern-rich), then 3/4, then the hard middle, 11/12 last. A fact's rank
+  // is its easier table's position; within a table, smaller products first.
+  const TABLE_ORDER = [2, 5, 10, 3, 4, 6, 7, 8, 9, 11, 12];
+  function factIntroRank(a, b) {
+    return Math.min(TABLE_ORDER.indexOf(a), TABLE_ORDER.indexOf(b)) * 1000 + a * b;
+  }
+  function frontierFacts(n) {
+    // The next unseen facts in curriculum order — what a teacher would
+    // introduce next.
+    const out = [];
+    for (let a = 2; a <= 12; a++) {
+      for (let b = a; b <= 12; b++) {
+        const f = getFact(a, b);
+        if (!f || (f.right || 0) + (f.wrong || 0) === 0) out.push({ a, b, r: factIntroRank(a, b) });
+      }
+    }
+    return out.sort((x, y) => x.r - y.r).slice(0, n);
+  }
+  function mulSeenCount() {
+    let n = 0;
+    for (const k in data.facts) {
+      const f = data.facts[k];
+      if ((f.right || 0) + (f.wrong || 0) > 0) n++;
+    }
+    return n;
+  }
+  // Rolling observed accuracy over the last n scored quizzes (the direct
+  // signal the 85%-rule controller should track). null until 2 quizzes exist.
+  function recentAccuracy(n) {
+    const h = data.hist.slice(-(n || 5));
+    if (h.length < 2) return null;
+    let c = 0, t = 0;
+    for (const q of h) { c += q.c || 0; t += q.n || 0; }
+    return t ? c / t : null;
+  }
   function mulFluentCount() {
     const now = Date.now();
     let m = 0;
@@ -512,16 +566,16 @@ const Stats = (() => {
   // aren't a small fixed fact set — one aggregate FSRS record per skill).
   function getSkill(name) { return data.skills[name]; }
   function recordSkill(name, correct, ms) {
-    data.skills[name] = applyResult(data.skills[name] || blankFact(), correct, ms);
+    data.skills[name] = applyResult(data.skills[name] || blankFact(), correct, ms, skillFast(name));
     save(data);
   }
-  function skillState(name) { return factState(data.skills[name], Date.now()); }
+  function skillState(name) { return factState(data.skills[name], Date.now(), skillFast(name)); }
   // Mastery state for any question — drives expertise-adaptive scaffolding.
   function itemState(q) {
     const now = Date.now();
     if (q.type === 'mul' && q.big) return skillState('bigmul');
     if (q.type === 'mul') return factState(getFact(q.a, q.b), now);
-    if (q.type === 'div' && q.fam) return factState(getDivFact(q.fam[0], q.fam[1]), now);
+    if (q.type === 'div' && q.fam) return factState(getDivFact(q.fam[0], q.fam[1]), now, FAST_BY_SKILL.div);
     if (q.type === 'fnam' || q.type === 'feq' || q.type === 'fcmp') return skillState('fractions');
     return 'new';
   }
@@ -548,6 +602,8 @@ const Stats = (() => {
   function recordBucket(key, correct) {
     const b = data.buckets[key] || { right: 0, wrong: 0 };
     if (correct) b.right++; else b.wrong++;
+    b.recent = ((b.recent || '') + (correct ? '1' : '0')).slice(-8);
+    b.last = Date.now(); b.lastSeen = b.last; // mergeCountMap uses these
     data.buckets[key] = b;
     save(data);
   }
@@ -602,7 +658,7 @@ const Stats = (() => {
     const list = data.snaps || (data.snaps = []);
     const last = list[list.length - 1];
     const mul = factMapStats(data.facts, 66);
-    const div = factMapStats(data.divFacts, 66);
+    const div = factMapStats(data.divFacts, 66, FAST_BY_SKILL.div);
     const snap = {
       week: w,
       ts: Date.now(),
@@ -655,10 +711,15 @@ const Stats = (() => {
     for (let a = 2; a <= 12; a++) {
       for (let b = a; b <= 12; b++) {
         const f = getFact(a, b);
+        const unseen = !f || (f.right || 0) + (f.wrong || 0) === 0;
         const pL = f && f.pL != null ? f.pL : BKT.L0;
         let w = mulWeight(f);
         if (bias === 'easy') {
           // Want items the child likely gets right. p^4 makes the bias steep.
+          // Unseen facts are excluded here (their pL^4 weight starved them to
+          // near-zero anyway) — new material arrives via the frontier slot
+          // below, in curriculum order, one fact per quiz.
+          if (unseen) { continue; }
           w = 0.05 + 4 * Math.pow(pL, 4);
         } else if (bias === 'hard') {
           w = w * 1.4;
@@ -674,7 +735,19 @@ const Stats = (() => {
       out.push(all[idx]);
       all.splice(idx, 1);
     }
-    return out;
+    // Frontier slot: novices/developing always get exactly ONE new fact from
+    // the teaching sequence (2s → 5s → 10s → …). Steady expansion without
+    // overwhelm — and it also backfills when the seen pool is tiny/empty.
+    if (bias === 'easy') {
+      const need = Math.max(1, n - out.length);
+      const fr = frontierFacts(need);
+      for (const x of fr) {
+        if (out.length >= n && out.length > 1) out.pop();
+        if (!out.some(o => mulKey(o.a, o.b) === mulKey(x.a, x.b))) out.push({ a: x.a, b: x.b });
+        if (out.length >= n) break;
+      }
+    }
+    return out.slice(0, n);
   }
   // Overall p(known) for the difficulty controller. We *only* average over
   // facts the child has been exposed to — including unseen facts at the BKT
@@ -705,7 +778,7 @@ const Stats = (() => {
     });
     return out;
   }
-  function factMapStats(map, total) {
+  function factMapStats(map, total, fastMs) {
     const now = Date.now();
     let attempts = 0, right = 0, mastered = 0, pSum = 0, seen = 0;
     const weak = [];
@@ -715,10 +788,10 @@ const Stats = (() => {
       right += (f.right || 0);
       pSum += (f.pL != null ? f.pL : BKT.L0);
       seen++;
-      if (isMasteredState(factState(f, now))) mastered++;
+      if (isMasteredState(factState(f, now, fastMs))) mastered++;
       if ((f.wrong || 0) > 0) {
         const [a, b] = k.split('x').map(Number);
-        weak.push({ a, b, right: f.right || 0, wrong: f.wrong || 0, weight: mulWeight(f), state: factState(f, now) });
+        weak.push({ a, b, right: f.right || 0, wrong: f.wrong || 0, weight: mulWeight(f), state: factState(f, now, fastMs) });
       }
     }
     weak.sort((x, y) => y.weight - x.weight || y.wrong - x.wrong);
@@ -740,12 +813,12 @@ const Stats = (() => {
       attempts,
       accuracy: attempts ? Math.round(100 * (f.right || 0) / attempts) : 0,
       mastery: Math.round(100 * (f && f.pL != null ? f.pL : BKT.L0)),
-      state: f ? factState(f, Date.now()) : 'new',
+      state: f ? factState(f, Date.now(), skillFast(name)) : 'new',
     };
   }
   function summary() {
     const mul = factMapStats(data.facts, 66);   // 2..12 × 2..12, a≤b
-    const div = factMapStats(data.divFacts, 66); // same family count
+    const div = factMapStats(data.divFacts, 66, FAST_BY_SKILL.div); // same family count
     const last = data.hist[data.hist.length - 1];
     const avgScore = data.hist.length ? data.hist.reduce((s, h) => s + h.c, 0) / data.hist.length : 0;
     return {
@@ -815,7 +888,7 @@ const Stats = (() => {
     }
     return Object.values(byKey).sort((x, y) => (x[tsField] || 0) - (y[tsField] || 0));
   }
-  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery, getSnaps, savePlan, getPlans };
+  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery, mulSeenCount, recentAccuracy, getSnaps, savePlan, getPlans };
 })();
 
 // Merge helpers for cross-device sync (keep the richer record, union history)
@@ -1142,14 +1215,24 @@ function shuffleQuiz(qs) {
 }
 
 // Difficulty controller targeting the 85% rule (Wilson et al., Nature Comms
-// 2019): allocate the 6 non-add/sub slots by a band derived from the child's
-// overall multiplication mastery, and bias fact selection within mul/div.
+// 2019). Two corrections over a plain model-mastery mapping:
+//   1. Coverage: overallMulMastery averages only SEEN facts, so a child who
+//      drilled 10 facts to mastery would read as "expert" with 56 facts
+//      untouched. Scale by curriculum coverage before banding.
+//   2. Closed loop: the model's BKT parameters are assumptions; the observed
+//      recent success rate is ground truth. If the child is actually scoring
+//      below ~70%, step the band down; above ~93%, step it up.
 function difficultyBand() {
-  const m = Stats.overallMulMastery(); // 0..1
-  if (m < 0.45) return 'novice';
-  if (m < 0.70) return 'developing';
-  if (m < 0.92) return 'practicing';
-  return 'expert';
+  const m = Stats.overallMulMastery(); // 0..1, seen facts only
+  const cov = Stats.mulSeenCount() / 66;
+  const eff = m * (0.35 + 0.65 * Math.min(1, cov / 0.75));
+  let band = eff < 0.45 ? 0 : eff < 0.70 ? 1 : eff < 0.92 ? 2 : 3;
+  const acc = Stats.recentAccuracy(5); // null until 2 scored quizzes
+  if (acc != null) {
+    if (acc < 0.70 && band > 0) band--;
+    else if (acc > 0.93 && band < 3) band++;
+  }
+  return ['novice', 'developing', 'practicing', 'expert'][band];
 }
 function newQuiz() {
   const qs = [];
