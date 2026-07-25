@@ -1795,7 +1795,7 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v39';
+const APP_VERSION = 'v40';
 const APP_UPDATED = '2026-07-25';
 // In-progress quiz survives refreshes/crashes/SW updates: every answer
 // keystroke snapshots the session to localStorage; a fresh page load resumes
@@ -3171,6 +3171,12 @@ function openPrintView() {
 </tbody></table>
 <h2>Practice these next</h2>
 <p>${weak}</p>
+${(() => {
+  const pats = Stats.errorPatterns();
+  if (!pats.length) return '';
+  return '<h2>Error patterns (from actual wrong answers)</h2><ul>' +
+    pats.map(p => `<li>${p.label}</li>`).join('') + '</ul>';
+})()}
 <h2>Weekly trend</h2>
 <table><thead><tr><th>Week</th><th>Quizzes</th><th>Mul mastery</th><th>Mul accuracy</th><th>Best streak</th></tr></thead>
 <tbody>${snapRows}</tbody></table>
@@ -3205,6 +3211,16 @@ async function generatePlan(container, btn) {
         borrows: b.k, accuracyPct: b.accuracy, attempts: b.total,
       })),
       recentQuizzes: s.hist.map(h => ({ correct: h.c, outOf: h.n, seconds: h.t })),
+      division: s.division.unlocked
+        ? { attempts: s.division.attempts, accuracyPct: s.division.accuracy, masteryPct: s.division.mastery }
+        : 'locked',
+      twoDigitMultiplication: s.bigmul.unlocked
+        ? { attempts: s.bigmul.attempts, accuracyPct: s.bigmul.accuracy, masteryPct: s.bigmul.mastery }
+        : 'locked',
+      fractions: s.fractions.unlocked
+        ? { attempts: s.fractions.attempts, accuracyPct: s.fractions.accuracy, masteryPct: s.fractions.mastery,
+            subSkills: { naming: Stats.skillState('frac.fnam'), equivalence: Stats.skillState('frac.feq'), comparison: Stats.skillState('frac.fcmp') } }
+        : 'locked',
       // Systematic error patterns from the raw wrong-answer log — the most
       // actionable input for a targeted plan.
       errorPatterns: Stats.errorPatterns().map(p => p.label),
