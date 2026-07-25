@@ -668,7 +668,7 @@ const Stats = (() => {
     data.hist.push({ d: Date.now(), n: total, c: correct, t: elapsedSec });
     if (data.hist.length > 100) data.hist = data.hist.slice(-100);
     bumpStreak();
-    rollWeeklySnap();
+    try { rollWeeklySnap(); } catch {} // reporting must never block grading
     save(data);
   }
   // Weekly snapshot: capture the headline numbers once a week so the parent
@@ -1714,7 +1714,7 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v36';
+const APP_VERSION = 'v37';
 const APP_UPDATED = '2026-07-21';
 // In-progress quiz survives refreshes/crashes/SW updates: every answer
 // keystroke snapshots the session to localStorage; a fresh page load resumes
@@ -1883,10 +1883,13 @@ function submit(fromTimeout) {
   });
   if (!state.isPractice) Stats.recordQuiz(state.quiz.length, correctCount, state.finalElapsed);
   // Sound feedback (opt-in via topbar): perfect → triumphant; mostly right →
-  // happy chime; otherwise gentle low tone — never punishing.
-  if (correctCount === state.quiz.length) Sound.perfect();
-  else if (correctCount / state.quiz.length >= 0.7) Sound.right();
-  else Sound.wrong();
+  // happy chime; otherwise gentle low tone — never punishing. Guarded: an
+  // audio-API quirk must never be able to freeze grading.
+  try {
+    if (correctCount === state.quiz.length) Sound.perfect();
+    else if (correctCount / state.quiz.length >= 0.7) Sound.right();
+    else Sound.wrong();
+  } catch {}
   // Newly cleared a prerequisite? Unlock the next domain and show its lesson.
   const unlocked = state.isPractice ? null : Stats.checkUnlocks();
   pushIfSynced();
@@ -3281,9 +3284,6 @@ setTimeout(() => {
 // cache-first, so without an explicit update flow a long-lived install can
 // run stale code for days — check for updates on every launch and again
 // periodically, and swap in the new version as soon as it's safe.
-function quizUntouched() {
-  return !state.submitted && state.quiz.every(q => !q.given && !q.givenNum && !q.givenDen);
-}
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').then(reg => {
@@ -3295,8 +3295,10 @@ if ('serviceWorker' in navigator) {
         if (!nw) return;
         nw.addEventListener('statechange', () => {
           if (nw.state !== 'activated') return;
-          if (quizUntouched()) location.reload(); // nothing to lose — jump to the new version
-          else { state.updateReady = true; render(); }
+          // Never auto-reload: a navigation racing the child's tap makes
+          // buttons feel dead. Show the chip; the next natural open runs
+          // the new version anyway (the new SW has already taken over).
+          state.updateReady = true; render();
         });
       });
     }).catch(() => {});
