@@ -313,6 +313,9 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .sync-hint{margin-top:6px;font-size:12px;color:var(--ink-4);line-height:1.45}
 .app-version{margin-top:10px;text-align:center;font-size:11px;color:var(--ink-3)}
 .update-chip{margin-left:8px;padding:6px 10px;font-size:13px}
+.errpat-section{margin-top:14px}
+.errpat-row{font-size:13.5px;color:var(--ink-2);padding:5px 0;border-bottom:1px solid var(--border-soft);line-height:1.45}
+.errpat-row.errpat-hot{font-weight:600;color:var(--ink)}
 .snap-section{margin-top:14px}
 .plan-history{margin-top:8px;font-size:13px}
 .plan-history summary{cursor:pointer;color:var(--brand-deep);font-weight:600;padding:6px 0}
@@ -433,11 +436,12 @@ const Stats = (() => {
         unlocked: Object.assign({ division: false, bigmul: false, fractions: false }, d.unlocked || {}),
         seen: d.seen || {},
         plans: d.plans || [],
+        errlog: d.errlog || [],
         pin: d.pin || null,
       };
     } catch { return blank(); }
   }
-  function blank() { return { facts: {}, divFacts: {}, skills: {}, hist: [], snaps: [], buckets: {}, streak: { current: 0, best: 0, lastDay: null }, unlocked: { division: false, bigmul: false, fractions: false }, seen: {}, plans: [], pin: null }; }
+  function blank() { return { facts: {}, divFacts: {}, skills: {}, hist: [], snaps: [], buckets: {}, streak: { current: 0, best: 0, lastDay: null }, unlocked: { division: false, bigmul: false, fractions: false }, seen: {}, plans: [], errlog: [], pin: null }; }
   function save(d) {
     try { localStorage.setItem(STATS_KEY, JSON.stringify(d)); } catch {}
   }
@@ -491,14 +495,18 @@ const Stats = (() => {
     return Math.max(0.2, Math.min(8, 1 + 2 * (stat.wrong || 0) - 0.5 * (stat.right || 0)));
   }
   function blankFact() { return { right: 0, wrong: 0, lastSeen: 0, stab: 0, last: 0, recent: '', avgT: null, fast: 0, pL: BKT.L0 }; }
-  function applyResult(f, correct, ms, fastMs) {
+  function applyResult(f, correct, ms, fastMs, scaffolded) {
     const now = Date.now();
     fastMs = fastMs || FAST_MS;
     f.pL = bktUpdate(f.pL, correct); // calibrated P(known)
-    const wasFast = correct && typeof ms === 'number' && ms > 0 && ms <= fastMs;
+    // A right answer WITH the scaffold visible is easier than a bare one —
+    // give it reduced stability growth and no fluency credit, so mastery
+    // requires unassisted success.
+    const wasFast = correct && !scaffolded && typeof ms === 'number' && ms > 0 && ms <= fastMs;
     if (correct) {
       f.right++;
-      f.stab = f.stab > 0 ? Math.min(STAB_MAX, f.stab * (wasFast ? 2.6 : 1.8)) : (wasFast ? 3 : 1.2);
+      const grow = scaffolded ? 1.4 : (wasFast ? 2.6 : 1.8);
+      f.stab = f.stab > 0 ? Math.min(STAB_MAX, f.stab * grow) : (wasFast ? 3 : 1.2);
       if (typeof ms === 'number' && ms > 0) f.avgT = f.avgT == null ? ms : Math.round(0.6 * f.avgT + 0.4 * ms);
       if (wasFast) f.fast = (f.fast || 0) + 1;
     } else {
@@ -511,16 +519,16 @@ const Stats = (() => {
     f.recent = ((f.recent || '') + (correct ? '1' : '0')).slice(-8);
     return f;
   }
-  function recordMul(a, b, correct, ms) {
+  function recordMul(a, b, correct, ms, scaffolded) {
     const k = mulKey(a, b);
-    data.facts[k] = applyResult(data.facts[k] || blankFact(), correct, ms);
+    data.facts[k] = applyResult(data.facts[k] || blankFact(), correct, ms, 0, scaffolded);
     save(data);
   }
   // Division facts are tracked by their multiplication family (b × quotient).
   function getDivFact(b, c) { return data.divFacts[mulKey(b, c)]; }
-  function recordDiv(b, c, correct, ms) {
+  function recordDiv(b, c, correct, ms, scaffolded) {
     const k = mulKey(b, c);
-    data.divFacts[k] = applyResult(data.divFacts[k] || blankFact(), correct, ms, FAST_BY_SKILL.div);
+    data.divFacts[k] = applyResult(data.divFacts[k] || blankFact(), correct, ms, FAST_BY_SKILL.div, scaffolded);
     save(data);
   }
   function pickDivFacts(n) {
@@ -586,8 +594,8 @@ const Stats = (() => {
   // Skill-level tracking (for procedures like 2-digit multiplication that
   // aren't a small fixed fact set — one aggregate FSRS record per skill).
   function getSkill(name) { return data.skills[name]; }
-  function recordSkill(name, correct, ms) {
-    data.skills[name] = applyResult(data.skills[name] || blankFact(), correct, ms, skillFast(name));
+  function recordSkill(name, correct, ms, scaffolded) {
+    data.skills[name] = applyResult(data.skills[name] || blankFact(), correct, ms, skillFast(name), scaffolded);
     save(data);
   }
   function skillState(name) { return factState(data.skills[name], Date.now(), skillFast(name)); }
@@ -706,6 +714,69 @@ const Stats = (() => {
     if (list.length > 26) data.snaps = list.slice(-26);
   }
   function getSnaps() { return (data.snaps || []).slice(); }
+  // ---- Error log: what the child actually answered when wrong ----
+  // Aggregates lose the diagnosis; the raw wrong answer is where systematic
+  // patterns live (confusion pairs, flipped fractions, dropped carries).
+  function recordError(e) {
+    if (!e || !e.k) return;
+    const log = data.errlog || (data.errlog = []);
+    log.push(e);
+    if (log.length > 200) data.errlog = log.slice(-200);
+    save(data);
+  }
+  // Cross-domain pattern detection over the error log. Returns parent-readable
+  // findings, misconceptions first. Entries carry per-type flags computed at
+  // record time (flip / bigden / ten) plus the presented operands in x.
+  function errorPatterns() {
+    const by = {};
+    for (const e of data.errlog || []) (by[e.k] = by[e.k] || []).push(e);
+    const out = [];
+    for (const k in by) {
+      const list = by[k];
+      if (list.length < 2) continue;
+      const cnt = {};
+      for (const e of list) if (e.g !== '' && e.g != null) cnt[e.g] = (cnt[e.g] || 0) + 1;
+      const top = Object.entries(cnt).sort((p, q) => q[1] - p[1])[0];
+      const topG = top ? top[0] : null, topN = top ? top[1] : 0;
+      const last = list[list.length - 1];
+      let label = null, kind = 'repeat', pair = null;
+      if (k.indexOf('mul:') === 0 && last.x) {
+        const [a, b] = last.x, g = Number(topG);
+        let partner = null;
+        for (let c = 2; c <= 12 && !partner; c++) {
+          if (c !== b && g === a * c) partner = [a, c];
+          else if (c !== a && g === c * b) partner = [c, b];
+        }
+        if (partner && topN >= 2) {
+          kind = 'confusion'; pair = [a, b, partner[0], partner[1]];
+          label = `${a}×${b}: answers ${topG} (${topN}×) — mixing it up with ${partner[0]}×${partner[1]}. Practice them side by side.`;
+        } else label = `${a}×${b}: missed ${list.length}×${topG ? ` (usually answers ${topG})` : ''}`;
+      } else if (k.indexOf('div:') === 0 && last.x) {
+        const [a, b] = last.x, g = Number(topG);
+        if (g === b && topN >= 2) { kind = 'confusion'; label = `${a}÷${b}: echoes the divisor back (${topN}×) — ask "${b} × what = ${a}?"`; }
+        else if (topG != null && Math.abs(g - Number(last.ans)) === 1) { kind = 'offbyone'; label = `${a}÷${b}: off by one (${topN}×) — skip-counting lands one step short/over`; }
+        else label = `${a}÷${b}: missed ${list.length}×`;
+      } else if (k === 'fnam') {
+        const flips = list.filter(e => e.flip).length;
+        if (flips >= 2) { kind = 'misconception'; label = `Flips fractions top↔bottom (${flips}×) — writes total/shaded instead of shaded/total`; }
+        else label = `Naming fractions: missed ${list.length}×`;
+      } else if (k === 'fcmp') {
+        const bigden = list.filter(e => e.bigden).length;
+        if (bigden >= 2) { kind = 'misconception'; label = `Thinks a bigger bottom number means a bigger fraction (${bigden}×) — more pieces = smaller pieces`; }
+        else label = `Comparing fractions: missed ${list.length}×`;
+      } else if (k === 'feq') {
+        label = `Equivalent fractions: missed ${list.length}×`;
+      } else if (k === 'bigmul' || k.indexOf('add:') === 0 || k.indexOf('sub:') === 0) {
+        const tens = list.filter(e => e.ten).length;
+        const opName = k === 'bigmul' ? '2-digit ×' : k.indexOf('add:') === 0 ? 'Addition' : 'Subtraction';
+        if (tens >= 2) { kind = 'carry'; label = `${opName}: answers off by exactly 10 (${tens}×) — a carry/borrow is being dropped`; }
+        else label = `${opName}: missed ${list.length}×`;
+      }
+      if (label) out.push({ key: k, kind, count: list.length, label, pair, lastD: last.d });
+    }
+    const rank = { misconception: 0, confusion: 0, carry: 0, offbyone: 1, repeat: 2 };
+    return out.sort((p, q) => (rank[p.kind] ?? 2) - (rank[q.kind] ?? 2) || q.count - p.count).slice(0, 8);
+  }
   // AI plan history persisted, so the parent can scroll through past weeks
   // without regenerating (the API is metered).
   function savePlan(text) {
@@ -907,6 +978,7 @@ const Stats = (() => {
     // Snaps/plans: union by week-key/timestamp, keep newest per week.
     data.snaps = mergeByKey(data.snaps, remote.snaps, x => x.week, 'ts').slice(-26);
     data.plans = mergeByKey(data.plans, remote.plans, x => `${x.week}|${x.ts}`, 'ts').slice(-12);
+    data.errlog = mergeByKey(data.errlog, remote.errlog, x => `${x.d}|${x.k}|${x.g}`, 'd').slice(-200);
     save(data);
   }
   function mergeByKey(a, b, keyFn, tsField) {
@@ -918,7 +990,7 @@ const Stats = (() => {
     }
     return Object.values(byKey).sort((x, y) => (x[tsField] || 0) - (y[tsField] || 0));
   }
-  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery, mulSeenCount, recentAccuracy, nextUnlock, getSnaps, savePlan, getPlans };
+  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery, mulSeenCount, recentAccuracy, nextUnlock, getSnaps, savePlan, getPlans, recordError, errorPatterns };
 })();
 
 // Merge helpers for cross-device sync (keep the richer record, union history)
@@ -1369,6 +1441,15 @@ function focusQuiz() {
     const extra = Stats.pickMulFacts(6 - facts.length);
     facts = facts.concat(extra.map(p => ({ a: p.a, b: p.b })));
   }
+  // Confusion pairs practice best side by side: when the error log shows
+  // "6×7 answered as 48", make sure BOTH 6×7 and 6×8 are in the set.
+  const fkey = f => Math.min(f.a, f.b) + 'x' + Math.max(f.a, f.b);
+  const pairs = Stats.errorPatterns().filter(p => p.pair).slice(0, 2);
+  for (const p of pairs) {
+    for (const f of [{ a: p.pair[0], b: p.pair[1] }, { a: p.pair[2], b: p.pair[3] }]) {
+      if (!facts.some(x => fkey(x) === fkey(f)) && facts.length < 8) facts.push(f);
+    }
+  }
   facts.forEach(f => {
     const flip = Math.random() < 0.5;
     const a = flip ? f.b : f.a, b = flip ? f.a : f.b;
@@ -1714,7 +1795,7 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v38';
+const APP_VERSION = 'v39';
 const APP_UPDATED = '2026-07-25';
 // In-progress quiz survives refreshes/crashes/SW updates: every answer
 // keystroke snapshots the session to localStorage; a fresh page load resumes
@@ -1854,6 +1935,34 @@ function retryWrong() {
   }, 50);
 }
 
+// Build a compact error-log entry from a wrongly-answered question. Per-type
+// misconception flags are computed here, where the full question is in hand.
+function errEntry(q) {
+  const d = Date.now(), sc = q.scaffold ? 1 : 0;
+  const num = v => Number(String(v == null ? '' : v).trim());
+  if (q.type === 'mul' && q.big) {
+    return { d, k: 'bigmul', g: String(q.given || ''), ans: String(q.ans), sc, ten: Math.abs(num(q.given) - q.ans) === 10 };
+  }
+  if (q.type === 'mul') {
+    const key = Math.min(q.a, q.b) + 'x' + Math.max(q.a, q.b);
+    return { d, k: 'mul:' + key, x: [q.a, q.b], g: String(q.given || ''), ans: String(q.ans), sc };
+  }
+  if (q.type === 'div') {
+    const key = Math.min(q.fam[0], q.fam[1]) + 'x' + Math.max(q.fam[0], q.fam[1]);
+    return { d, k: 'div:' + key, x: [q.a, q.b], g: String(q.given || ''), ans: String(q.ans), sc };
+  }
+  if (q.type === 'fnam') {
+    return { d, k: 'fnam', g: `${q.givenNum || ''}/${q.givenDen || ''}`, ans: `${q.ansNum}/${q.ansDen}`, sc,
+             flip: num(q.givenNum) === q.den && num(q.givenDen) === q.shaded };
+  }
+  if (q.type === 'fcmp') {
+    return { d, k: 'fcmp', g: String(q.given || ''), ans: q.ans, sc,
+             bigden: q.n1 === q.n2 && ((q.given === '>' && q.d1 > q.d2) || (q.given === '<' && q.d2 > q.d1)) };
+  }
+  if (q.type === 'feq') return { d, k: 'feq', g: String(q.given || ''), ans: String(q.ans), sc };
+  return { d, k: q.bucket || q.type, g: String(q.given || ''), ans: String(q.ans), sc, ten: Math.abs(num(q.given) - q.ans) === 10 };
+}
+
 function submit(fromTimeout) {
   if (state.submitted) return;
   document.querySelectorAll('.ansbox').forEach(inp => {
@@ -1872,14 +1981,16 @@ function submit(fromTimeout) {
     // diagnosis can fade for a known fact slipped vs a fact still being learned.
     q._priorState = Stats.itemState(q);
     const ms = (q._t0 != null && q._t1 != null) ? (q._t1 - q._t0) : undefined;
-    if (q.type === 'mul' && q.big) Stats.recordSkill('bigmul', isRight, ms);
-    else if (q.type === 'mul' && q.a <= 12 && q.b <= 12) Stats.recordMul(q.a, q.b, isRight, ms);
-    else if (q.type === 'div' && q.fam) Stats.recordDiv(q.fam[0], q.fam[1], isRight, ms);
+    const sc = !!q.scaffold; // assisted answers earn reduced mastery credit
+    if (q.type === 'mul' && q.big) Stats.recordSkill('bigmul', isRight, ms, sc);
+    else if (q.type === 'mul' && q.a <= 12 && q.b <= 12) Stats.recordMul(q.a, q.b, isRight, ms, sc);
+    else if (q.type === 'div' && q.fam) Stats.recordDiv(q.fam[0], q.fam[1], isRight, ms, sc);
     else if (q.type === 'fnam' || q.type === 'feq' || q.type === 'fcmp') {
-      Stats.recordSkill('fractions', isRight, ms);          // aggregate (drives unlock/summary)
-      Stats.recordSkill('frac.' + q.type, isRight, ms);     // sub-skill (drives adaptive selection)
+      Stats.recordSkill('fractions', isRight, ms, sc);          // aggregate (drives unlock/summary)
+      Stats.recordSkill('frac.' + q.type, isRight, ms, sc);     // sub-skill (drives adaptive selection)
     }
     else if (q.bucket) Stats.recordBucket(q.bucket, isRight);
+    if (!isRight) { try { Stats.recordError(errEntry(q)); } catch {} }
   });
   if (!state.isPractice) Stats.recordQuiz(state.quiz.length, correctCount, state.finalElapsed);
   // Sound feedback (opt-in via topbar): perfect → triumphant; mostly right →
@@ -2916,6 +3027,19 @@ function renderStatsModal() {
   }
 
   if (s.quizzesDone > 0) {
+    // Systematic error patterns — the "practice the right thing" signal.
+    const pats = Stats.errorPatterns();
+    if (pats.length) {
+      const sect = el('div', 'errpat-section');
+      sect.appendChild(el('h3', 'stats-h3', '🔁 Error patterns'));
+      pats.forEach(p => {
+        const row = el('div', 'errpat-row' + (p.kind !== 'repeat' ? ' errpat-hot' : ''));
+        row.textContent = (p.kind === 'misconception' ? '💡 ' : p.kind === 'confusion' ? '🔀 ' : p.kind === 'carry' ? '🔟 ' : '· ') + p.label;
+        sect.appendChild(row);
+      });
+      m.appendChild(sect);
+    }
+
     // Weekly snapshot trend — passive, no API call.
     const snaps = Stats.getSnaps();
     if (snaps.length >= 2) {
@@ -3081,6 +3205,9 @@ async function generatePlan(container, btn) {
         borrows: b.k, accuracyPct: b.accuracy, attempts: b.total,
       })),
       recentQuizzes: s.hist.map(h => ({ correct: h.c, outOf: h.n, seconds: h.t })),
+      // Systematic error patterns from the raw wrong-answer log — the most
+      // actionable input for a targeted plan.
+      errorPatterns: Stats.errorPatterns().map(p => p.label),
     };
     const res = await fetch('/api/plan', {
       method: 'POST',
