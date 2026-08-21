@@ -124,6 +124,30 @@ check('unanswered questions survive 3 rerolls', survived === unansweredBefore.le
 const qlen = await page.evaluate(() => state.quiz.length);
 check('quiz stays at 10 questions', qlen === 10, 'len=' + qlen);
 
+console.log('6. daily session flow: warm-up → quiz → done, no choices needed');
+await page.evaluate(() => { localStorage.clear(); });
+await page.goto(base);
+await page.waitForSelector('.qcard');
+const boot = await page.evaluate(() => ({ step: state.dailyStep, imm: state.immediate }));
+check('fresh day boots into warm-up (immediate mode)', boot.step === 'warmup' && boot.imm === true, JSON.stringify(boot));
+check('strip highlights warm-up', !!(await page.$('.day-chip.active')));
+await fillAll('7');
+await page.click('button:has-text("Check answers")');
+await page.waitForTimeout(400);
+const afterWarm = await page.evaluate(() => Stats.getDaily());
+check('warm-up marked done', afterWarm.warmup === true && afterWarm.quiz === false);
+check("CTA offers today's quiz", !!(await page.$(`button:has-text("Today's quiz")`)));
+await page.click(`button:has-text("Today's quiz")`);
+await page.waitForTimeout(300);
+const step2 = await page.evaluate(() => ({ step: state.dailyStep, imm: state.immediate, len: state.quiz.length }));
+check('second step is the batch mixed quiz', step2.step === 'quiz' && step2.imm === false && step2.len === 10, JSON.stringify(step2));
+await fillAll('7');
+await page.click('button:has-text("Check answers")');
+await page.waitForTimeout(400);
+const doneState = await page.evaluate(() => Stats.getDaily());
+check('daily session complete', doneState.warmup === true && doneState.quiz === true);
+check('celebration shown', !!(await page.$('.day-done')));
+
 check('no page errors across all scenarios', pageErrors.length === 0, pageErrors.join('; '));
 
 await browser.close();

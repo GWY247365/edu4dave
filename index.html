@@ -265,6 +265,13 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .mine-card .mastery-meter{height:12px;margin:0 0 10px}
 .mine-go{width:100%;height:48px;font-size:16px}
 .mine-next{margin:6px 0 0;font-size:14px;color:var(--ink-3);text-align:center}
+.daystrip{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:2px 0 10px;font-size:13.5px}
+.day-chip{padding:4px 10px;border-radius:999px;border:1px solid var(--border);color:var(--ink-3);font-weight:600;background:var(--bg)}
+.day-chip.active{border-color:var(--brand);color:var(--brand-deep);box-shadow:0 0 0 3px rgba(6,152,218,.10)}
+.day-chip.done{border-color:#34d399;color:#047857;background:#ecfdf5}
+.day-arrow{color:var(--ink-4)}
+.day-done{font-weight:700;color:#047857}
+.mine-note{margin:-6px 0 12px;font-size:13px;color:var(--ink-3);line-height:1.4}
 .mine-week{margin:-6px 0 12px;font-size:13.5px;color:var(--ink-2);font-weight:600;line-height:1.4}
 .mine-chips{display:flex;gap:6px;margin:0 0 10px}
 .mine-chip{flex:1;text-align:center;font-size:12px;font-weight:600;border:1px solid var(--border);border-radius:8px;padding:4px 2px;color:var(--ink-2);background:#fff}
@@ -448,11 +455,12 @@ const Stats = (() => {
         seen: d.seen || {},
         plans: d.plans || [],
         errlog: d.errlog || [],
+        daily: d.daily || { day: null, warmup: false, quiz: false },
         pin: d.pin || null,
       };
     } catch { return blank(); }
   }
-  function blank() { return { facts: {}, divFacts: {}, skills: {}, hist: [], snaps: [], buckets: {}, streak: { current: 0, best: 0, lastDay: null }, unlocked: { division: false, bigmul: false, fractions: false }, seen: {}, plans: [], errlog: [], pin: null }; }
+  function blank() { return { facts: {}, divFacts: {}, skills: {}, hist: [], snaps: [], buckets: {}, streak: { current: 0, best: 0, lastDay: null }, unlocked: { division: false, bigmul: false, fractions: false }, seen: {}, plans: [], errlog: [], daily: { day: null, warmup: false, quiz: false }, pin: null }; }
   function save(d) {
     try { localStorage.setItem(STATS_KEY, JSON.stringify(d)); } catch {}
   }
@@ -732,6 +740,18 @@ const Stats = (() => {
     if (list.length > 26) data.snaps = list.slice(-26);
   }
   function getSnaps() { return (data.snaps || []).slice(); }
+  // ---- Daily session: the system decides, the child just presses start ----
+  function getDaily() {
+    const today = todayKey();
+    if (!data.daily || data.daily.day !== today) data.daily = { day: today, warmup: false, quiz: false };
+    return { ...data.daily };
+  }
+  function markDaily(step) {
+    const d = getDaily();
+    d[step] = true;
+    data.daily = d;
+    save(data);
+  }
   // ---- Error log: what the child actually answered when wrong ----
   // Aggregates lose the diagnosis; the raw wrong answer is where systematic
   // patterns live (confusion pairs, flipped fractions, dropped carries).
@@ -997,6 +1017,14 @@ const Stats = (() => {
     data.snaps = mergeByKey(data.snaps, remote.snaps, x => x.week, 'ts').slice(-26);
     data.plans = mergeByKey(data.plans, remote.plans, x => `${x.week}|${x.ts}`, 'ts').slice(-12);
     data.errlog = mergeByKey(data.errlog, remote.errlog, x => `${x.d}|${x.k}|${x.g}`, 'd').slice(-200);
+    // Daily flags: same day → OR across devices; otherwise the newer day wins.
+    const rd = remote.daily;
+    if (rd && rd.day) {
+      if (data.daily && data.daily.day === rd.day) {
+        data.daily.warmup = data.daily.warmup || !!rd.warmup;
+        data.daily.quiz = data.daily.quiz || !!rd.quiz;
+      } else if (!data.daily || !data.daily.day || rd.day > data.daily.day) data.daily = { day: rd.day, warmup: !!rd.warmup, quiz: !!rd.quiz };
+    }
     save(data);
   }
   function mergeByKey(a, b, keyFn, tsField) {
@@ -1008,7 +1036,7 @@ const Stats = (() => {
     }
     return Object.values(byKey).sort((x, y) => (x[tsField] || 0) - (y[tsField] || 0));
   }
-  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery, mulSeenCount, recentAccuracy, nextUnlock, isSlowFact, getSnaps, savePlan, getPlans, recordError, errorPatterns };
+  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery, mulSeenCount, recentAccuracy, nextUnlock, isSlowFact, getSnaps, savePlan, getPlans, recordError, errorPatterns, getDaily, markDaily };
 })();
 
 // Merge helpers for cross-device sync (keep the richer record, union history)
@@ -1862,11 +1890,20 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v44';
+const APP_VERSION = 'v45';
 const APP_UPDATED = '2026-08-21';
 // In-progress quiz survives refreshes/crashes/SW updates: every answer
 // keystroke snapshots the session to localStorage; a fresh page load resumes
 // it (questions, typed answers, wall-clock timer) unless it's gone stale.
+// The engine decides what today's session serves next: warm-up first
+// (weak/due items + confusion pairs, immediate corrective feedback), then
+// the adaptive mixed quiz (batch, test-like, counts the streak). Extra
+// rounds after that are plain mixed quizzes.
+function composeDailyStep() {
+  const d = Stats.getDaily();
+  if (!d.warmup) return { quiz: focusQuiz(), immediate: true, step: 'warmup' };
+  return { quiz: newQuiz(), immediate: false, step: d.quiz ? 'extra' : 'quiz' };
+}
 const SESSION_KEY = 'mathquiz.session.v1';
 function loadSession() {
   try {
@@ -1882,14 +1919,15 @@ function saveSession() {
   try {
     localStorage.setItem(SESSION_KEY, JSON.stringify({
       quiz: state.quiz, startedAt: state.startedAt, submitted: state.submitted,
-      timeUp: state.timeUp, isPractice: state.isPractice, immediate: state.immediate,
+      timeUp: state.timeUp, isPractice: state.isPractice, immediate: state.immediate, dailyStep: state.dailyStep,
       finalElapsed: state.finalElapsed, savedAt: Date.now(),
     }));
   } catch {}
 }
 const _resumed = loadSession();
+const _boot = _resumed ? null : composeDailyStep();
 const state = {
-  quiz: _resumed ? _resumed.quiz : newQuiz(),
+  quiz: _resumed ? _resumed.quiz : _boot.quiz,
   startedAt: _resumed && _resumed.startedAt ? _resumed.startedAt : Date.now(),
   remaining: TIME_LIMIT_SEC, // ticker recomputes from startedAt (wall clock)
   submitted: _resumed ? !!_resumed.submitted : false,
@@ -1899,7 +1937,8 @@ const state = {
   showMine: false,
   showLesson: null,
   isPractice: _resumed ? !!_resumed.isPractice : false,
-  immediate: _resumed ? !!_resumed.immediate : false,
+  immediate: _resumed ? !!_resumed.immediate : _boot.immediate,
+  dailyStep: _resumed ? (_resumed.dailyStep || null) : _boot.step,
   finalElapsed: _resumed && _resumed.finalElapsed != null ? _resumed.finalElapsed : null,
 };
 
@@ -1970,7 +2009,8 @@ function startNew() {
         .map(q => ({ ...q, given: '', givenNum: '', givenDen: '', _t0: undefined, _t1: undefined, _imm: undefined, _retype: undefined, _priorState: undefined }))
         .slice(0, 6) // a fresh quiz has 6 adaptive slots — never grow past 10 questions
     : [];
-  let fresh = newQuiz();
+  const stepInfo = composeDailyStep();
+  let fresh = stepInfo.quiz;
   if (carry.length) {
     const carrySigs = new Set(carry.map(qSig));
     // Swap out fresh non-add/sub questions (that aren't already the same
@@ -1989,7 +2029,8 @@ function startNew() {
     fresh = shuffleQuiz(keptOther.concat(freshAdaptive.slice(Math.max(0, room)), carry));
   }
   state.quiz = fresh;
-  state.immediate = false;
+  state.immediate = stepInfo.immediate;
+  state.dailyStep = stepInfo.step;
   state.isPractice = false;
   state.submitted = false;
   state.timeUp = false;
@@ -2007,6 +2048,7 @@ function startNew() {
 function startFocus() {
   state.quiz = focusQuiz();
   state.immediate = true; // fluency practice → immediate corrective feedback
+  state.dailyStep = 'extra';
   state.isPractice = false;
   state.submitted = false;
   state.timeUp = false;
@@ -2106,6 +2148,7 @@ function submit(fromTimeout) {
     if (!isRight) { try { Stats.recordError(errEntry(q)); } catch {} }
   });
   if (!state.isPractice) Stats.recordQuiz(state.quiz.length, correctCount, state.finalElapsed);
+  if (!state.isPractice && (state.dailyStep === 'warmup' || state.dailyStep === 'quiz')) Stats.markDaily(state.dailyStep);
   // Sound feedback (opt-in via topbar): perfect → triumphant; mostly right →
   // happy chime; otherwise gentle low tone — never punishing. Guarded: an
   // audio-API quirk must never be able to freeze grading.
@@ -2137,11 +2180,27 @@ function dismissModal() {
   render();
 }
 
+// Today's session strip: the system-decided plan, visible and simple.
+function renderDailyStrip() {
+  const d = Stats.getDaily();
+  const wrap = el('div', 'daystrip');
+  [{ key: 'warmup', label: '🎯 Warm-up', done: d.warmup },
+   { key: 'quiz', label: '📝 Quiz', done: d.quiz }].forEach((st, i) => {
+    if (i) wrap.appendChild(el('span', 'day-arrow', '→'));
+    const active = !st.done && state.dailyStep === st.key && !state.submitted;
+    const chip = el('span', 'day-chip' + (st.done ? ' done' : active ? ' active' : ''));
+    chip.textContent = (st.done ? '✓ ' : '') + st.label;
+    wrap.appendChild(chip);
+  });
+  if (d.warmup && d.quiz) wrap.appendChild(el('span', 'day-done', "🎉 Done for today — anything more is bonus!"));
+  return wrap;
+}
 function render() {
   const app = document.getElementById('app');
   app.innerHTML = '';
   const shell = el('div', 'shell');
   shell.appendChild(renderTopbar());
+  shell.appendChild(renderDailyStrip());
   if (state.submitted) shell.appendChild(renderSummary());
   shell.appendChild(renderProgress());
   const grid = el('div', 'qgrid' + (state.submitted ? ' review' : ''));
@@ -2687,12 +2746,18 @@ function chip(kind, text) {
   return c;
 }
 
+function nextStepLabel() {
+  const d = Stats.getDaily();
+  if (!d.warmup) return '🎯 Start warm-up';
+  if (!d.quiz) return "▶ Today's quiz";
+  return '🔄 New quiz';
+}
 function renderActionBar() {
   const bar = el('div', 'actionbar');
   const inner = el('div', 'actionbar-inner');
 
   const newBtn = el('button', 'btn btn-ghost btn-big');
-  newBtn.textContent = '🔄 New quiz';
+  newBtn.textContent = state.submitted ? nextStepLabel() : '🔄 New quiz';
   newBtn.onclick = () => {
     if (!state.submitted) {
       const ok = confirm('Start a new quiz? Answered questions are discarded — unanswered ones come along to the new quiz!');
@@ -2708,7 +2773,7 @@ function renderActionBar() {
       submitBtn.textContent = `🔁 Retry missed (${missed})`;
       submitBtn.onclick = retryWrong;
     } else {
-      submitBtn.textContent = '🔄 New quiz';
+      submitBtn.textContent = nextStepLabel();
       submitBtn.onclick = startNew;
       newBtn.style.display = 'none';
     }
@@ -2754,6 +2819,7 @@ function startFocusedQuiz(seenKey, makeQuiz) {
   state.showMine = false;
   state.quiz = makeQuiz();
   state.immediate = true; // focused domain practice → immediate corrective feedback
+  state.dailyStep = 'extra';
   state.isPractice = false;
   state.submitted = false;
   state.timeUp = false;
@@ -2906,6 +2972,10 @@ function renderMineModal() {
   if (sk.current > 0 && sk.atRisk) m.appendChild(el('p', 'mine-streak atrisk', `⚠️ Your ${sk.current}-day streak is on the line — play any quiz today to keep it alive!`));
   else if (sk.current > 0) m.appendChild(el('p', 'mine-streak', `🔥 ${sk.current}-day streak — you keep showing up. That's how brains grow!`));
   else m.appendChild(el('p', 'mine-streak', `Every quiz makes your math brain stronger. Pick something to grow! 🌱`));
+
+  const dToday = Stats.getDaily();
+  if (dToday.warmup && dToday.quiz) m.appendChild(el('p', 'mine-note', "Today's practice is done — anything you pick here is bonus! 🌟"));
+  else m.appendChild(el('p', 'mine-note', "Today's session picks the best practice for you automatically — this page is for extras."));
 
   // Growth since last week — change motivates more than state.
   const snaps = Stats.getSnaps();
