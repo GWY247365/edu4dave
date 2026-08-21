@@ -38,6 +38,10 @@ const page = await browser.newPage();
 const pageErrors = [];
 page.on('pageerror', e => pageErrors.push(e.message));
 
+async function startIfReady() {
+  const btn = await page.$('.ready-start');
+  if (btn) { await btn.click(); await page.waitForTimeout(250); }
+}
 async function fillAll(value) {
   // Re-query per element: a background render (e.g. the SW update chip on
   // first install) can rebuild the DOM and detach previously-grabbed handles.
@@ -54,10 +58,14 @@ async function fillAll(value) {
   }
 }
 
-console.log('1. plain mixed quiz grades');
+console.log('1. plain mixed quiz grades (via ready screen)');
 await page.goto(base);
-await page.waitForSelector('.qcard');
+await page.waitForSelector('.ready-start');
+check('boot shows ready screen, no questions, no clock', (await page.$$('.qcard')).length === 0
+  && (await page.$eval('#timer', e => e.textContent)) === '');
 await page.waitForTimeout(1500); // let first-install SW settle (it re-renders once)
+await startIfReady();
+await page.waitForSelector('.qcard');
 await fillAll('7');
 await page.click('button:has-text("Check answers")');
 await page.waitForTimeout(400);
@@ -75,7 +83,7 @@ check('submitted', await page.evaluate(() => state.submitted));
 console.log('3. immediate corrective feedback (practice mode)');
 await page.evaluate(() => { localStorage.removeItem('mathquiz.session.v1'); });
 await page.goto(base);
-await page.waitForSelector('.qcard');
+await page.waitForSelector('.ready-start, .qcard');
 await page.evaluate(() => startFocus());
 await page.waitForTimeout(300);
 check('immediate flag on', await page.evaluate(() => state.immediate));
@@ -98,7 +106,8 @@ const box = (await page.$$('.ansbox'))[0];
 await box.fill('42');
 await page.reload();
 await page.waitForSelector('.qcard');
-check('typed answer restored', (await page.$$eval('.ansbox', els => els.filter(e => e.value === '42').length)) === 1);
+check('typed answer restored (resumes past ready screen)', (await page.$$eval('.ansbox', els => els.filter(e => e.value === '42').length)) === 1);
+check('resumed quiz time is sane (not wall-clock overtime)', await page.evaluate(() => state.remaining > 8 * 60 || state.remaining === 600));
 
 console.log('5. reroll fishing is closed: unanswered questions carry over');
 await page.evaluate(() => { localStorage.removeItem('mathquiz.session.v1'); startNew(); });
@@ -127,9 +136,12 @@ check('quiz stays at 10 questions', qlen === 10, 'len=' + qlen);
 console.log('6. daily session flow: warm-up → quiz → done, no choices needed');
 await page.evaluate(() => { localStorage.clear(); });
 await page.goto(base);
+await page.waitForSelector('.ready-start');
+check('fresh day shows ready screen first', true);
+await startIfReady();
 await page.waitForSelector('.qcard');
 const boot = await page.evaluate(() => ({ step: state.dailyStep, imm: state.immediate }));
-check('fresh day boots into warm-up (immediate mode)', boot.step === 'warmup' && boot.imm === true, JSON.stringify(boot));
+check('start launches warm-up (immediate mode)', boot.step === 'warmup' && boot.imm === true, JSON.stringify(boot));
 check('strip highlights warm-up', !!(await page.$('.day-chip.active')));
 await fillAll('7');
 await page.click('button:has-text("Check answers")');

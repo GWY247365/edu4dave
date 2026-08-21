@@ -264,6 +264,13 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .mine-go{width:100%;height:48px;font-size:16px}
 .mine-start{margin:0 0 14px}
 .mine-next{margin:6px 0 0;font-size:14px;color:var(--ink-3);text-align:center}
+.ready{text-align:center;padding:36px 16px 30px;background:var(--card,#fff);border:1px solid var(--border);border-radius:18px;margin-top:6px}
+.ready-emoji{font-size:52px;margin-bottom:6px}
+.ready-title{margin:0 0 10px;font-size:24px;color:var(--ink)}
+.ready-streak{margin:0 0 6px;font-weight:700;color:var(--brand-deep)}
+.ready-desc{margin:0 auto 18px;font-size:15px;color:var(--ink-2);max-width:420px;line-height:1.5}
+.ready-start{min-width:240px;height:56px;font-size:18px}
+.ready-hint{margin:12px 0 0;font-size:12.5px;color:var(--ink-4)}
 .daystrip{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:2px 0 10px;font-size:13.5px}
 .day-chip{padding:4px 10px;border-radius:999px;border:1px solid var(--border);color:var(--ink-3);font-weight:600;background:var(--bg)}
 .day-chip.active{border-color:var(--brand);color:var(--brand-deep);box-shadow:0 0 0 3px rgba(6,152,218,.10)}
@@ -1889,7 +1896,7 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v46';
+const APP_VERSION = 'v47';
 const APP_UPDATED = '2026-08-21';
 // In-progress quiz survives refreshes/crashes/SW updates: every answer
 // keystroke snapshots the session to localStorage; a fresh page load resumes
@@ -1918,16 +1925,25 @@ function saveSession() {
   try {
     localStorage.setItem(SESSION_KEY, JSON.stringify({
       quiz: state.quiz, startedAt: state.startedAt, submitted: state.submitted,
+      elapsed: Math.max(0, Math.floor((Date.now() - state.startedAt) / 1000)),
       timeUp: state.timeUp, isPractice: state.isPractice, immediate: state.immediate, dailyStep: state.dailyStep,
       finalElapsed: state.finalElapsed, savedAt: Date.now(),
     }));
   } catch {}
 }
 const _resumed = loadSession();
+// Progress = typed answers, immediate-mode checks, or a submitted review —
+// those resume straight into the quiz. An untouched quiz goes back to the
+// ready screen (and its unanswered questions still carry over on start).
+const _hasProgress = !!_resumed && (_resumed.submitted ||
+  (_resumed.quiz || []).some(q => (q.given || '') !== '' || (q.givenNum || '') !== '' || (q.givenDen || '') !== '' || q._imm));
 const _boot = _resumed ? null : composeDailyStep();
 const state = {
+  phase: _hasProgress ? 'quiz' : 'ready',
   quiz: _resumed ? _resumed.quiz : _boot.quiz,
-  startedAt: _resumed && _resumed.startedAt ? _resumed.startedAt : Date.now(),
+  // Resume from recorded QUIZ time, not wall clock — hours away must not
+  // show up as overtime.
+  startedAt: _hasProgress && _resumed.elapsed != null ? Date.now() - _resumed.elapsed * 1000 : Date.now(),
   remaining: TIME_LIMIT_SEC, // ticker recomputes from startedAt (wall clock)
   submitted: _resumed ? !!_resumed.submitted : false,
   timeUp: _resumed ? !!_resumed.timeUp : false,
@@ -1942,10 +1958,12 @@ const state = {
 };
 
 let tickHandle = null;
+let _tickCount = 0;
 function runTicker() {
   clearInterval(tickHandle);
   tickHandle = setInterval(() => {
-    if (state.submitted) { clearInterval(tickHandle); tickHandle = null; return; }
+    if (state.submitted || state.phase !== 'quiz') { clearInterval(tickHandle); tickHandle = null; return; }
+    if (++_tickCount % 60 === 0) saveSession(); // checkpoint quiz time ~15s
     const elapsed = Math.floor((Date.now() - state.startedAt) / 1000);
     state.remaining = TIME_LIMIT_SEC - elapsed; // may go negative — overtime
     if (state.remaining <= 0 && !state.timeUp) {
@@ -1977,6 +1995,7 @@ function fmt(sec) {
 
 function renderTimer() {
   const el = document.getElementById('timer');
+  if (el && state.phase !== 'quiz') { el.textContent = ''; el.className = 'timer'; return; }
   if (!el) return;
   el.textContent = '';
   const dot = document.createElement('span'); dot.className='dot';
@@ -2028,6 +2047,7 @@ function startNew() {
     fresh = shuffleQuiz(keptOther.concat(freshAdaptive.slice(Math.max(0, room)), carry));
   }
   state.quiz = fresh;
+  state.phase = 'quiz';
   state.immediate = stepInfo.immediate;
   state.dailyStep = stepInfo.step;
   state.isPractice = false;
@@ -2046,6 +2066,7 @@ function startNew() {
 
 function startFocus() {
   state.quiz = focusQuiz();
+  state.phase = 'quiz';
   state.immediate = true; // fluency practice → immediate corrective feedback
   state.dailyStep = 'extra';
   state.isPractice = false;
@@ -2068,6 +2089,7 @@ function retryWrong() {
   const wrong = state.quiz.filter(q => !answerCorrect(q));
   if (!wrong.length) { startNew(); return; }
   state.quiz = wrong.map((q, i) => ({ ...q, id: i, given: '', givenNum: '', givenDen: '', _imm: undefined, _retype: undefined, _t0: undefined, _t1: undefined }));
+  state.phase = 'quiz';
   state.immediate = true; // relearning missed items → immediate corrective feedback
   state.isPractice = true; // don't log a partial set to history/streak
   state.submitted = false;
@@ -2194,12 +2216,38 @@ function renderDailyStrip() {
   if (d.warmup && d.quiz) wrap.appendChild(el('span', 'day-done', "🎉 Done for today — anything more is bonus!"));
   return wrap;
 }
+// Ready screen: no questions on display, no clock running — the child sees
+// today's plan and starts when THEY are ready.
+function renderReadyScreen() {
+  const wrap = el('div', 'ready');
+  wrap.appendChild(el('div', 'ready-emoji', '🧮'));
+  wrap.appendChild(el('h2', 'ready-title', "Ready for today's math?"));
+  const sk = Stats.streakStatus();
+  if (sk.current > 0) wrap.appendChild(el('p', 'ready-streak', sk.atRisk
+    ? `⚠️ ${sk.current}-day streak on the line — play today to keep it!`
+    : `🔥 ${sk.current}-day streak — keep it rolling!`));
+  const d = Stats.getDaily();
+  const desc = !d.warmup ? '🎯 First up: a warm-up on your tricky ones — mistakes get fixed on the spot.'
+    : !d.quiz ? "📝 Next up: today's quiz — show what you've got!"
+    : '🌟 Today is done — a bonus round is extra brain power!';
+  wrap.appendChild(el('p', 'ready-desc', desc));
+  const start = el('button', 'btn btn-primary btn-big ready-start', nextStepLabel());
+  start.onclick = startNew;
+  wrap.appendChild(start);
+  wrap.appendChild(el('p', 'ready-hint', '⏱️ No rush — the clock only starts when you do.'));
+  return wrap;
+}
 function render() {
   const app = document.getElementById('app');
   app.innerHTML = '';
   const shell = el('div', 'shell');
   shell.appendChild(renderTopbar());
   shell.appendChild(renderDailyStrip());
+  if (state.phase === 'ready') {
+    shell.appendChild(renderReadyScreen());
+    shell.appendChild(renderFooter());
+    app.appendChild(shell);
+  } else {
   if (state.submitted) shell.appendChild(renderSummary());
   shell.appendChild(renderProgress());
   const grid = el('div', 'qgrid' + (state.submitted ? ' review' : ''));
@@ -2208,6 +2256,7 @@ function render() {
   shell.appendChild(renderFooter());
   app.appendChild(shell);
   app.appendChild(renderActionBar());
+  }
   if (state.showTimeoutModal) app.appendChild(renderTimeoutModal());
   if (state.showStats) app.appendChild(renderStatsModal());
   if (state.showMine) app.appendChild(renderMineModal());
@@ -2817,6 +2866,7 @@ function startFocusedQuiz(seenKey, makeQuiz) {
   state.showStats = false;
   state.showMine = false;
   state.quiz = makeQuiz();
+  state.phase = 'quiz';
   state.immediate = true; // focused domain practice → immediate corrective feedback
   state.dailyStep = 'extra';
   state.isPractice = false;
@@ -3627,7 +3677,7 @@ function spanTxt(text, cls) {
   return s;
 }
 
-if (_resumed) { if (!state.submitted) runTicker(); } else { startTimer(); }
+if (state.phase === 'quiz' && !state.submitted) runTicker();
 saveSession();
 render();
 setTimeout(() => {
