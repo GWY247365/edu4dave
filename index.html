@@ -443,6 +443,24 @@ const Stats = (() => {
   function migrateFacts(facts) {
     facts = facts || {};
     for (const k in facts) facts[k] = migrateFact(facts[k]);
+    // Backfill P(known) for pre-BKT records: without it they count as the
+    // 0.2 prior in overallMulMastery, dragging the difficulty band far below
+    // the child's real level (observed in the field: 45 legacy facts held a
+    // practicing-level learner at novice for months). Estimate by replaying
+    // the recent-history string through the BKT update; fall back to capped
+    // right/wrong counts.
+    for (const k in facts) {
+      const f = facts[k];
+      if (f.pL != null || (f.right || 0) + (f.wrong || 0) === 0) continue;
+      let p = BKT.L0;
+      const rec = f.recent || '';
+      if (rec) { for (const ch of rec) p = bktUpdate(p, ch === '1'); }
+      else {
+        for (let i = 0; i < Math.min(f.right || 0, 5); i++) p = bktUpdate(p, true);
+        for (let i = 0; i < Math.min(f.wrong || 0, 5); i++) p = bktUpdate(p, false);
+      }
+      f.pL = p;
+    }
     return facts;
   }
   function load() {
@@ -524,6 +542,9 @@ const Stats = (() => {
   function applyResult(f, correct, ms, fastMs, scaffolded) {
     const now = Date.now();
     fastMs = fastMs || FAST_MS;
+    // Clamp think-time: a walked-away tablet must not poison avgT (field
+    // data had avgT of 138s on one fact from a single idle answer).
+    if (typeof ms === 'number' && ms > 30000) ms = 30000;
     f.pL = bktUpdate(f.pL, correct); // calibrated P(known)
     // A right answer WITH the scaffold visible is easier than a bare one —
     // give it reduced stability growth and no fluency credit, so mastery
@@ -765,6 +786,8 @@ const Stats = (() => {
   function recordError(e) {
     if (!e || !e.k) return;
     const log = data.errlog || (data.errlog = []);
+    // Same item+answer within 90s is a duplicate (double submit, replay bug)
+    if (log.slice(-15).some(x => x.k === e.k && x.g === e.g && e.d - x.d < 90000)) return;
     log.push(e);
     if (log.length > 200) data.errlog = log.slice(-200);
     save(data);
@@ -814,7 +837,7 @@ const Stats = (() => {
       } else if (k === 'bigmul' || k.indexOf('add:') === 0 || k.indexOf('sub:') === 0) {
         const tens = list.filter(e => e.ten).length;
         const opName = k === 'bigmul' ? '2-digit ×' : k.indexOf('add:') === 0 ? 'Addition' : 'Subtraction';
-        if (tens >= 2) { kind = 'carry'; label = `${opName}: answers off by exactly 10 (${tens}×) — a carry/borrow is being dropped`; }
+        if (tens >= 2) { kind = 'carry'; label = `${opName}: answers off in the tens place (${tens}×) — a carry/borrow or place-value slip`; }
         else label = `${opName}: missed ${list.length}×`;
       }
       if (label) out.push({ key: k, kind, count: list.length, label, pair, lastD: last.d });
@@ -1909,7 +1932,7 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v52';
+const APP_VERSION = 'v53';
 const APP_UPDATED = '2026-08-21';
 // In-progress quiz survives refreshes/crashes/SW updates: every answer
 // keystroke snapshots the session to localStorage; a fresh page load resumes
@@ -2124,8 +2147,9 @@ function retryWrong() {
 function errEntry(q) {
   const d = Date.now(), sc = q.scaffold ? 1 : 0;
   const num = v => Number(String(v == null ? '' : v).trim());
+  const tensSlip = v => { const df = Math.abs(num(v) - q.ans); return df >= 10 && df <= 90 && df % 10 === 0; };
   if (q.type === 'mul' && q.big) {
-    return { d, k: 'bigmul', g: String(q.given || ''), ans: String(q.ans), sc, ten: Math.abs(num(q.given) - q.ans) === 10 };
+    return { d, k: 'bigmul', g: String(q.given || ''), ans: String(q.ans), sc, ten: tensSlip(q.given) };
   }
   if (q.type === 'mul') {
     const key = Math.min(q.a, q.b) + 'x' + Math.max(q.a, q.b);
@@ -2144,11 +2168,15 @@ function errEntry(q) {
              bigden: q.n1 === q.n2 && ((q.given === '>' && q.d1 > q.d2) || (q.given === '<' && q.d2 > q.d1)) };
   }
   if (q.type === 'feq') return { d, k: 'feq', g: String(q.given || ''), ans: String(q.ans), sc };
-  return { d, k: q.bucket || q.type, g: String(q.given || ''), ans: String(q.ans), sc, ten: Math.abs(num(q.given) - q.ans) === 10 };
+  return { d, k: q.bucket || q.type, g: String(q.given || ''), ans: String(q.ans), sc, ten: tensSlip(q.given) };
 }
 
 function submit(fromTimeout) {
   if (state.submitted) return;
+  if (!state.quiz.some(q => answered(q))) {
+    alert("You haven't answered anything yet — give one a try first! ✏️");
+    return;
+  }
   // Final DOM sweep for plain number boxes. Fraction inputs also carry the
   // .ansbox class but have NO dataset.id (their values live in givenNum/
   // givenDen, persisted on every keystroke) — indexing quiz[NaN] here threw
