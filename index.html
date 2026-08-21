@@ -1908,7 +1908,7 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v50';
+const APP_VERSION = 'v51';
 const APP_UPDATED = '2026-08-21';
 // In-progress quiz survives refreshes/crashes/SW updates: every answer
 // keystroke snapshots the session to localStorage; a fresh page load resumes
@@ -2030,34 +2030,33 @@ function qSig(q) {
   return `${q.type}:${q.a},${q.b}`;
 }
 function startNew() {
-  // Anti-fishing: rerolling must not be an escape hatch. Unanswered adaptive
-  // questions (mul/div/bigmul/fractions) from an abandoned quiz carry over
-  // into the new one — reroll all you like, the hard ones come along.
-  // Add/sub slots and answered questions regenerate freshly. Transparent,
-  // not punitive: the confirm dialog says so.
-  const carry = (!state.submitted && Array.isArray(state.quiz))
-    ? state.quiz.filter(q => !answered(q) && q.type !== 'add' && q.type !== 'sub')
+  // Anti-fishing: rerolling/refresh must not be an escape hatch. EVERY
+  // unanswered question from an abandoned quiz carries over verbatim —
+  // including add/sub, or a lucky reroll could fish for easier operands and
+  // the quiz would merely LOOK new each time. Answered questions regenerate.
+  // Slot-aligned so the composition/size of the fresh step is preserved.
+  const isAS = q => q.type === 'add' || q.type === 'sub';
+  const unanswered = (!state.submitted && Array.isArray(state.quiz))
+    ? state.quiz.filter(q => !answered(q))
         .map(q => ({ ...q, given: '', givenNum: '', givenDen: '', _t0: undefined, _t1: undefined, _imm: undefined, _retype: undefined, _priorState: undefined }))
-        .slice(0, 6) // a fresh quiz has 6 adaptive slots — never grow past 10 questions
     : [];
   const stepInfo = composeDailyStep();
   let fresh = stepInfo.quiz;
-  if (carry.length) {
-    const carrySigs = new Set(carry.map(qSig));
-    // Swap out fresh non-add/sub questions (that aren't already the same
-    // item) one-for-one with the carried ones, then reshuffle.
-    // Two passes so the result is order-independent: fresh duplicates of
-    // carried items always drop AND count toward the room the carry needs;
-    // then exactly the remaining room is vacated from other adaptive slots.
-    const keptOther = [], freshAdaptive = [];
-    let room = carry.length;
-    for (const q of fresh) {
-      if (q.type !== 'add' && q.type !== 'sub') {
-        if (carrySigs.has(qSig(q))) { room--; continue; }
-        freshAdaptive.push(q);
-      } else keptOther.push(q);
-    }
-    fresh = shuffleQuiz(keptOther.concat(freshAdaptive.slice(Math.max(0, room)), carry));
+  if (unanswered.length) {
+    const freshAd = fresh.filter(q => !isAS(q)), freshAS = fresh.filter(isAS);
+    // Carry never exceeds the fresh step's slot counts (a step change, e.g.
+    // abandoned mixed quiz → warm-up, must not grow the warm-up).
+    const carryAd = unanswered.filter(q => !isAS(q)).slice(0, freshAd.length);
+    const carryAS = unanswered.filter(isAS).slice(0, freshAS.length);
+    const carrySigs = new Set(carryAd.map(qSig));
+    // Order-independent swap: fresh duplicates of carried items always drop
+    // and count toward the room the carry needs; then exactly the remaining
+    // room is vacated from other adaptive slots.
+    const freshAdNoDup = freshAd.filter(q => !carrySigs.has(qSig(q)));
+    const dupes = freshAd.length - freshAdNoDup.length;
+    const room = Math.max(0, carryAd.length - dupes);
+    fresh = shuffleQuiz(
+      freshAS.slice(carryAS.length).concat(carryAS, freshAdNoDup.slice(room), carryAd));
   }
   state.quiz = fresh;
   state.phase = 'quiz';

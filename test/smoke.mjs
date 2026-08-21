@@ -112,7 +112,7 @@ check('resumed quiz time is sane (not wall-clock overtime)', await page.evaluate
 console.log('5. reroll fishing is closed: unanswered questions carry over');
 await page.evaluate(() => { localStorage.removeItem('mathquiz.session.v1'); startNew(); });
 await page.waitForTimeout(200);
-const before = await page.evaluate(() => state.quiz.filter(q => q.type !== 'add' && q.type !== 'sub')
+const before = await page.evaluate(() => state.quiz
   .map(q => `${q.type}:${Math.min(q.a || 0, q.b || 0)}x${Math.max(q.a || 0, q.b || 0)}`));
 // answer ONE adaptive question, leave the rest blank, then reroll 3 times
 await page.evaluate(() => {
@@ -124,12 +124,21 @@ const answeredSig = await page.evaluate(() => {
   return `${q.type}:${Math.min(q.a || 0, q.b || 0)}x${Math.max(q.a || 0, q.b || 0)}`;
 });
 for (let r = 0; r < 3; r++) { await page.evaluate(() => startNew()); await page.waitForTimeout(100); }
-const after = await page.evaluate(() => state.quiz.filter(q => q.type !== 'add' && q.type !== 'sub')
+const after = await page.evaluate(() => state.quiz
   .map(q => `${q.type}:${Math.min(q.a || 0, q.b || 0)}x${Math.max(q.a || 0, q.b || 0)}`));
 const unansweredBefore = before.filter(s2 => s2 !== answeredSig);
 const survived = unansweredBefore.filter(s2 => after.includes(s2)).length;
-check('unanswered questions survive 3 rerolls', survived === unansweredBefore.length,
+check('ALL unanswered questions (incl add/sub) survive 3 rerolls', survived === unansweredBefore.length,
   `${survived}/${unansweredBefore.length} carried`);
+// the refresh path: reload to ready, start again — same full set
+await page.reload();
+await page.waitForSelector('.ready-start');
+await page.click('.ready-start');
+await page.waitForSelector('.qcard');
+const after2 = await page.evaluate(() => state.quiz
+  .map(q => `${q.type}:${Math.min(q.a || 0, q.b || 0)}x${Math.max(q.a || 0, q.b || 0)}`));
+const survived2 = after.filter(s2 => after2.includes(s2)).length;
+check('refresh → ready → start keeps the full set', survived2 === after.length, `${survived2}/${after.length}`);
 const qlen = await page.evaluate(() => state.quiz.length);
 check('quiz stays at 10 questions', qlen === 10, 'len=' + qlen);
 
