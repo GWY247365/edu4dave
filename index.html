@@ -298,7 +298,7 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .chart-bar.good{background:var(--ok)}
 .chart-bar.low{background:var(--bad)}
 .chart-num{font-size:10px;color:var(--ink-3);font-weight:600;font-variant-numeric:tabular-nums;flex:0 0 12px}
-.stats-actions{display:flex;gap:10px;margin-top:18px;justify-content:flex-end}
+.stats-actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}.stats-actions .btn{flex:1;min-width:130px;white-space:nowrap}
 .pin-row{display:flex;align-items:center;gap:10px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border-soft)}
 .pin-label{flex:1;font-size:13px;color:var(--ink-3);font-weight:600}
 .pin-btn{flex-shrink:0;font-size:14px;padding:8px 14px}
@@ -318,6 +318,12 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .qcard.imm-fixing{border-color:#fbbf24}
 .fixpill{margin-top:8px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:8px 12px;font-size:14px;color:#92400e;line-height:1.5}
 .fixpill .fix-ans{font-weight:800;font-size:16px;color:#b45309}
+.stats-group{margin-top:12px;background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:0 14px}
+.stats-group[open]{padding-bottom:12px}
+.stats-group-sum{cursor:pointer;display:flex;align-items:center;gap:10px;padding:12px 0;list-style-position:outside}
+.stats-group-sum .sg-title{font-weight:700;color:var(--ink);font-size:15px}
+.stats-group-sum .sg-hint{margin-left:auto;font-size:12.5px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.stats-group .stats-h3:first-of-type{margin-top:2px}
 .errpat-section{margin-top:14px}
 .errpat-row{font-size:13.5px;color:var(--ink-2);padding:5px 0;border-bottom:1px solid var(--border-soft);line-height:1.45}
 .errpat-row.errpat-hot{font-weight:600;color:var(--ink)}
@@ -1856,7 +1862,7 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v43';
+const APP_VERSION = 'v44';
 const APP_UPDATED = '2026-08-21';
 // In-progress quiz survives refreshes/crashes/SW updates: every answer
 // keystroke snapshots the session to localStorage; a fresh page load resumes
@@ -3002,11 +3008,24 @@ function renderMineModal() {
   return bg;
 }
 
+// Collapsible section for the parent panel — keeps 13 sections scannable.
+function statsGroup(title, hint, open) {
+  const d = document.createElement('details');
+  d.className = 'stats-group';
+  if (open) d.open = true;
+  const sum = document.createElement('summary');
+  sum.className = 'stats-group-sum';
+  sum.appendChild(spanTxt(title, 'sg-title'));
+  if (hint) sum.appendChild(spanTxt(hint, 'sg-hint'));
+  d.appendChild(sum);
+  return d;
+}
 function renderStatsModal() {
   const s = Stats.summary();
   const bg = el('div', 'modal-bg');
   bg.addEventListener('click', e => { if (e.target === bg) closeStats(); });
   const m = el('div', 'modal stats-modal');
+  let trendGroup = null;
 
   const head = el('div', 'stats-head');
   head.appendChild(el('h2', null, '📊 Progress'));
@@ -3014,7 +3033,6 @@ function renderStatsModal() {
   closeBtn.onclick = closeStats;
   head.appendChild(closeBtn);
   m.appendChild(head);
-  m.appendChild(renderSyncSection());
 
   if (s.quizzesDone === 0 && s.totalAttempts === 0) {
     m.appendChild(el('p', 'stats-empty', 'No data yet — finish a quiz to start tracking your progress.'));
@@ -3030,10 +3048,28 @@ function renderStatsModal() {
     tiles.appendChild(statTile('Mul mastery', s.mastery + '%'));
     m.appendChild(tiles);
 
+    // Systematic error patterns — the "practice the right thing" signal.
+    const pats = Stats.errorPatterns();
+    if (pats.length) {
+      const sect = el('div', 'errpat-section');
+      sect.appendChild(el('h3', 'stats-h3', '🔁 Error patterns'));
+      pats.forEach(p => {
+        const row = el('div', 'errpat-row' + (p.kind !== 'repeat' ? ' errpat-hot' : ''));
+        row.textContent = (p.kind === 'misconception' ? '💡 ' : p.kind === 'confusion' ? '🔀 ' : p.kind === 'carry' ? '🔟 ' : '· ') + p.label;
+        sect.appendChild(row);
+      });
+      m.appendChild(sect);
+    }
+
+    const domHintParts = [`✖️ ${s.mastery}%`];
+    if (s.division.unlocked) domHintParts.push(`➗ ${s.division.mastery}%`);
+    if (s.bigmul.unlocked) domHintParts.push(`🔢 ${s.bigmul.mastery}%`);
+    if (s.fractions.unlocked) domHintParts.push(`🍕 ${s.fractions.mastery}%`);
+    const domGroup = statsGroup('📚 By domain', domHintParts.join(' · '), false);
     const factsLine = el('p', 'stats-line',
       `Multiplication: ${s.totalAttempts} attempts · ${s.totalAccuracy}% accurate · ${s.mastered}/66 facts mastered`);
-    m.appendChild(factsLine);
-    m.appendChild(masteryMeter(s.mastery));
+    domGroup.appendChild(factsLine);
+    domGroup.appendChild(masteryMeter(s.mastery));
 
     if (s.weak.length) {
       m.appendChild(el('h3', 'stats-h3', 'Practice these next'));
@@ -3061,7 +3097,7 @@ function renderStatsModal() {
 
     const bucketTotal = ['add', 'sub'].reduce((sum, p) => sum + s.buckets[p].reduce((q, b) => q + b.total, 0), 0);
     if (bucketTotal > 0) {
-      m.appendChild(el('h3', 'stats-h3', 'Add / Sub by difficulty'));
+      domGroup.appendChild(el('h3', 'stats-h3', 'Add / Sub by difficulty'));
       const bgrid = el('div', 'bucket-grid');
       const labels = { 0: 'No carry/borrow', 1: '1 carry/borrow', 2: '2 carries/borrows' };
       ['add', 'sub'].forEach(p => {
@@ -3085,7 +3121,7 @@ function renderStatsModal() {
           bgrid.appendChild(row);
         });
       });
-      m.appendChild(bgrid);
+      domGroup.appendChild(bgrid);
     }
 
     // Defensive: if rendering still says Locked but a threshold has already
@@ -3093,13 +3129,13 @@ function renderStatsModal() {
     if (Stats.checkUnlocks()) { setTimeout(() => render(), 0); }
 
     // Division domain
-    m.appendChild(el('h3', 'stats-h3', '➗ Division'));
+    domGroup.appendChild(el('h3', 'stats-h3', '➗ Division'));
     if (!s.division.unlocked) {
       const fluent = Stats.mulFluentCount();
-      m.appendChild(el('p', 'stats-line', `Locked — unlocks when 24 multiplication facts are mastered (now ${fluent}/24). Keep practicing your times tables!`));
+      domGroup.appendChild(el('p', 'stats-line', `Locked — unlocks when 24 multiplication facts are mastered (now ${fluent}/24). Keep practicing your times tables!`));
     } else {
-      m.appendChild(el('p', 'stats-line', `${s.division.attempts} attempts · ${s.division.accuracy}% accurate · ${s.division.mastery}% mastery`));
-      m.appendChild(masteryMeter(s.division.mastery));
+      domGroup.appendChild(el('p', 'stats-line', `${s.division.attempts} attempts · ${s.division.accuracy}% accurate · ${s.division.mastery}% mastery`));
+      domGroup.appendChild(masteryMeter(s.division.mastery));
       const row = el('div', 'div-actions');
       const learn = el('button', 'btn btn-ghost', '📖 Lesson');
       learn.onclick = () => { state.showLesson = 'division'; render(); };
@@ -3107,18 +3143,18 @@ function renderStatsModal() {
       prac.onclick = startDivisionPractice;
       row.appendChild(learn);
       row.appendChild(prac);
-      m.appendChild(row);
+      domGroup.appendChild(row);
     }
 
     // Bigger multiplication domain
-    m.appendChild(el('h3', 'stats-h3', '🔢 Bigger × (2-digit)'));
+    domGroup.appendChild(el('h3', 'stats-h3', '🔢 Bigger × (2-digit)'));
     if (!s.bigmul.unlocked) {
       const fluent = Stats.mulFluentCount();
-      m.appendChild(el('p', 'stats-line', `Locked — unlocks at 40 mastered multiplication facts (now ${fluent}/40).`));
+      domGroup.appendChild(el('p', 'stats-line', `Locked — unlocks at 40 mastered multiplication facts (now ${fluent}/40).`));
     } else {
       const stTxt = s.bigmul.state === 'fluent' ? 'fluent 🌟' : s.bigmul.state === 'accurate' ? 'accurate' : 'learning';
-      m.appendChild(el('p', 'stats-line', `${s.bigmul.attempts} attempts · ${s.bigmul.accuracy}% accurate · ${s.bigmul.mastery}% mastery · ${stTxt}`));
-      m.appendChild(masteryMeter(s.bigmul.mastery));
+      domGroup.appendChild(el('p', 'stats-line', `${s.bigmul.attempts} attempts · ${s.bigmul.accuracy}% accurate · ${s.bigmul.mastery}% mastery · ${stTxt}`));
+      domGroup.appendChild(masteryMeter(s.bigmul.mastery));
       const row2 = el('div', 'div-actions');
       const learn2 = el('button', 'btn btn-ghost', '📖 Lesson');
       learn2.onclick = () => { state.showLesson = 'bigmul'; render(); };
@@ -3126,18 +3162,18 @@ function renderStatsModal() {
       prac2.onclick = startBigmulPractice;
       row2.appendChild(learn2);
       row2.appendChild(prac2);
-      m.appendChild(row2);
+      domGroup.appendChild(row2);
     }
 
     // Fractions domain
-    m.appendChild(el('h3', 'stats-h3', '🍕 Fractions'));
+    domGroup.appendChild(el('h3', 'stats-h3', '🍕 Fractions'));
     if (!s.fractions.unlocked) {
       const fluent = Stats.mulFluentCount();
-      m.appendChild(el('p', 'stats-line', `Locked — unlocks at 50 mastered multiplication facts (now ${fluent}/50).`));
+      domGroup.appendChild(el('p', 'stats-line', `Locked — unlocks at 50 mastered multiplication facts (now ${fluent}/50).`));
     } else {
       const stTxt = s.fractions.state === 'fluent' ? 'fluent 🌟' : s.fractions.state === 'accurate' ? 'accurate' : 'learning';
-      m.appendChild(el('p', 'stats-line', `${s.fractions.attempts} attempts · ${s.fractions.accuracy}% accurate · ${s.fractions.mastery}% mastery · ${stTxt}`));
-      m.appendChild(masteryMeter(s.fractions.mastery));
+      domGroup.appendChild(el('p', 'stats-line', `${s.fractions.attempts} attempts · ${s.fractions.accuracy}% accurate · ${s.fractions.mastery}% mastery · ${stTxt}`));
+      domGroup.appendChild(masteryMeter(s.fractions.mastery));
       const row3 = el('div', 'div-actions');
       const learn3 = el('button', 'btn btn-ghost', '📖 Lesson');
       learn3.onclick = () => { state.showLesson = 'fractions'; render(); };
@@ -3145,11 +3181,14 @@ function renderStatsModal() {
       prac3.onclick = startFractionPractice;
       row3.appendChild(learn3);
       row3.appendChild(prac3);
-      m.appendChild(row3);
+      domGroup.appendChild(row3);
     }
+    m.appendChild(domGroup);
 
+    const latestSnap = Stats.getSnaps().slice(-1)[0];
+    trendGroup = statsGroup('📈 Trends', latestSnap ? `mastery ${latestSnap.mulMastery}%` : '', false);
     if (s.hist.length >= 2) {
-      m.appendChild(el('h3', 'stats-h3', 'Recent quizzes'));
+      trendGroup.appendChild(el('h3', 'stats-h3', 'Recent quizzes'));
       const chart = el('div', 'mini-chart');
       s.hist.forEach(h => {
         const denom = h.n || 10;
@@ -3165,24 +3204,11 @@ function renderStatsModal() {
         col.appendChild(el('div', 'chart-num', String(h.c)));
         chart.appendChild(col);
       });
-      m.appendChild(chart);
+      trendGroup.appendChild(chart);
     }
   }
 
   if (s.quizzesDone > 0) {
-    // Systematic error patterns — the "practice the right thing" signal.
-    const pats = Stats.errorPatterns();
-    if (pats.length) {
-      const sect = el('div', 'errpat-section');
-      sect.appendChild(el('h3', 'stats-h3', '🔁 Error patterns'));
-      pats.forEach(p => {
-        const row = el('div', 'errpat-row' + (p.kind !== 'repeat' ? ' errpat-hot' : ''));
-        row.textContent = (p.kind === 'misconception' ? '💡 ' : p.kind === 'confusion' ? '🔀 ' : p.kind === 'carry' ? '🔟 ' : '· ') + p.label;
-        sect.appendChild(row);
-      });
-      m.appendChild(sect);
-    }
-
     // Weekly snapshot trend — passive, no API call.
     const snaps = Stats.getSnaps();
     if (snaps.length >= 2) {
@@ -3211,8 +3237,10 @@ function renderStatsModal() {
         spark.appendChild(col);
       });
       sect.appendChild(spark);
-      m.appendChild(sect);
+      if (trendGroup) trendGroup.appendChild(sect); else m.appendChild(sect);
     }
+
+    if (trendGroup && trendGroup.children.length > 1) m.appendChild(trendGroup);
 
     const planSection = el('div', 'plan-section');
     planSection.appendChild(el('h3', 'stats-h3', '✨ AI Learning Plan'));
@@ -3242,7 +3270,10 @@ function renderStatsModal() {
     m.appendChild(planSection);
   }
 
-  m.appendChild(renderPinRow());
+  const setGroup = statsGroup('⚙️ Sync & settings', getFamilyCode() ? '☁️ on' : '', false);
+  setGroup.appendChild(renderSyncSection());
+  setGroup.appendChild(renderPinRow());
+  m.appendChild(setGroup);
 
   const actions = el('div', 'stats-actions');
   const printBtn = el('button', 'btn btn-ghost', '🖨️ Print progress');
