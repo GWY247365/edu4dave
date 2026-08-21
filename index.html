@@ -1534,12 +1534,16 @@ function fractionQuiz() {
 }
 
 // A quiz built mostly from the child's weakest items.
-function focusQuiz() {
+// compact=true is the daily warm-up (5-6 questions: the essentials only);
+// the full version backs the parent-initiated focused practice.
+function focusQuiz(compact) {
   const s = Stats.summary();
   const qs = [];
-  let facts = s.weak.slice(0, 6).map(w => ({ a: w.a, b: w.b }));
-  if (facts.length < 6) {
-    const extra = Stats.pickMulFacts(6 - facts.length);
+  const factCap = compact ? 4 : 6;
+  const totalCap = compact ? 5 : 8;
+  let facts = s.weak.slice(0, factCap).map(w => ({ a: w.a, b: w.b }));
+  if (facts.length < factCap) {
+    const extra = Stats.pickMulFacts(factCap - facts.length);
     facts = facts.concat(extra.map(p => ({ a: p.a, b: p.b })));
   }
   // Confusion pairs practice best side by side: when the error log shows
@@ -1548,7 +1552,7 @@ function focusQuiz() {
   const pairs = Stats.errorPatterns().filter(p => p.pair).slice(0, 2);
   for (const p of pairs) {
     for (const f of [{ a: p.pair[0], b: p.pair[1] }, { a: p.pair[2], b: p.pair[3] }]) {
-      if (!facts.some(x => fkey(x) === fkey(f)) && facts.length < 8) facts.push(f);
+      if (!facts.some(x => fkey(x) === fkey(f)) && facts.length < totalCap) facts.push(f);
     }
   }
   facts.forEach(f => {
@@ -1559,8 +1563,16 @@ function focusQuiz() {
   const worstBucket = (p) => [...s.buckets[p]]
     .sort((x, y) => Stats.bucketWeight(`${p}:${y.k}`) - Stats.bucketWeight(`${p}:${x.k}`))[0];
   const wa = worstBucket('add'), ws = worstBucket('sub');
-  for (let i = 0; i < 2; i++) qs.push(genAdd(wa ? wa.k : null));
-  for (let i = 0; i < 2; i++) qs.push(genSub(ws ? ws.k : null));
+  if (compact) {
+    // one non-mul slot only: whichever op currently needs it more
+    const wAdd = wa ? Stats.bucketWeight(`add:${wa.k}`) : 1;
+    const wSub = ws ? Stats.bucketWeight(`sub:${ws.k}`) : 1;
+    if (wAdd >= wSub) qs.push(genAdd(wa ? wa.k : null));
+    else qs.push(genSub(ws ? ws.k : null));
+  } else {
+    for (let i = 0; i < 2; i++) qs.push(genAdd(wa ? wa.k : null));
+    for (let i = 0; i < 2; i++) qs.push(genSub(ws ? ws.k : null));
+  }
   for (let i = qs.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [qs[i], qs[j]] = [qs[j], qs[i]];
@@ -1896,7 +1908,7 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v49';
+const APP_VERSION = 'v50';
 const APP_UPDATED = '2026-08-21';
 // In-progress quiz survives refreshes/crashes/SW updates: every answer
 // keystroke snapshots the session to localStorage; a fresh page load resumes
@@ -1907,7 +1919,7 @@ const APP_UPDATED = '2026-08-21';
 // rounds after that are plain mixed quizzes.
 function composeDailyStep() {
   const d = Stats.getDaily();
-  if (!d.warmup) return { quiz: focusQuiz(), immediate: true, step: 'warmup' };
+  if (!d.warmup) return { quiz: focusQuiz(true), immediate: true, step: 'warmup' };
   return { quiz: newQuiz(), immediate: false, step: d.quiz ? 'extra' : 'quiz' };
 }
 const SESSION_KEY = 'mathquiz.session.v1';
