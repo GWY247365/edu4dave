@@ -311,7 +311,7 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .chart-bar.good{background:var(--ok)}
 .chart-bar.low{background:var(--bad)}
 .chart-num{font-size:10px;color:var(--ink-3);font-weight:600;font-variant-numeric:tabular-nums;flex:0 0 12px}
-.stats-actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}.stats-actions .btn{flex:1;min-width:130px;white-space:nowrap}
+.stats-actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}.stats-actions .btn{flex:1 1 auto;min-width:120px}
 .pin-row{display:flex;align-items:center;gap:10px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border-soft)}
 .pin-label{flex:1;font-size:13px;color:var(--ink-3);font-weight:600}
 .pin-btn{flex-shrink:0;font-size:14px;padding:8px 14px}
@@ -1896,7 +1896,7 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v47';
+const APP_VERSION = 'v48';
 const APP_UPDATED = '2026-08-21';
 // In-progress quiz survives refreshes/crashes/SW updates: every answer
 // keystroke snapshots the session to localStorage; a fresh page load resumes
@@ -1995,7 +1995,8 @@ function fmt(sec) {
 
 function renderTimer() {
   const el = document.getElementById('timer');
-  if (el && state.phase !== 'quiz') { el.textContent = ''; el.className = 'timer'; return; }
+  if (el && state.phase !== 'quiz') { el.style.display = 'none'; return; }
+  if (el) el.style.display = '';
   if (!el) return;
   el.textContent = '';
   const dot = document.createElement('span'); dot.className='dot';
@@ -3389,7 +3390,7 @@ function renderStatsModal() {
   const actions = el('div', 'stats-actions');
   const printBtn = el('button', 'btn btn-ghost', '🖨️ Print progress');
   printBtn.onclick = openPrintView;
-  const reset = el('button', 'btn btn-ghost', 'Reset progress (parent only)');
+  const reset = el('button', 'btn btn-ghost', '🗑️ Reset (parent only)');
   reset.onclick = () => {
     if (!parentGate()) return;
     if (confirm('Clear all progress on this device? This cannot be undone.')) {
