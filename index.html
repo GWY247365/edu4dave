@@ -1896,7 +1896,7 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v48';
+const APP_VERSION = 'v49';
 const APP_UPDATED = '2026-08-21';
 // In-progress quiz survives refreshes/crashes/SW updates: every answer
 // keystroke snapshots the session to localStorage; a fresh page load resumes
@@ -2066,6 +2066,7 @@ function startNew() {
 }
 
 function startFocus() {
+  if (!confirmDiscardProgress()) return;
   state.quiz = focusQuiz();
   state.phase = 'quiz';
   state.immediate = true; // fluency practice → immediate corrective feedback
@@ -2286,7 +2287,7 @@ function renderTopbar() {
   const brand = el('div', 'brand');
   const mark = el('div', 'brand-mark', '×');
   const txt = el('div', 'brand-text');
-  txt.appendChild(el('h1', null, 'Math Quiz · 10 Questions'));
+  txt.appendChild(el('h1', null, state.phase === 'quiz' ? `Math Quiz · ${state.quiz.length} Questions` : 'Math Quiz'));
   const parts = ['Times tables', 'Addition', 'Subtraction'];
   if (Stats.isUnlocked('division')) parts.push('Division');
   if (Stats.isUnlocked('bigmul')) parts.push('2-digit ×');
@@ -2799,7 +2800,12 @@ function nextStepLabel() {
   const d = Stats.getDaily();
   if (!d.warmup) return '🎯 Start warm-up';
   if (!d.quiz) return "▶ Today's quiz";
-  return '🔄 New quiz';
+  return '🌟 Bonus round';
+}
+// Guard for practice entry points that would blow away a quiz in progress.
+function confirmDiscardProgress() {
+  const busy = state.phase === 'quiz' && !state.submitted && state.quiz.some(q => answered(q));
+  return !busy || confirm('A quiz is in progress — starting practice will discard the typed answers. Continue?');
 }
 function renderActionBar() {
   const bar = el('div', 'actionbar');
@@ -2862,6 +2868,7 @@ function closeLesson() {
 }
 
 function startFocusedQuiz(seenKey, makeQuiz) {
+  if (!confirmDiscardProgress()) return;
   Stats.markSeen(seenKey);
   state.showLesson = null;
   state.showStats = false;
@@ -3037,9 +3044,10 @@ function renderMineModal() {
 
   // One button, no menu: the engine decides what gets practiced. This page
   // is the child's open learner model — a place to SEE growth, not to pick.
+  const busyQuiz = state.phase === 'quiz' && !state.submitted && state.quiz.some(q => answered(q));
   const goBtn = el('button', 'btn btn-primary mine-go mine-start',
-    (dToday.warmup && dToday.quiz ? '🌟 Bonus round' : '▶ ' + nextStepLabel().replace(/^[🎯▶🔄] ?/u, '')));
-  goBtn.onclick = () => { state.showMine = false; startNew(); };
+    busyQuiz ? '↩ Back to my quiz' : nextStepLabel());
+  goBtn.onclick = () => { state.showMine = false; if (busyQuiz) render(); else startNew(); };
   m.appendChild(goBtn);
   if (dToday.warmup && dToday.quiz) m.appendChild(el('p', 'mine-note', "Today's practice is done — a bonus round is always welcome! 🎉"));
 
