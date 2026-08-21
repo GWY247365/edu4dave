@@ -256,14 +256,13 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .mine-modal h2{text-align:left}
 .mine-streak{margin:0 0 14px;font-size:15px;color:var(--brand-deep);font-weight:600;line-height:1.4}
 .mine-card{background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:12px 14px;margin-bottom:10px}
-.mine-card.rec{border-color:var(--brand);box-shadow:0 0 0 3px rgba(6,152,218,.10)}
-.mine-rec-badge{font-size:12px;font-weight:700;color:var(--brand-deep);margin-bottom:6px}
 .mine-card-top{display:flex;align-items:center;gap:8px;margin-bottom:8px}
 .mine-emoji{font-size:22px}
 .mine-name{font-size:17px;font-weight:700;color:var(--ink);flex:1}
 .mine-stage{font-size:14px;font-weight:700;color:var(--ink-2)}
 .mine-card .mastery-meter{height:12px;margin:0 0 10px}
 .mine-go{width:100%;height:48px;font-size:16px}
+.mine-start{margin:0 0 14px}
 .mine-next{margin:6px 0 0;font-size:14px;color:var(--ink-3);text-align:center}
 .daystrip{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:2px 0 10px;font-size:13.5px}
 .day-chip{padding:4px 10px;border-radius:999px;border:1px solid var(--border);color:var(--ink-3);font-weight:600;background:var(--bg)}
@@ -1890,7 +1889,7 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v45';
+const APP_VERSION = 'v46';
 const APP_UPDATED = '2026-08-21';
 // In-progress quiz survives refreshes/crashes/SW updates: every answer
 // keystroke snapshots the session to localStorage; a fresh page load resumes
@@ -2974,8 +2973,6 @@ function renderMineModal() {
   else m.appendChild(el('p', 'mine-streak', `Every quiz makes your math brain stronger. Pick something to grow! 🌱`));
 
   const dToday = Stats.getDaily();
-  if (dToday.warmup && dToday.quiz) m.appendChild(el('p', 'mine-note', "Today's practice is done — anything you pick here is bonus! 🌟"));
-  else m.appendChild(el('p', 'mine-note', "Today's session picks the best practice for you automatically — this page is for extras."));
 
   // Growth since last week — change motivates more than state.
   const snaps = Stats.getSnaps();
@@ -2987,24 +2984,23 @@ function renderMineModal() {
     else if (dq > 0) m.appendChild(el('p', 'mine-week', `🌟 This week: ${dq} quiz${dq > 1 ? 'zes' : ''} done — every one grows your brain!`));
   }
 
-  // Build the list of skills the child can see/choose.
+  // One button, no menu: the engine decides what gets practiced. This page
+  // is the child's open learner model — a place to SEE growth, not to pick.
+  const goBtn = el('button', 'btn btn-primary mine-go mine-start',
+    (dToday.warmup && dToday.quiz ? '🌟 Bonus round' : '▶ ' + nextStepLabel().replace(/^[🎯▶🔄] ?/u, '')));
+  goBtn.onclick = () => { state.showMine = false; startNew(); };
+  m.appendChild(goBtn);
+  if (dToday.warmup && dToday.quiz) m.appendChild(el('p', 'mine-note', "Today's practice is done — a bonus round is always welcome! 🎉"));
+
+  // View-only skill cards: stage + meter (+ fraction sub-skill chips).
   const rows = [];
-  rows.push({ name: 'Times tables', emoji: '✖️', mastery: s.mastery, start: startFocus, cta: 'Practice my tricky ones' });
-  if (s.division.unlocked) rows.push({ name: 'Division', emoji: '➗', mastery: s.division.mastery, start: startDivisionPractice, cta: 'Practice' });
-  if (s.bigmul.unlocked) rows.push({ name: 'Bigger ×', emoji: '🔢', mastery: s.bigmul.mastery, start: startBigmulPractice, cta: 'Practice' });
-  if (s.fractions.unlocked) rows.push({ name: 'Fractions', emoji: '🍕', mastery: s.fractions.mastery, start: startFractionPractice, cta: 'Practice' });
-
-  // The engine recommends ONE practice: the weakest domain right now (ties →
-  // earliest in the curriculum, foundations first). Kids left to choose freely
-  // pick what they're already good at — steer the default, keep the choice.
-  let recIdx = 0;
-  rows.forEach((r, i) => { if ((r.mastery || 0) < (rows[recIdx].mastery || 0)) recIdx = i; });
-
-  rows.forEach((r, i) => {
-    const isRec = i === recIdx && rows.length > 1;
+  rows.push({ name: 'Times tables', emoji: '✖️', mastery: s.mastery });
+  if (s.division.unlocked) rows.push({ name: 'Division', emoji: '➗', mastery: s.division.mastery });
+  if (s.bigmul.unlocked) rows.push({ name: 'Bigger ×', emoji: '🔢', mastery: s.bigmul.mastery });
+  if (s.fractions.unlocked) rows.push({ name: 'Fractions', emoji: '🍕', mastery: s.fractions.mastery });
+  rows.forEach(r => {
     const stg = masteryStage(r.mastery);
-    const card = el('div', isRec ? 'mine-card rec' : 'mine-card');
-    if (isRec) card.appendChild(el('div', 'mine-rec-badge', "⭐ Today's pick — this one needs you most!"));
+    const card = el('div', 'mine-card');
     const top = el('div', 'mine-card-top');
     top.appendChild(el('span', 'mine-emoji', r.emoji));
     top.appendChild(el('span', 'mine-name', r.name));
@@ -3012,8 +3008,6 @@ function renderMineModal() {
     card.appendChild(top);
     card.appendChild(masteryMeter(r.mastery));
     if (r.name === 'Fractions') {
-      // Sub-skill chips — the engine tracks name/equiv/compare separately;
-      // let the child see which one needs work too.
       const stEmoji = { new: '⚪', learning: '🌱', accurate: '⭐', fluent: '🚀' };
       const chips = el('div', 'mine-chips');
       [['frac.fnam', 'Naming'], ['frac.feq', 'Equal'], ['frac.fcmp', 'Compare']].forEach(([k, label]) => {
@@ -3021,9 +3015,6 @@ function renderMineModal() {
       });
       card.appendChild(chips);
     }
-    const btn = el('button', (isRec || rows.length === 1 ? 'btn btn-primary mine-go' : 'btn btn-ghost mine-go'), '✏️ ' + r.cta);
-    btn.onclick = r.start;
-    card.appendChild(btn);
     m.appendChild(card);
   });
 

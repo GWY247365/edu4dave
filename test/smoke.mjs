@@ -147,6 +147,11 @@ await page.waitForTimeout(400);
 const doneState = await page.evaluate(() => Stats.getDaily());
 check('daily session complete', doneState.warmup === true && doneState.quiz === true);
 check('celebration shown', !!(await page.$('.day-done')));
+await page.evaluate(() => { state.showMine = true; render(); });
+await page.waitForTimeout(150);
+const mineBtns = await page.$$eval('.mine-modal .mine-go', els => els.map(e => e.textContent));
+check('child page has exactly ONE practice button (no category menu)', mineBtns.length === 1, JSON.stringify(mineBtns));
+await page.evaluate(() => { state.showMine = false; render(); });
 
 check('no page errors across all scenarios', pageErrors.length === 0, pageErrors.join('; '));
 
