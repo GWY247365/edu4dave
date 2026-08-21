@@ -323,6 +323,7 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .sync-status{margin-top:6px;font-size:13px;color:var(--ink-3);min-height:16px}
 .sync-status.ok{color:var(--ok-deep)}
 .sync-status.err{color:var(--bad-deep)}
+.sync-signout{width:100%;margin-top:10px;color:var(--warn-deep,#b45309)}
 .sync-hint{margin-top:6px;font-size:12px;color:var(--ink-4);line-height:1.45}
 .app-version{margin-top:10px;text-align:center;font-size:11px;color:var(--ink-3)}
 .update-chip{margin-left:8px;padding:6px 10px;font-size:13px}
@@ -1908,7 +1909,7 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v51';
+const APP_VERSION = 'v52';
 const APP_UPDATED = '2026-08-21';
 // In-progress quiz survives refreshes/crashes/SW updates: every answer
 // keystroke snapshots the session to localStorage; a fresh page load resumes
@@ -3687,6 +3688,20 @@ function renderSyncSection() {
   wrap.appendChild(row);
   wrap.appendChild(status);
   wrap.appendChild(el('div', 'sync-hint', 'Enter the same family code on each device to share progress. Anyone who knows the code can read it, so pick one that is hard to guess.'));
+  if (getFamilyCode()) {
+    // Sign out ≠ Reset: reset wipes the profile everywhere (and pushes the
+    // wipe to the cloud); sign-out detaches THIS device only.
+    const out = el('button', 'btn btn-ghost sync-signout', '🚪 Sign out on this device');
+    out.onclick = () => {
+      if (Stats.getPinHash() && !parentGate()) return;
+      if (!confirm("Sign out on this device? Syncing stops and the child's progress is removed from THIS device only — the cloud copy and every other device keep everything. You can sign back in anytime with the family code.")) return;
+      setFamilyCode('');           // detach first so nothing pushes the wipe
+      Stats.reset();               // clear the local profile
+      try { localStorage.removeItem(SESSION_KEY); } catch {}
+      location.reload();           // fresh boot: blank profile, ready screen
+    };
+    wrap.appendChild(out);
+  }
   return wrap;
 }
 
