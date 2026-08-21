@@ -100,6 +100,30 @@ await page.reload();
 await page.waitForSelector('.qcard');
 check('typed answer restored', (await page.$$eval('.ansbox', els => els.filter(e => e.value === '42').length)) === 1);
 
+console.log('5. reroll fishing is closed: unanswered questions carry over');
+await page.evaluate(() => { localStorage.removeItem('mathquiz.session.v1'); startNew(); });
+await page.waitForTimeout(200);
+const before = await page.evaluate(() => state.quiz.filter(q => q.type !== 'add' && q.type !== 'sub')
+  .map(q => `${q.type}:${Math.min(q.a || 0, q.b || 0)}x${Math.max(q.a || 0, q.b || 0)}`));
+// answer ONE adaptive question, leave the rest blank, then reroll 3 times
+await page.evaluate(() => {
+  const q = state.quiz.find(x => x.type !== 'add' && x.type !== 'sub');
+  q.given = '1';
+});
+const answeredSig = await page.evaluate(() => {
+  const q = state.quiz.find(x => x.given === '1');
+  return `${q.type}:${Math.min(q.a || 0, q.b || 0)}x${Math.max(q.a || 0, q.b || 0)}`;
+});
+for (let r = 0; r < 3; r++) { await page.evaluate(() => startNew()); await page.waitForTimeout(100); }
+const after = await page.evaluate(() => state.quiz.filter(q => q.type !== 'add' && q.type !== 'sub')
+  .map(q => `${q.type}:${Math.min(q.a || 0, q.b || 0)}x${Math.max(q.a || 0, q.b || 0)}`));
+const unansweredBefore = before.filter(s2 => s2 !== answeredSig);
+const survived = unansweredBefore.filter(s2 => after.includes(s2)).length;
+check('unanswered questions survive 3 rerolls', survived === unansweredBefore.length,
+  `${survived}/${unansweredBefore.length} carried`);
+const qlen = await page.evaluate(() => state.quiz.length);
+check('quiz stays at 10 questions', qlen === 10, 'len=' + qlen);
+
 check('no page errors across all scenarios', pageErrors.length === 0, pageErrors.join('; '));
 
 await browser.close();

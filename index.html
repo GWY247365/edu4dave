@@ -1856,7 +1856,7 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v42';
+const APP_VERSION = 'v43';
 const APP_UPDATED = '2026-08-21';
 // In-progress quiz survives refreshes/crashes/SW updates: every answer
 // keystroke snapshots the session to localStorage; a fresh page load resumes
@@ -1945,8 +1945,44 @@ function renderTimer() {
   el.classList.toggle('done', state.submitted);
 }
 
+// Signature for "same question" — used to keep rerolls honest.
+function qSig(q) {
+  if (q.type === 'mul' || q.type === 'div') return `${q.type}:${Math.min(q.a, q.b)}x${Math.max(q.a, q.b)}${q.big ? ':big' : ''}`;
+  if (q.type === 'fnam') return `fnam:${q.den}:${q.shaded}`;
+  if (q.type === 'feq') return `feq:${q.n1}/${q.d1}=${q.d2}`;
+  if (q.type === 'fcmp') return `fcmp:${q.n1}/${q.d1}v${q.n2}/${q.d2}`;
+  return `${q.type}:${q.a},${q.b}`;
+}
 function startNew() {
-  state.quiz = newQuiz();
+  // Anti-fishing: rerolling must not be an escape hatch. Unanswered adaptive
+  // questions (mul/div/bigmul/fractions) from an abandoned quiz carry over
+  // into the new one — reroll all you like, the hard ones come along.
+  // Add/sub slots and answered questions regenerate freshly. Transparent,
+  // not punitive: the confirm dialog says so.
+  const carry = (!state.submitted && Array.isArray(state.quiz))
+    ? state.quiz.filter(q => !answered(q) && q.type !== 'add' && q.type !== 'sub')
+        .map(q => ({ ...q, given: '', givenNum: '', givenDen: '', _t0: undefined, _t1: undefined, _imm: undefined, _retype: undefined, _priorState: undefined }))
+        .slice(0, 6) // a fresh quiz has 6 adaptive slots — never grow past 10 questions
+    : [];
+  let fresh = newQuiz();
+  if (carry.length) {
+    const carrySigs = new Set(carry.map(qSig));
+    // Swap out fresh non-add/sub questions (that aren't already the same
+    // item) one-for-one with the carried ones, then reshuffle.
+    // Two passes so the result is order-independent: fresh duplicates of
+    // carried items always drop AND count toward the room the carry needs;
+    // then exactly the remaining room is vacated from other adaptive slots.
+    const keptOther = [], freshAdaptive = [];
+    let room = carry.length;
+    for (const q of fresh) {
+      if (q.type !== 'add' && q.type !== 'sub') {
+        if (carrySigs.has(qSig(q))) { room--; continue; }
+        freshAdaptive.push(q);
+      } else keptOther.push(q);
+    }
+    fresh = shuffleQuiz(keptOther.concat(freshAdaptive.slice(Math.max(0, room)), carry));
+  }
+  state.quiz = fresh;
   state.immediate = false;
   state.isPractice = false;
   state.submitted = false;
@@ -2653,7 +2689,7 @@ function renderActionBar() {
   newBtn.textContent = '🔄 New quiz';
   newBtn.onclick = () => {
     if (!state.submitted) {
-      const ok = confirm('Start a new quiz? Your current answers will be discarded.');
+      const ok = confirm('Start a new quiz? Answered questions are discarded — unanswered ones come along to the new quiz!');
       if (!ok) return;
     }
     startNew();
