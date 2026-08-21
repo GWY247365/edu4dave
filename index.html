@@ -313,6 +313,11 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .sync-hint{margin-top:6px;font-size:12px;color:var(--ink-4);line-height:1.45}
 .app-version{margin-top:10px;text-align:center;font-size:11px;color:var(--ink-3)}
 .update-chip{margin-left:8px;padding:6px 10px;font-size:13px}
+.qcard.imm-good{border-color:#34d399;box-shadow:0 0 0 3px rgba(52,211,153,.15)}
+.qcard.imm-fixed{border-color:#fbbf24;box-shadow:0 0 0 3px rgba(251,191,36,.15)}
+.qcard.imm-fixing{border-color:#fbbf24}
+.fixpill{margin-top:8px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:8px 12px;font-size:14px;color:#92400e;line-height:1.5}
+.fixpill .fix-ans{font-weight:800;font-size:16px;color:#b45309}
 .errpat-section{margin-top:14px}
 .errpat-row{font-size:13.5px;color:var(--ink-2);padding:5px 0;border-bottom:1px solid var(--border-soft);line-height:1.45}
 .errpat-row.errpat-hot{font-weight:600;color:var(--ink)}
@@ -634,6 +639,13 @@ const Stats = (() => {
     if (!data.unlocked.bigmul) return { name: 'Bigger ×', emoji: '🔢', have: fluent, need: BIGMUL_UNLOCK_AT };
     if (!data.unlocked.fractions) return { name: 'Fractions', emoji: '🍕', have: fluent, need: FRAC_UNLOCK_AT };
     return null;
+  }
+  // Correct-but-slow = the child is counting/deriving, not retrieving
+  // (Siegler's overlapping waves). These facts need a strategy, not more reps.
+  function isSlowFact(a, b) {
+    const f = getFact(a, b);
+    return !!f && (f.right || 0) >= 3 && f.avgT != null && f.avgT > FAST_MS * 1.5 &&
+           (f.recent || '').slice(-1) !== '0'; // currently getting it right — just slowly
   }
   function markSeen(k) { data.seen[k] = true; save(data); }
   function hasSeen(k) { return !!(data.seen && data.seen[k]); }
@@ -990,7 +1002,7 @@ const Stats = (() => {
     }
     return Object.values(byKey).sort((x, y) => (x[tsField] || 0) - (y[tsField] || 0));
   }
-  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery, mulSeenCount, recentAccuracy, nextUnlock, getSnaps, savePlan, getPlans, recordError, errorPatterns };
+  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery, mulSeenCount, recentAccuracy, nextUnlock, isSlowFact, getSnaps, savePlan, getPlans, recordError, errorPatterns };
 })();
 
 // Merge helpers for cross-device sync (keep the richer record, union history)
@@ -1133,7 +1145,55 @@ const Sound = {
   right() { playTone([{ f: 880, ms: 70 }, { f: 1320, ms: 110 }]); },           // bright up-chime
   wrong() { playTone([{ f: 220, ms: 120, type: 'triangle' }]); },               // soft low — gentle, not punishing
   perfect() { playTone([{ f: 880, ms: 80 }, { f: 1108, ms: 80 }, { f: 1320, ms: 80 }, { f: 1760, ms: 160 }]); },
+  tick() { playTone([{ f: 1150, ms: 60 }]); },                                  // per-question: right
+  soft() { playTone([{ f: 300, ms: 90, type: 'triangle' }]); },                 // per-question: not yet
 };
+
+// ---- Immediate corrective feedback (practice mode) ----
+// Batch grading suits tests; for fact FLUENCY the evidence favors immediate
+// feedback plus overcorrection (see the answer, type it once) so a wrong
+// retrieval is never left uncorrected to consolidate. Focused practice
+// quizzes run in this mode; the main mixed quiz stays batch (test-like).
+function focusNextOpen(fromInp) {
+  const all = [...document.querySelectorAll('.ansbox')];
+  for (let i = all.indexOf(fromInp) + 1; i < all.length; i++) {
+    if (!all[i].readOnly) { all[i].focus(); return; }
+  }
+  if (fromInp) fromInp.blur();
+}
+function immCheck(q, idx, inp, card) {
+  if (q._imm || state.submitted || String(q.given).trim() === '') return;
+  if (answerCorrect(q)) {
+    q._imm = 'right';
+    card.classList.add('imm-good');
+    inp.readOnly = true;
+    try { Sound.tick(); } catch {}
+    saveSession();
+    focusNextOpen(inp);
+  } else {
+    q._imm = 'fixing';
+    q._retype = '';
+    card.classList.add('imm-fixing');
+    const pill = el('div', 'fixpill');
+    pill.appendChild(spanTxt('The answer is ', null));
+    pill.appendChild(spanTxt(answerText(q), 'tabular fix-ans'));
+    pill.appendChild(spanTxt(' — type it to lock it in 💪', null));
+    inp.parentElement.parentElement.appendChild(pill);
+    inp.value = '';
+    try { Sound.soft(); } catch {}
+    saveSession();
+    inp.focus();
+  }
+}
+function immFixed(q, inp, card) {
+  q._imm = 'fixed';
+  card.classList.remove('imm-fixing');
+  card.classList.add('imm-fixed');
+  inp.readOnly = true;
+  try { Sound.tick(); } catch {}
+  saveSession();
+  focusNextOpen(inp);
+}
 
 function pinHash(s) {
   // Lightweight non-crypto hash — a deterrent, not real security.
@@ -1261,6 +1321,7 @@ function genDiv() {
 function mulQuestion(a, b) {
   const stat = Stats.getFact(a, b);
   const isReview = !!stat && (stat.wrong || 0) > 0 && Stats.factWeight(stat) > 1.5;
+  const isSlow = !isReview && Stats.isSlowFact(a, b);
   // Procedural scaffolds for novices: only on facts the child is still
   // learning (state ∈ new|learning), and never with the smallest operands
   // (those are easy enough without scaffolding).
@@ -1275,7 +1336,7 @@ function mulQuestion(a, b) {
     if (lo <= 6) scaffold = { kind: 'addition', lo, hi };
     else scaffold = { kind: 'split', lo, hi };
   }
-  return { type: 'mul', a, b, ans: a * b, label: 'Multiplication · ×', isReview, scaffold };
+  return { type: 'mul', a, b, ans: a * b, label: 'Multiplication · ×', isReview, isSlow, scaffold };
 }
 
 // ---------- Fractions (CC grade 3: denominators 2,3,4,6,8) ----------
@@ -1795,8 +1856,8 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v41';
-const APP_UPDATED = '2026-07-27';
+const APP_VERSION = 'v42';
+const APP_UPDATED = '2026-08-21';
 // In-progress quiz survives refreshes/crashes/SW updates: every answer
 // keystroke snapshots the session to localStorage; a fresh page load resumes
 // it (questions, typed answers, wall-clock timer) unless it's gone stale.
@@ -1815,7 +1876,7 @@ function saveSession() {
   try {
     localStorage.setItem(SESSION_KEY, JSON.stringify({
       quiz: state.quiz, startedAt: state.startedAt, submitted: state.submitted,
-      timeUp: state.timeUp, isPractice: state.isPractice,
+      timeUp: state.timeUp, isPractice: state.isPractice, immediate: state.immediate,
       finalElapsed: state.finalElapsed, savedAt: Date.now(),
     }));
   } catch {}
@@ -1832,6 +1893,7 @@ const state = {
   showMine: false,
   showLesson: null,
   isPractice: _resumed ? !!_resumed.isPractice : false,
+  immediate: _resumed ? !!_resumed.immediate : false,
   finalElapsed: _resumed && _resumed.finalElapsed != null ? _resumed.finalElapsed : null,
 };
 
@@ -1885,6 +1947,7 @@ function renderTimer() {
 
 function startNew() {
   state.quiz = newQuiz();
+  state.immediate = false;
   state.isPractice = false;
   state.submitted = false;
   state.timeUp = false;
@@ -1901,6 +1964,7 @@ function startNew() {
 
 function startFocus() {
   state.quiz = focusQuiz();
+  state.immediate = true; // fluency practice → immediate corrective feedback
   state.isPractice = false;
   state.submitted = false;
   state.timeUp = false;
@@ -1920,7 +1984,8 @@ function startFocus() {
 function retryWrong() {
   const wrong = state.quiz.filter(q => !answerCorrect(q));
   if (!wrong.length) { startNew(); return; }
-  state.quiz = wrong.map((q, i) => ({ ...q, id: i, given: '' }));
+  state.quiz = wrong.map((q, i) => ({ ...q, id: i, given: '', givenNum: '', givenDen: '', _imm: undefined, _retype: undefined, _t0: undefined, _t1: undefined }));
+  state.immediate = true; // relearning missed items → immediate corrective feedback
   state.isPractice = true; // don't log a partial set to history/streak
   state.submitted = false;
   state.timeUp = false;
@@ -1971,7 +2036,9 @@ function submit(fromTimeout) {
   // and made Check answers a dead button on any quiz with a fraction row.
   document.querySelectorAll('.ansbox').forEach(inp => {
     const id = Number(inp.dataset.id);
-    if (Number.isInteger(id) && state.quiz[id]) state.quiz[id].given = inp.value.trim();
+    // Skip immediate-mode questions: after overcorrection the box shows the
+    // retyped CORRECT answer, but grading must use the original in .given.
+    if (Number.isInteger(id) && state.quiz[id] && !state.quiz[id]._imm) state.quiz[id].given = inp.value.trim();
   });
   state.submitted = true;
   state.finalElapsed = TIME_LIMIT_SEC - state.remaining;
@@ -2250,6 +2317,10 @@ function renderQuestion(q, idx) {
     inp.readOnly = true;
     if (right) inp.classList.add('ok');
     else inp.classList.add('bad');
+  } else if (state.immediate && q._imm) {
+    if (q._imm === 'right') { card.classList.add('imm-good'); inp.readOnly = true; }
+    else if (q._imm === 'fixed') { card.classList.add('imm-fixed'); inp.readOnly = true; inp.value = answerText(q); }
+    else if (q._imm === 'fixing') { card.classList.add('imm-fixing'); inp.value = q._retype || ''; }
   }
   inp.addEventListener('focus', () => {
     card.classList.add('focused');
@@ -2257,9 +2328,17 @@ function renderQuestion(q, idx) {
   });
   inp.addEventListener('blur', () => card.classList.remove('focused'));
   inp.addEventListener('input', e => {
-    state.quiz[idx].given = e.target.value;
-    state.quiz[idx]._t1 = Date.now();
-    if (state.quiz[idx]._t0 == null) state.quiz[idx]._t0 = state.quiz[idx]._t1;
+    const qq = state.quiz[idx];
+    if (state.immediate && qq._imm === 'fixing') {
+      // Overcorrection retype: the original wrong answer stays in .given for
+      // honest grading/error-log; the retype goes to a scratch field.
+      qq._retype = e.target.value;
+      if (String(qq._retype).trim() === String(answerText(qq))) immFixed(qq, inp, card);
+      return;
+    }
+    qq.given = e.target.value;
+    qq._t1 = Date.now();
+    if (qq._t0 == null) qq._t0 = qq._t1;
     saveSession();
     const segs = document.querySelectorAll('.progress .seg');
     if (segs[idx]) segs[idx].classList.toggle('filled', e.target.value !== '');
@@ -2267,6 +2346,11 @@ function renderQuestion(q, idx) {
   inp.addEventListener('keydown', e => {
     if (e.key === 'Enter') {
       e.preventDefault();
+      if (state.immediate && !state.submitted && !state.quiz[idx]._imm &&
+          String(state.quiz[idx].given || '').trim() !== '') {
+        immCheck(state.quiz[idx], idx, inp, card);
+        return;
+      }
       const all = [...document.querySelectorAll('.ansbox')];
       const i = all.indexOf(inp);
       if (i + 1 < all.length) all[i+1].focus();
@@ -2282,16 +2366,25 @@ function renderQuestion(q, idx) {
     row.appendChild(pill);
   }
   card.appendChild(row);
+  if (!state.submitted && state.immediate && q._imm === 'fixing') {
+    const pill = el('div', 'fixpill');
+    pill.appendChild(spanTxt('The answer is ', null));
+    pill.appendChild(spanTxt(answerText(q), 'tabular fix-ans'));
+    pill.appendChild(spanTxt(' — type it to lock it in 💪', null));
+    card.appendChild(pill);
+  }
 
-  // Pre-practice strategy card on review questions (learn, then try)
-  if (!state.submitted && q.isReview) {
+  // Pre-practice strategy card: review questions (learn, then try) and
+  // correct-but-slow facts (the child is counting — teach the shortcut).
+  if (!state.submitted && (q.isReview || q.isSlow)) {
     let tipText = '';
     if (q.type === 'mul' && q.big) tipText = `Break ${Math.floor(q.a / 10) * 10} + ${q.a % 10}: multiply each by ${q.b}, then add.`;
     else if (q.type === 'mul' && q.a <= 12 && q.b <= 12) tipText = factTip(q.a, q.b);
     else if (q.type === 'div') tipText = `Think: ${q.b} × ? = ${q.a}. Use the ${q.b} times table.`;
     if (tipText) {
       const tip = el('div', 'pretip');
-      tip.appendChild(spanTxt('💡 ', null));
+      tip.appendChild(spanTxt(q.isSlow ? '⚡ ' : '💡 ', null));
+      if (q.isSlow) tip.appendChild(spanTxt('You know this one — here is a faster way: ', null));
       tip.appendChild(spanTxt(tipText, null));
       card.appendChild(tip);
     }
@@ -2374,7 +2467,7 @@ function renderFractionRow(q, idx, right, wrong) {
     const choices = el('div', 'fcmp');
     ['<', '=', '>'].forEach(sym => {
       const b = el('button', 'fcmp-btn', sym);
-      if (state.submitted) {
+      if (state.submitted || (state.immediate && q._imm)) {
         b.disabled = true;
         if (sym === q.ans) b.classList.add('correct');
         if (q.given === sym && sym !== q.ans) b.classList.add('wrongpick');
@@ -2383,6 +2476,15 @@ function renderFractionRow(q, idx, right, wrong) {
         b.onclick = () => {
           state.quiz[idx].given = sym;
           const t = Date.now(); if (state.quiz[idx]._t0 == null) state.quiz[idx]._t0 = t; state.quiz[idx]._t1 = t;
+          if (state.immediate) {
+            // Buttons can't be retyped — immediate feedback is shown by
+            // locking the group with the correct choice highlighted.
+            state.quiz[idx]._imm = sym === q.ans ? 'right' : 'fixed';
+            try { (sym === q.ans ? Sound.tick : Sound.soft)(); } catch {}
+            saveSession();
+            render();
+            return;
+          }
           saveSession();
           choices.querySelectorAll('.fcmp-btn').forEach(x => x.classList.remove('chosen'));
           b.classList.add('chosen');
@@ -2609,6 +2711,7 @@ function startFocusedQuiz(seenKey, makeQuiz) {
   state.showStats = false;
   state.showMine = false;
   state.quiz = makeQuiz();
+  state.immediate = true; // focused domain practice → immediate corrective feedback
   state.isPractice = false;
   state.submitted = false;
   state.timeUp = false;

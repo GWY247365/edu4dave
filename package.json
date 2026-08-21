@@ -3,5 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Interactive math quiz for kids with AI-generated learning plans (Tencent Hunyuan backend)."
+  "description": "Interactive math quiz for kids with AI-generated learning plans (Tencent Hunyuan backend).",
+  "scripts": {
+    "test": "node test/smoke.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.0"
+  }
 }
