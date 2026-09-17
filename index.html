@@ -663,6 +663,30 @@ const Stats = (() => {
     all.sort((x, y) => x.r - y.r);
     return all.slice(0, n);
   }
+  // How many practised facts have decayed past usable recall. This is the
+  // signal the review quota sizes itself from, so a backlog can never sit
+  // unvisited the way it did in the field (23 facts, months untouched).
+  function dueBacklog(threshold) {
+    const now = Date.now();
+    const lim = threshold == null ? 0.3 : threshold;
+    let n = 0;
+    for (const k in data.facts) {
+      const f = data.facts[k];
+      if ((f.right || 0) + (f.wrong || 0) === 0) continue;
+      if (retr(f, now) < lim) n++;
+    }
+    return n;
+  }
+  // Self-calibrating review quota: the top bands spend most slots on
+  // challenge, which starves maintenance. Grow the quota while a backlog
+  // exists and shrink it back once memory is current.
+  function reviewQuota(band) {
+    const base = band === 'expert' ? 2 : band === 'practicing' ? 1 : 0;
+    if (!base) return 0;
+    const backlog = dueBacklog(0.3);
+    const extra = backlog > 20 ? 2 : backlog > 10 ? 1 : 0;
+    return Math.min(4, base + extra);
+  }
   function mulFluentCount() {
     const now = Date.now();
     let m = 0;
@@ -848,6 +872,21 @@ const Stats = (() => {
     if (noPL) add('warn', `${noPL} fact records without a mastery estimate`, 'they will be backfilled on next load');
     const slow = Object.values(data.facts).filter(f => (f.avgT || 0) > 30000).length;
     if (slow) add('warn', `${slow} facts with an inflated answer time`, 'old idle answers; new ones are capped at 30s');
+    const m2 = overallMulMastery();
+    const eff2 = m2 * (0.35 + 0.65 * Math.min(1, (mulSeenCount() / 66) / 0.75));
+    const band2 = eff2 < 0.45 ? 'novice' : eff2 < 0.70 ? 'developing' : eff2 < 0.92 ? 'practicing' : 'expert';
+    const backlog = dueBacklog(0.3);
+    const quota = reviewQuota(band2);
+    if (quota) add(backlog > 10 ? 'warn' : 'ok', `${backlog} facts due for review`,
+                   `the quiz is spending ${quota} slot${quota > 1 ? 's' : ''} per round on them` +
+                   (backlog > 10 ? ' — raised automatically until the backlog clears' : ''));
+    // Ceiling: top band, high mastery and still well above the 85% target
+    // means the engine has no harder gear left to shift into.
+    if (band2 === 'expert' && acc != null && acc > 92 && m2 > 0.88) {
+      add('warn', 'Curriculum ceiling reached',
+          'top difficulty, mastery ' + Math.round(m2 * 100) + '% and accuracy still ' + acc +
+          '% — the engine cannot get harder; new material (word problems, decimals, larger numbers) is what would help next');
+    }
     const weak = summary().weak.slice(0, 3).map(w => `${w.a}×${w.b}`);
     if (weak.length) add('ok', `Currently targeting ${weak.join(', ')}`, 'these lead the warm-up');
     return out;
@@ -1164,7 +1203,7 @@ const Stats = (() => {
     }
     return Object.values(byKey).sort((x, y) => (x[tsField] || 0) - (y[tsField] || 0));
   }
-  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery, mulSeenCount, recentAccuracy, nextUnlock, isSlowFact, pickDueFacts, getSnaps, repairSnaps, engineCheck, savePlan, getPlans, recordError, errorPatterns, getDaily, markDaily };
+  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery, mulSeenCount, recentAccuracy, nextUnlock, isSlowFact, pickDueFacts, dueBacklog, reviewQuota, getSnaps, repairSnaps, engineCheck, savePlan, getPlans, recordError, errorPatterns, getDaily, markDaily };
 })();
 
 // Merge helpers for cross-device sync (keep the richer record, union history)
@@ -1625,9 +1664,11 @@ function newQuiz() {
   } else if (band === 'developing') {
     mul = 4 - (fracOn ? 1 : 0); big = bigOn ? 1 : 0; div = divOn ? 1 : 0; frac = fracOn ? 1 : 0;
   } else if (band === 'practicing') {
-    mul = 1; rev = 1; big = bigOn ? 2 : 0; div = divOn ? 1 : 0; frac = fracOn ? 1 : 0;
+    rev = Stats.reviewQuota(band); mul = Math.max(0, 2 - rev);
+    big = bigOn ? 2 : 0; div = divOn ? 1 : 0; frac = fracOn ? 1 : 0;
   } else { // expert
-    mul = 0; rev = 2; big = bigOn ? 2 : 0; div = divOn ? 1 : 0; frac = fracOn ? 1 : 0;
+    rev = Stats.reviewQuota(band); mul = 0;
+    big = bigOn ? 2 : 0; div = divOn ? 1 : 0; frac = fracOn ? 1 : 0;
   }
   // Backfill into mul if some domains are still locked.
   const target = 6;
@@ -2068,7 +2109,7 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v56';
+const APP_VERSION = 'v57';
 const APP_UPDATED = '2026-09-17';
 // In-progress quiz survives refreshes/crashes/SW updates: every answer
 // keystroke snapshots the session to localStorage; a fresh page load resumes
