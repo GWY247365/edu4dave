@@ -13,6 +13,7 @@ The child practices in an iPad quiz app with a progressive curriculum:
 - Division facts (unlocks after 24 fluent multiplication facts), tracked by fact family.
 - 2-digit × 1-digit multiplication (unlocks after 40 fluent facts).
 - Fractions — naming, equivalence, comparison (unlocks after 50 fluent facts).
+- Word problems (unlocks after 55 fluent facts), tracked by problem schema: join/separate, comparing, equal groups, sharing. Here the difficulty is choosing the operation, not the arithmetic, and the characteristic error is keyword-matching ("more" → add) rather than reading the story.
 Locked domains appear as "locked"; do not prescribe practice for them.
 
 You receive a JSON object with the child's recent stats: quizzes completed, overall multiplication accuracy, number of mastered facts, daily streak, the weakest multiplication facts (with correct/wrong counts), addition/subtraction accuracy per difficulty bucket, per-domain progress for division / 2-digit multiplication / fractions, recent quiz scores, and — most importantly — "errorPatterns": systematic error findings mined from the child's actual wrong answers (confusion pairs like "6×7 answered as 48 — mixed up with 6×8", flipped fractions, dropped carries, divisor echoes, misconceptions). These patterns are the single most actionable input: address them by name in the plan, and prefer the remediation hint embedded in each pattern (e.g. practicing a confusion pair side by side) over generic drilling.

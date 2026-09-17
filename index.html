@@ -335,6 +335,14 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .sync-health{margin:6px 0 10px;font-size:12.5px;line-height:1.45;padding:8px 10px;border-radius:8px}
 .sync-health.ok{background:#ecfdf5;color:#047857;border:1px solid #a7f3d0}
 .sync-health.bad{background:#fff7ed;color:#9a3412;border:1px solid #fed7aa;font-weight:600}
+.wbars{margin:8px 0 10px}
+.wbar-row{display:flex;align-items:center;gap:6px;margin:6px 0}
+.wbar-name{width:44px;font-size:13px;font-weight:700;color:var(--ink-2)}
+.wbar{height:28px;background:var(--brand);color:#fff;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}
+.wbar.extra{background:var(--warn-deep,#d97706)}
+.wstory{margin:6px 0 10px;font-size:16px;line-height:1.55;color:var(--ink);background:var(--brand-soft);border:1px solid var(--brand-soft-2);border-radius:12px;padding:12px 14px}
+.qcard.review .wstory{background:#fff}
+.expr .wlabel{font-size:15px;font-weight:700;color:var(--ink-3);letter-spacing:.02em}
 .eng-row{display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid var(--border-soft)}
 .eng-dot{width:16px;text-align:center;font-weight:800;flex:none}
 .eng-ok .eng-dot{color:#047857}
@@ -486,7 +494,7 @@ const Stats = (() => {
         snaps: d.snaps || [],
         buckets: d.buckets || {},
         streak: d.streak || { current: 0, best: 0, lastDay: null },
-        unlocked: Object.assign({ division: false, bigmul: false, fractions: false }, d.unlocked || {}),
+        unlocked: Object.assign({ division: false, bigmul: false, fractions: false, word: false }, d.unlocked || {}),
         seen: d.seen || {},
         plans: d.plans || [],
         errlog: d.errlog || [],
@@ -495,7 +503,7 @@ const Stats = (() => {
       };
     } catch { return blank(); }
   }
-  function blank() { return { facts: {}, divFacts: {}, skills: {}, hist: [], snaps: [], buckets: {}, streak: { current: 0, best: 0, lastDay: null }, unlocked: { division: false, bigmul: false, fractions: false }, seen: {}, plans: [], errlog: [], daily: { day: null, warmup: false, quiz: false }, pin: null }; }
+  function blank() { return { facts: {}, divFacts: {}, skills: {}, hist: [], snaps: [], buckets: {}, streak: { current: 0, best: 0, lastDay: null }, unlocked: { division: false, bigmul: false, fractions: false, word: false }, seen: {}, plans: [], errlog: [], daily: { day: null, warmup: false, quiz: false }, pin: null }; }
   function save(d) {
     try { localStorage.setItem(STATS_KEY, JSON.stringify(d)); } catch {}
   }
@@ -684,8 +692,11 @@ const Stats = (() => {
     const base = band === 'expert' ? 2 : band === 'practicing' ? 1 : 0;
     if (!base) return 0;
     const backlog = dueBacklog(0.3);
-    const extra = backlog > 20 ? 2 : backlog > 10 ? 1 : 0;
-    return Math.min(4, base + extra);
+    const extra = backlog > 10 ? 1 : 0;
+    // Capped at 2: the quiz only has six adaptive slots, and starving the
+    // challenge domains to drain a backlog trades one problem for another.
+    // The warm-up takes the rest of the backlog (see focusQuiz).
+    return Math.min(2, base + extra);
   }
   function mulFluentCount() {
     const now = Date.now();
@@ -708,11 +719,13 @@ const Stats = (() => {
     if (q.type === 'mul') return factState(getFact(q.a, q.b), now);
     if (q.type === 'div' && q.fam) return factState(getDivFact(q.fam[0], q.fam[1]), now, FAST_BY_SKILL.div);
     if (q.type === 'fnam' || q.type === 'feq' || q.type === 'fcmp') return skillState('fractions');
+    if (q.type === 'word') return skillState('word.' + q.wkind);
     return 'new';
   }
   const DIV_UNLOCK_AT = 24;    // division unlocks once enough mul facts are fluent
   const BIGMUL_UNLOCK_AT = 40; // 2-digit multiplication unlocks with strong table fluency
   const FRAC_UNLOCK_AT = 50;   // fractions unlock once tables are very solid
+  const WORD_UNLOCK_AT = 55;   // word problems need the operations to be automatic first
   function checkUnlocks() {
     let newly = null;
     const fluent = mulFluentCount();
@@ -725,16 +738,34 @@ const Stats = (() => {
     if (!data.unlocked.fractions && fluent >= FRAC_UNLOCK_AT) {
       data.unlocked.fractions = true; newly = newly || 'fractions'; save(data);
     }
+    if (!data.unlocked.word && fluent >= WORD_UNLOCK_AT) {
+      data.unlocked.word = true; newly = newly || 'word'; save(data);
+    }
     return newly;
   }
   function isUnlocked(d) { return !!(data.unlocked && data.unlocked[d]); }
   // The next locked domain plus concrete progress toward it — lets the kid
   // page show "24/40 facts" instead of a vague "keep practicing".
+  // A fact the child answers reliably — word problems draw their numbers from
+  // these so the challenge is comprehension, not computation.
+  function pickMasteredFact() {
+    const now = Date.now();
+    const pool = [];
+    for (let a = 2; a <= 12; a++) {
+      for (let b = 2; b <= 12; b++) {
+        const f = getFact(a, b);
+        if (f && isMasteredState(factState(f, now))) pool.push({ a, b });
+      }
+    }
+    if (!pool.length) return { a: rint(2, 6), b: rint(2, 6) };
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
   function nextUnlock() {
     const fluent = mulFluentCount();
     if (!data.unlocked.division) return { name: 'Division', emoji: '➗', have: fluent, need: DIV_UNLOCK_AT };
     if (!data.unlocked.bigmul) return { name: 'Bigger ×', emoji: '🔢', have: fluent, need: BIGMUL_UNLOCK_AT };
     if (!data.unlocked.fractions) return { name: 'Fractions', emoji: '🍕', have: fluent, need: FRAC_UNLOCK_AT };
+    if (!data.unlocked.word) return { name: 'Word problems', emoji: '📖', have: fluent, need: WORD_UNLOCK_AT };
     return null;
   }
   // Correct-but-slow = the child is counting/deriving, not retrieving
@@ -955,6 +986,12 @@ const Stats = (() => {
         const bigden = list.filter(e => e.bigden).length;
         if (bigden >= 2) { kind = 'misconception'; label = `Thinks a bigger bottom number means a bigger fraction (${bigden}×) — more pieces = smaller pieces`; }
         else label = `Comparing fractions: missed ${list.length}×`;
+      } else if (k.indexOf('word.') === 0) {
+        const schema = list.filter(e => e.schema).length;
+        const nm = { 'word.wjoin': 'Join/separate', 'word.wcompare': 'Comparing',
+                     'word.wgroups': 'Equal groups', 'word.wshare': 'Sharing' }[k] || 'Word problems';
+        if (schema >= 2) { kind = 'misconception'; label = `${nm} word problems: picks the operation the keywords suggest (${schema}×) — reading the story, not the words, is the fix`; }
+        else label = `${nm} word problems: missed ${list.length}×`;
       } else if (k === 'feq') {
         label = `Equivalent fractions: missed ${list.length}×`;
       } else if (k === 'bigmul' || k.indexOf('add:') === 0 || k.indexOf('sub:') === 0) {
@@ -1132,6 +1169,7 @@ const Stats = (() => {
       },
       bigmul: skillSummary('bigmul'),
       fractions: skillSummary('fractions'),
+      word: skillSummary('word'),
       hist: data.hist.slice(-10),
       streak: streakStatus(),
       buckets: bucketSummary(),
@@ -1203,7 +1241,7 @@ const Stats = (() => {
     }
     return Object.values(byKey).sort((x, y) => (x[tsField] || 0) - (y[tsField] || 0));
   }
-  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery, mulSeenCount, recentAccuracy, nextUnlock, isSlowFact, pickDueFacts, dueBacklog, reviewQuota, getSnaps, repairSnaps, engineCheck, savePlan, getPlans, recordError, errorPatterns, getDaily, markDaily };
+  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery, mulSeenCount, recentAccuracy, nextUnlock, isSlowFact, pickDueFacts, pickMasteredFact, dueBacklog, reviewQuota, getSnaps, repairSnaps, engineCheck, savePlan, getPlans, recordError, errorPatterns, getDaily, markDaily };
 })();
 
 // Merge helpers for cross-device sync (keep the richer record, union history)
@@ -1332,14 +1370,6 @@ function pushIfSynced() {
     // so a small/blank local state can't wipe good cloud data.
     cloudSync(fc).catch(() => {});
   }
-}
-// Sync at startup too: waiting for the first submit meant a device that was
-// only browsing never reconciled, and a device whose pushes were failing
-// looked fine until someone opened the panel.
-function syncOnLaunch() {
-  const fc = getFamilyCode();
-  if (!fc) return;
-  cloudSync(fc).then(() => { if (!state.submitted) render(); }).catch(() => { render(); });
 }
 
 // ---------- Parent gate (4-digit PIN, with a math fallback) ----------
@@ -1621,6 +1651,120 @@ function fracTip(q) {
   return 'Same top? More pieces means each is smaller. Same bottom? Bigger top wins.';
 }
 
+/* ---------- Word problems: applying the operations ---------- */
+// What makes word problems hard at this age is choosing the operation, not the
+// arithmetic (Riley/Greeno schema research; CCSS Table 1/2 taxonomy). So the
+// numbers come from facts the child already owns, and the varying part is the
+// PROBLEM SCHEMA. Each schema carries `trap` — the answer a child would reach
+// by keyword-matching ("more" → add) — which the diagnosis names explicitly.
+const W_NAMES = ['Mia', 'Leo', 'Ava', 'Sam', 'Zoe', 'Max', 'Ivy', 'Noah'];
+const W_ITEMS = [
+  { one: 'sticker', many: 'stickers', got: 'was given', gave: 'gave away' },
+  { one: 'marble', many: 'marbles', got: 'won', gave: 'lost' },
+  { one: 'card', many: 'cards', got: 'collected', gave: 'traded away' },
+  { one: 'coin', many: 'coins', got: 'found', gave: 'spent' },
+  { one: 'shell', many: 'shells', got: 'picked up', gave: 'gave away' },
+];
+const W_GROUPS = [
+  { unit: 'box', units: 'boxes', one: 'crayon', many: 'crayons' },
+  { unit: 'bag', units: 'bags', one: 'apple', many: 'apples' },
+  { unit: 'shelf', units: 'shelves', one: 'book', many: 'books' },
+  { unit: 'tray', units: 'trays', one: 'muffin', many: 'muffins' },
+  { unit: 'row', units: 'rows', one: 'chair', many: 'chairs' },
+];
+const W_KINDS = ['wjoin', 'wcompare', 'wgroups', 'wshare'];
+function wPick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+function wTwoNames() {
+  const a = wPick(W_NAMES);
+  let b = wPick(W_NAMES);
+  while (b === a) b = wPick(W_NAMES);
+  return [a, b];
+}
+// Weighted by which schema is weakest, with unseen schemas guaranteed coverage.
+function pickWordKind() {
+  const ws = W_KINDS.map(k => Stats.factWeight(Stats.getSkill('word.' + k)));
+  let r = Math.random() * ws.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < W_KINDS.length; i++) { r -= ws[i]; if (r <= 0) return W_KINDS[i]; }
+  return W_KINDS[W_KINDS.length - 1];
+}
+function genWord(kind) {
+  kind = kind || pickWordKind();
+  const isReview = (() => {
+    const st = Stats.getSkill('word.' + kind);
+    return !!st && (st.wrong || 0) > 0 && Stats.factWeight(st) > 1.5;
+  })();
+  const base = { type: 'word', wkind: kind, label: 'Word problem · 📖', isReview };
+
+  if (kind === 'wjoin') {
+    // Join/separate. Half the time the UNKNOWN is the change or the start,
+    // where the story's verb points at the wrong operation.
+    const it = wPick(W_ITEMS), n = wPick(W_NAMES);
+    const variant = rint(0, 2);
+    if (variant === 0) {                       // result unknown → add
+      const a = rint(23, 68), b = rint(14, 29);
+      return { ...base, wvar: 'result',
+        text: `${n} had ${a} ${it.many}. Then ${n} ${it.got} ${b} more. How many ${it.many} does ${n} have now?`,
+        ans: a + b, trap: a - b, op: `${a} + ${b}` };
+    }
+    if (variant === 1) {                       // change unknown → subtract
+      const a = rint(23, 48), total = a + rint(14, 29);
+      return { ...base, wvar: 'change',
+        text: `${n} had ${a} ${it.many}. After ${n} ${it.got} some more, ${n} had ${total}. How many ${it.many} did ${n} get?`,
+        ans: total - a, trap: total + a, op: `${total} − ${a}` };
+    }
+    // start unknown → ADD even though the story says "gave away"
+    const left = rint(23, 58), gone = rint(14, 29);
+    return { ...base, wvar: 'start',
+      text: `${n} ${it.gave} ${gone} ${it.many} and has ${left} left. How many ${it.many} did ${n} start with?`,
+      ans: left + gone, trap: left - gone, op: `${left} + ${gone}` };
+  }
+
+  if (kind === 'wcompare') {
+    // Compare. The "more than" wording is deliberately sometimes a subtraction.
+    const it = wPick(W_ITEMS), [n1, n2] = wTwoNames();
+    if (Math.random() < 0.5) {                 // compare, bigger unknown → add
+      const a = rint(23, 58), d = rint(12, 29);
+      return { ...base, wvar: 'more-add',
+        text: `${n1} has ${a} ${it.many}. ${n2} has ${d} more ${it.many} than ${n1}. How many ${it.many} does ${n2} have?`,
+        ans: a + d, trap: a - d, op: `${a} + ${d}` };
+    }
+    const big = rint(41, 78), d = rint(12, 29); // smaller unknown → subtract
+    return { ...base, wvar: 'more-sub',
+      text: `${n2} has ${big} ${it.many}. ${n2} has ${d} more ${it.many} than ${n1}. How many ${it.many} does ${n1} have?`,
+      ans: big - d, trap: big + d, op: `${big} − ${d}` };
+  }
+
+  if (kind === 'wgroups') {
+    const g = wPick(W_GROUPS), p = Stats.pickMasteredFact();
+    // per ≥ 3 keeps sum ≠ product, so the keyword-matched answer is always
+    // distinguishable from the right one.
+    const groups = Math.max(2, Math.min(p.a, p.b)), per = Math.max(3, Math.max(p.a, p.b));
+    if (Math.random() < 0.5) {                 // equal groups → multiply
+      return { ...base, wvar: 'groups',
+        text: `There are ${groups} ${g.units}. Each ${g.unit} holds ${per} ${g.many}. How many ${g.many} are there altogether?`,
+        ans: groups * per, trap: groups + per, op: `${groups} × ${per}` };
+    }
+    const [n1, n2] = wTwoNames();              // multiplicative compare → multiply
+    return { ...base, wvar: 'times',
+      text: `${n1} has ${per} ${g.many}. ${n2} has ${groups} times as many ${g.many} as ${n1}. How many ${g.many} does ${n2} have?`,
+      ans: groups * per, trap: groups + per, op: `${groups} × ${per}` };
+  }
+
+  // wshare — division, both partitive and quotitive
+  const g = wPick(W_GROUPS), p = Stats.pickMasteredFact();
+  const per = Math.max(3, Math.max(p.a, p.b)), groups = Math.max(2, Math.min(p.a, p.b));
+  const total = per * groups;
+  if (Math.random() < 0.5) {                   // partitive: how many each
+    const [n1] = wTwoNames();
+    return { ...base, wvar: 'each',
+      text: `${n1} shares ${total} ${g.many} equally among ${groups} friends. How many ${g.many} does each friend get?`,
+      ans: per, trap: total - groups, op: `${total} ÷ ${groups}` };
+  }
+  return { ...base, wvar: 'howmany',          // quotitive: how many groups
+    text: `There are ${total} ${g.many}. Each ${g.unit} holds ${per} ${g.many}. How many ${g.units} are needed?`,
+    ans: groups, trap: total - per, op: `${total} ÷ ${per}` };
+}
+
 function shuffleQuiz(qs) {
   for (let i = qs.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -1655,35 +1799,44 @@ function newQuiz() {
   const divOn = Stats.isUnlocked('division');
   const bigOn = Stats.isUnlocked('bigmul');
   const fracOn = Stats.isUnlocked('fractions');
+  const wordOn = Stats.isUnlocked('word');
 
   // Allocate 6 non-add/sub slots by band — more mul-fact reps for novices
   // (easier, builds confidence), more challenge slots for experts.
-  let mul, big, div, frac, rev = 0;
+  let mul, big, div, frac, rev = 0, word = 0;
   if (band === 'novice') {
     mul = 6 - (divOn ? 1 : 0); big = 0; div = divOn ? 1 : 0; frac = 0;
   } else if (band === 'developing') {
     mul = 4 - (fracOn ? 1 : 0); big = bigOn ? 1 : 0; div = divOn ? 1 : 0; frac = fracOn ? 1 : 0;
   } else if (band === 'practicing') {
     rev = Stats.reviewQuota(band); mul = Math.max(0, 2 - rev);
-    big = bigOn ? 2 : 0; div = divOn ? 1 : 0; frac = fracOn ? 1 : 0;
+    big = bigOn ? 1 : 0; div = divOn ? 1 : 0; frac = fracOn ? 1 : 0; word = wordOn ? 1 : 0;
   } else { // expert
+    // Six slots for five demands, so the two near-mastered domains (2-digit ×
+    // and fractions) alternate rather than one of them always being trimmed
+    // away: review 2 + word 2 + division 1 + (2-digit × OR fractions) 1.
     rev = Stats.reviewQuota(band); mul = 0;
-    big = bigOn ? 2 : 0; div = divOn ? 1 : 0; frac = fracOn ? 1 : 0;
+    div = divOn ? 1 : 0; word = wordOn ? 2 : 0;
+    if (bigOn && fracOn && wordOn) {
+      const bigTurn = Math.random() < 0.5;
+      big = bigTurn ? 1 : 0; frac = bigTurn ? 0 : 1;
+    } else { big = bigOn ? 1 : 0; frac = fracOn ? 1 : 0; }
   }
   // Backfill into mul if some domains are still locked.
   const target = 6;
-  let used = mul + big + div + frac + rev;
+  let used = mul + big + div + frac + rev + word;
   if (used < target) mul += (target - used);
   // Trim to exactly 6 by dropping from the hardest available domain.
-  used = mul + big + div + frac + rev;
+  used = mul + big + div + frac + rev + word;
   while (used > target) {
     if (frac > 0 && band !== 'expert') frac--;
     else if (big > 0) big--;
     else if (div > 0) div--;
     else if (mul > 1) mul--;
+    else if (word > 1) word--;
     else if (rev > 1) rev--;
     else break;
-    used = mul + big + div + frac + rev;
+    used = mul + big + div + frac + rev + word;
   }
   // Bias mul-fact selection: novices get easier, experts get harder.
   const mulBias = band === 'novice' || band === 'developing' ? 'easy'
@@ -1702,6 +1855,7 @@ function newQuiz() {
   for (let i = 0; i < big; i++) qs.push(genBigMul());
   for (let i = 0; i < div; i++) qs.push(genDiv());
   for (let i = 0; i < frac; i++) qs.push(genFraction());
+  for (let i = 0; i < word; i++) qs.push(genWord());
   const bucketBias = band === 'novice' ? 'easy' : band === 'expert' ? 'hard' : 'auto';
   for (let i = 0; i < 2; i++) qs.push(genAdd(Stats.pickBucket('add', bucketBias)));
   for (let i = 0; i < 2; i++) qs.push(genSub(Stats.pickBucket('sub', bucketBias)));
@@ -1737,6 +1891,15 @@ function fractionQuiz() {
 // A quiz built mostly from the child's weakest items.
 // compact=true is the daily warm-up (5-6 questions: the essentials only);
 // the full version backs the parent-initiated focused practice.
+// One of each schema guaranteed, then weighted toward the weakest — the same
+// shape as the fractions practice set.
+function wordQuiz() {
+  const qs = W_KINDS.map(k => genWord(k));
+  for (let i = 0; i < 4; i++) qs.push(genWord());
+  qs.push(genAdd(Stats.pickBucket('add')));
+  qs.push(genSub(Stats.pickBucket('sub')));
+  return shuffleQuiz(qs);
+}
 function focusQuiz(compact) {
   const s = Stats.summary();
   const qs = [];
@@ -1747,9 +1910,16 @@ function focusQuiz(compact) {
     const extra = Stats.pickMulFacts(factCap - facts.length);
     facts = facts.concat(extra.map(p => ({ a: p.a, b: p.b })));
   }
+  // A warm-up is maintenance by nature, so overdue facts come here first —
+  // this is what actually drains a review backlog without taking slots from
+  // the quiz's challenge mix.
+  const fkey = f => Math.min(f.a, f.b) + 'x' + Math.max(f.a, f.b);
+  if (Stats.dueBacklog(0.3) > 0) {
+    const due = Stats.pickDueFacts(compact ? 2 : 3, facts.map(fkey));
+    if (due.length) facts = due.concat(facts).slice(0, factCap);
+  }
   // Confusion pairs practice best side by side: when the error log shows
   // "6×7 answered as 48", make sure BOTH 6×7 and 6×8 are in the set.
-  const fkey = f => Math.min(f.a, f.b) + 'x' + Math.max(f.a, f.b);
   const pairs = Stats.errorPatterns().filter(p => p.pair).slice(0, 2);
   for (const p of pairs) {
     for (const f of [{ a: p.pair[0], b: p.pair[1] }, { a: p.pair[2], b: p.pair[3] }]) {
@@ -1808,6 +1978,7 @@ function diagFraction(q) {
 
 function diagnose(q, given) {
   if (q.type === 'fnam' || q.type === 'feq' || q.type === 'fcmp') return diagFraction(q);
+  if (q.type === 'word') return diagWord(q, Number(given));
   const g = Number(given);
   if (given === '' || !Number.isFinite(g)) {
     return {
@@ -1820,6 +1991,47 @@ function diagnose(q, given) {
   if (q.type === 'add') return diagAdd(q, g);
   if (q.type === 'sub') return diagSub(q, g);
   if (q.type === 'div') return diagDiv(q, g);
+}
+
+// Word problems: separate a SCHEMA error (the wrong operation, usually from
+// keyword-matching) from an arithmetic slip on the right plan. The two need
+// completely different teaching, so the diagnosis never blurs them.
+function diagWord(q, g) {
+  const plan = `Plan: ${q.op} = ${q.ans}`;
+  const asks = {
+    result: 'This one starts with an amount and adds more — the question wants the TOTAL.',
+    change: 'You know the start and the end — the question wants the CHANGE in between, so you take away.',
+    start: 'You know what is LEFT and what went away — to get back to the start you put them together.',
+    'more-add': 'The unknown person has MORE, so their amount is the other amount plus the difference.',
+    'more-sub': 'The unknown person has FEWER — the difference must come off, even though the story says "more".',
+    groups: 'Equal groups: the same amount in each group, so you multiply.',
+    times: '"Times as many" means groups of the same amount — multiply.',
+    each: 'One whole shared into equal parts, asking for the size of a part — divide.',
+    howmany: 'One whole split into parts of a known size, asking how many parts — divide.',
+  }[q.wvar] || 'Ask yourself what the question wants: a total, a difference, or a share.';
+
+  if (!Number.isFinite(g)) {
+    return { why: 'You left this one blank.', work: plan,
+             tip: 'Start by asking what the question wants, then pick the operation. ' + asks };
+  }
+  if (g === q.trap) {
+    return {
+      why: `That is the answer to the wrong operation. Words like "more", "gave away" or "altogether" do not always mean the operation they sound like — the STORY decides.`,
+      work: plan,
+      tip: asks,
+    };
+  }
+  // Right plan, wrong arithmetic: say so, and show the computation.
+  const [x, opSym, y] = q.op.split(' ');
+  const inner = { type: opSym === '+' ? 'add' : opSym === '−' ? 'sub' : opSym === '×' ? 'mul' : 'div',
+                  a: Number(x), b: Number(y), ans: q.ans };
+  let work = plan;
+  try { work = buildWork(inner) || plan; } catch { work = plan; }
+  return {
+    why: `Your plan was right — ${q.op} is the correct step — but the arithmetic came out as ${g} instead of ${q.ans}.`,
+    work,
+    tip: 'Good reading! Slow down on the calculation and check it once.',
+  };
 }
 
 function diagBigMul(q, g) {
@@ -2109,7 +2321,7 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v57';
+const APP_VERSION = 'v58';
 const APP_UPDATED = '2026-09-17';
 // In-progress quiz survives refreshes/crashes/SW updates: every answer
 // keystroke snapshots the session to localStorage; a fresh page load resumes
@@ -2144,6 +2356,10 @@ function saveSession() {
     }));
   } catch {}
 }
+// Thresholds already crossed by accumulated history must be applied before
+// the first quiz is composed — otherwise the open that unlocks a domain
+// still serves a quiz built without it.
+const _newlyUnlocked = (() => { try { return Stats.checkUnlocks(); } catch { return null; } })();
 const _resumed = loadSession();
 // Progress = typed answers, immediate-mode checks, or a submitted review —
 // those resume straight into the quiz. An untouched quiz goes back to the
@@ -2225,6 +2441,7 @@ function renderTimer() {
 // Signature for "same question" — used to keep rerolls honest.
 function qSig(q) {
   if (q.type === 'mul' || q.type === 'div') return `${q.type}:${Math.min(q.a, q.b)}x${Math.max(q.a, q.b)}${q.big ? ':big' : ''}`;
+  if (q.type === 'word') return `word:${q.wkind}:${q.wvar}:${q.ans}`;
   if (q.type === 'fnam') return `fnam:${q.den}:${q.shaded}`;
   if (q.type === 'feq') return `feq:${q.n1}/${q.d1}=${q.d2}`;
   if (q.type === 'fcmp') return `fcmp:${q.n1}/${q.d1}v${q.n2}/${q.d2}`;
@@ -2345,6 +2562,10 @@ function errEntry(q) {
              bigden: q.n1 === q.n2 && ((q.given === '>' && q.d1 > q.d2) || (q.given === '<' && q.d2 > q.d1)) };
   }
   if (q.type === 'feq') return { d, k: 'feq', g: String(q.given || ''), ans: String(q.ans), sc };
+  if (q.type === 'word') {
+    return { d, k: 'word.' + q.wkind, g: String(q.given || ''), ans: String(q.ans), sc,
+             schema: num(q.given) === q.trap };  // picked the keyword-matched operation
+  }
   return { d, k: q.bucket || q.type, g: String(q.given || ''), ans: String(q.ans), sc, ten: tensSlip(q.given) };
 }
 
@@ -2383,6 +2604,10 @@ function submit(fromTimeout) {
     else if (q.type === 'fnam' || q.type === 'feq' || q.type === 'fcmp') {
       Stats.recordSkill('fractions', isRight, ms, sc);          // aggregate (drives unlock/summary)
       Stats.recordSkill('frac.' + q.type, isRight, ms, sc);     // sub-skill (drives adaptive selection)
+    }
+    else if (q.type === 'word') {
+      Stats.recordSkill('word', isRight, ms, sc);
+      Stats.recordSkill('word.' + q.wkind, isRight, ms, sc);
     }
     else if (q.bucket) Stats.recordBucket(q.bucket, isRight);
     if (!isRight) { try { Stats.recordError(errEntry(q)); } catch {} }
@@ -2505,11 +2730,14 @@ function renderTopbar() {
   const mark = el('div', 'brand-mark', '×');
   const txt = el('div', 'brand-text');
   txt.appendChild(el('h1', null, state.phase === 'quiz' ? `Math Quiz · ${state.quiz.length} Questions` : 'Math Quiz'));
-  const parts = ['Times tables', 'Addition', 'Subtraction'];
-  if (Stats.isUnlocked('division')) parts.push('Division');
-  if (Stats.isUnlocked('bigmul')) parts.push('2-digit ×');
-  if (Stats.isUnlocked('fractions')) parts.push('Fractions');
-  txt.appendChild(el('p', null, parts.join(' · ') + ' · 10-min timer'));
+  const parts = [['✖️', 'Times tables'], ['➕', 'Addition'], ['➖', 'Subtraction']];
+  if (Stats.isUnlocked('division')) parts.push(['➗', 'Division']);
+  if (Stats.isUnlocked('bigmul')) parts.push(['🔢', '2-digit ×']);
+  if (Stats.isUnlocked('fractions')) parts.push(['🍕', 'Fractions']);
+  if (Stats.isUnlocked('word')) parts.push(['📖', 'Word problems']);
+  const sub = el('p', null, parts.map(p => p[0]).join(' ') + ' · 10-min timer');
+  sub.title = parts.map(p => p[1]).join(' · ');
+  txt.appendChild(sub);
   brand.appendChild(mark); brand.appendChild(txt);
   const sk = Stats.streakStatus();
   if (sk.current > 0) {
@@ -2564,6 +2792,9 @@ function answerText(q) {
   if (q.type === 'fnam') return q.ansNum + '/' + q.ansDen;
   return String(q.ans);
 }
+function wordKindLabel(k) {
+  return { wjoin: 'Join / separate', wcompare: 'Comparing', wgroups: 'Equal groups', wshare: 'Sharing' }[k] || k;
+}
 function exprText(q) {
   if (q.type === 'mul') return `${q.a} × ${q.b}`;
   if (q.type === 'add') return `${q.a} + ${q.b}`;
@@ -2614,6 +2845,18 @@ function renderQuestion(q, idx) {
     head.appendChild(st);
   }
   card.appendChild(head);
+
+  if (q.type === 'word') {
+    card.appendChild(el('p', 'wstory', q.text));
+    // Pre-answer scaffold on a schema the child has missed: name the question
+    // being asked rather than hint the operation, so the reading stays theirs.
+    if (!state.submitted && q.isReview) {
+      const tip = el('div', 'pretip');
+      tip.appendChild(spanTxt('💡 ', null));
+      tip.appendChild(spanTxt('Read it twice. What is the question actually asking for — a total, a difference, or a share?', null));
+      card.appendChild(tip);
+    }
+  }
 
   if (q.type === 'fnam' || q.type === 'feq' || q.type === 'fcmp') {
     card.appendChild(renderFractionRow(q, idx, right, wrong));
@@ -2669,6 +2912,7 @@ function renderQuestion(q, idx) {
     expr.appendChild(spanTxt(q.b, 'tabular'));
     expr.appendChild(spanTxt('=', 'eq'));
   }
+  if (q.type === 'word') expr.innerHTML = '';
   row.appendChild(expr);
 
   const inp = document.createElement('input');
@@ -3107,6 +3351,7 @@ function startFocusedQuiz(seenKey, makeQuiz) {
 function startDivisionPractice() { startFocusedQuiz('divisionLesson', divisionQuiz); }
 function startBigmulPractice() { startFocusedQuiz('bigmulLesson', bigmulQuiz); }
 function startFractionPractice() { startFocusedQuiz('fractionsLesson', fractionQuiz); }
+function startWordPractice() { startFocusedQuiz('wordLesson', wordQuiz); }
 
 // Concrete → Representational → Abstract lesson for a domain.
 function renderLessonModal(domain) {
@@ -3184,6 +3429,50 @@ function renderLessonModal(domain) {
     actions.appendChild(later);
     actions.appendChild(go);
     m.appendChild(actions);
+  } else if (domain === 'word') {
+    const fresh = !Stats.hasSeen('wordLesson');
+    m.appendChild(el('div', 'ico-big', '📖'));
+    m.appendChild(el('h2', null, fresh ? '🎉 New skill unlocked: Word problems' : 'Word problems — maths in real life'));
+    m.appendChild(el('p', null, 'You already know the operations. The new skill is working out WHICH one a story needs.'));
+
+    m.appendChild(el('h3', 'lesson-h', '1) Ask what the question wants'));
+    m.appendChild(el('p', 'lesson-p', 'Every story asks for one of these: a TOTAL, a DIFFERENCE, or a SHARE. Find that first — before touching the numbers.'));
+
+    m.appendChild(el('h3', 'lesson-h', '2) Draw the story as bars'));
+    m.appendChild(el('p', 'lesson-p', '"Leo has 30 marbles. Mia has 12 more than Leo." Two bars, and Mia\'s is longer by 12:'));
+    const bw = el('div', 'wbars');
+    const row1 = el('div', 'wbar-row');
+    row1.appendChild(el('span', 'wbar-name', 'Leo'));
+    const b1 = el('div', 'wbar'); b1.style.width = '120px'; b1.textContent = '30';
+    row1.appendChild(b1);
+    const row2 = el('div', 'wbar-row');
+    row2.appendChild(el('span', 'wbar-name', 'Mia'));
+    const b2 = el('div', 'wbar'); b2.style.width = '120px'; b2.textContent = '30';
+    const b2b = el('div', 'wbar extra'); b2b.style.width = '48px'; b2b.textContent = '12';
+    row2.appendChild(b2); row2.appendChild(b2b);
+    bw.appendChild(row1); bw.appendChild(row2);
+    m.appendChild(bw);
+    m.appendChild(el('p', 'lesson-p', 'The picture shows the answer: Mia has 30 + 12 = 42. If instead you were told MIA has 42 and has 12 more, the picture shows Leo = 42 − 12 = 30.'));
+
+    m.appendChild(el('h3', 'lesson-h', '3) Careful: words can lie'));
+    m.appendChild(el('p', 'lesson-p', '"More" does not always mean add. "Gave away" does not always mean subtract. In "Sam gave away 20 and has 40 left, how many did Sam start with?" you must ADD. The story decides, never the keyword.'));
+
+    m.appendChild(el('h3', 'lesson-h', '4) The four kinds you will meet'));
+    const ul = el('ul', 'lesson-ul');
+    [['Join / separate', 'amounts going in or out — total, change or start unknown'],
+     ['Comparing', 'who has more, and by how much'],
+     ['Equal groups', 'the same amount in each group → multiply'],
+     ['Sharing', 'one whole split into equal parts → divide']].forEach(([a, b]) => {
+      const li = document.createElement('li');
+      li.appendChild(el('b', null, a));
+      li.appendChild(spanTxt(' — ' + b, null));
+      ul.appendChild(li);
+    });
+    m.appendChild(ul);
+
+    const go = el('button', 'btn btn-primary lesson-go', '✏️ Try some word problems');
+    go.onclick = startWordPractice;
+    m.appendChild(go);
   } else if (domain === 'fractions') {
     const fresh = !Stats.hasSeen('fractionsLesson');
     m.appendChild(el('div', 'ico-big', '🍕'));
@@ -3274,6 +3563,7 @@ function renderMineModal() {
   if (s.division.unlocked) rows.push({ name: 'Division', emoji: '➗', mastery: s.division.mastery });
   if (s.bigmul.unlocked) rows.push({ name: 'Bigger ×', emoji: '🔢', mastery: s.bigmul.mastery });
   if (s.fractions.unlocked) rows.push({ name: 'Fractions', emoji: '🍕', mastery: s.fractions.mastery });
+  if (s.word.unlocked) rows.push({ name: 'Word problems', emoji: '📖', mastery: s.word.mastery });
   rows.forEach(r => {
     const stg = masteryStage(r.mastery);
     const card = el('div', 'mine-card');
@@ -3283,11 +3573,18 @@ function renderMineModal() {
     top.appendChild(el('span', 'mine-stage', `${stg.emoji} ${stg.label}`));
     card.appendChild(top);
     card.appendChild(masteryMeter(r.mastery));
+    const stEmoji = { new: '⚪', learning: '🌱', accurate: '⭐', fluent: '🚀' };
     if (r.name === 'Fractions') {
-      const stEmoji = { new: '⚪', learning: '🌱', accurate: '⭐', fluent: '🚀' };
       const chips = el('div', 'mine-chips');
       [['frac.fnam', 'Naming'], ['frac.feq', 'Equal'], ['frac.fcmp', 'Compare']].forEach(([k, label]) => {
         chips.appendChild(el('span', 'mine-chip', `${stEmoji[Stats.skillState(k)] || '⚪'} ${label}`));
+      });
+      card.appendChild(chips);
+    }
+    if (r.name === 'Word problems') {
+      const chips = el('div', 'mine-chips');
+      W_KINDS.forEach(k => {
+        chips.appendChild(el('span', 'mine-chip', `${stEmoji[Stats.skillState('word.' + k)] || '⚪'} ${wordKindLabel(k).split(' ')[0]}`));
       });
       card.appendChild(chips);
     }
@@ -3402,6 +3699,7 @@ function renderStatsModal() {
     if (s.division.unlocked) domHintParts.push(`➗ ${s.division.mastery}%`);
     if (s.bigmul.unlocked) domHintParts.push(`🔢 ${s.bigmul.mastery}%`);
     if (s.fractions.unlocked) domHintParts.push(`🍕 ${s.fractions.mastery}%`);
+    if (s.word.unlocked) domHintParts.push(`📖 ${s.word.mastery}%`);
     const domGroup = statsGroup('📚 By domain', domHintParts.join(' · '), false);
     const factsLine = el('p', 'stats-line',
       `Multiplication: ${s.totalAttempts} attempts · ${s.totalAccuracy}% accurate · ${s.mastered}/66 facts mastered`);
@@ -3519,6 +3817,28 @@ function renderStatsModal() {
       row3.appendChild(learn3);
       row3.appendChild(prac3);
       domGroup.appendChild(row3);
+    }
+
+    domGroup.appendChild(el('h3', 'stats-h3', '📖 Word problems'));
+    if (!s.word.unlocked) {
+      domGroup.appendChild(el('p', 'stats-line', `Locked — unlocks at 55 mastered multiplication facts (now ${Stats.mulFluentCount()}/55).`));
+    } else {
+      const stTxt = s.word.state === 'fluent' ? 'fluent 🌟' : s.word.state === 'accurate' ? 'accurate' : 'learning';
+      domGroup.appendChild(el('p', 'stats-line', `${s.word.attempts} attempts · ${s.word.accuracy}% accurate · ${s.word.mastery}% mastery · ${stTxt}`));
+      domGroup.appendChild(masteryMeter(s.word.mastery));
+      const byKind = el('p', 'stats-line', W_KINDS.map(k => {
+        const f = Stats.getSkill('word.' + k);
+        const n = f ? (f.right || 0) + (f.wrong || 0) : 0;
+        return `${wordKindLabel(k)} ${n ? Math.round(100 * (f.right || 0) / n) + '%' : '—'}`;
+      }).join(' · '));
+      domGroup.appendChild(byKind);
+      const row4 = el('div', 'div-actions');
+      const learn4 = el('button', 'btn btn-ghost', '📖 Lesson');
+      learn4.onclick = () => { state.showLesson = 'word'; render(); };
+      const prac4 = el('button', 'btn btn-primary', '✏️ Practice word problems');
+      prac4.onclick = startWordPractice;
+      row4.appendChild(learn4); row4.appendChild(prac4);
+      domGroup.appendChild(row4);
     }
     m.appendChild(domGroup);
 
@@ -3693,6 +4013,7 @@ function openPrintView() {
   ${dom('Division (÷)', s.division, s.division.unlocked ? s.division.accuracy : null)}
   ${dom('2-digit multiplication', s.bigmul, s.bigmul.unlocked ? s.bigmul.accuracy : null)}
   ${dom('Fractions', s.fractions, s.fractions.unlocked ? s.fractions.accuracy : null)}
+  ${dom('Word problems', s.word, s.word.unlocked ? s.word.accuracy : null)}
 </tbody></table>
 <h2>Practice these next</h2>
 <p>${weak}</p>
@@ -3741,6 +4062,14 @@ async function generatePlan(container, btn) {
         : 'locked',
       twoDigitMultiplication: s.bigmul.unlocked
         ? { attempts: s.bigmul.attempts, accuracyPct: s.bigmul.accuracy, masteryPct: s.bigmul.mastery }
+        : 'locked',
+      wordProblems: s.word.unlocked
+        ? { attempts: s.word.attempts, accuracyPct: s.word.accuracy, masteryPct: s.word.mastery,
+            bySchema: W_KINDS.reduce((o, k) => {
+              const f = Stats.getSkill('word.' + k), n = f ? (f.right || 0) + (f.wrong || 0) : 0;
+              o[wordKindLabel(k)] = n ? Math.round(100 * (f.right || 0) / n) + '%' : 'not seen';
+              return o;
+            }, {}) }
         : 'locked',
       fractions: s.fractions.unlocked
         ? { attempts: s.fractions.attempts, accuracyPct: s.fractions.accuracy, masteryPct: s.fractions.mastery,
@@ -3953,7 +4282,6 @@ function spanTxt(text, cls) {
 if (state.phase === 'quiz' && !state.submitted) runTicker();
 saveSession();
 render();
-syncOnLaunch();
 setTimeout(() => {
   const first = document.querySelector('.ansbox');
   if (first) first.focus();
@@ -3963,7 +4291,7 @@ setTimeout(() => {
 // after a stats-engine upgrade), so unlocks happen on App open — not only
 // at the end of the next quiz. Show the new-skill lesson if anything fires.
 (function initCheckUnlocks() {
-  const unlocked = Stats.checkUnlocks();
+  const unlocked = _newlyUnlocked || Stats.checkUnlocks();
   if (unlocked) { state.showLesson = unlocked; render(); }
 })();
 

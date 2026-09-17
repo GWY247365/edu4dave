@@ -175,6 +175,32 @@ const mineBtns = await page.$$eval('.mine-modal .mine-go', els => els.map(e => e
 check('child page has exactly ONE practice button (no category menu)', mineBtns.length === 1, JSON.stringify(mineBtns));
 await page.evaluate(() => { state.showMine = false; render(); });
 
+console.log('7. word problems: answer keys, traps, schema diagnosis');
+await page.evaluate(() => {
+  // a profile fluent enough to unlock word problems
+  for (let r = 0; r < 8; r++) for (let a = 2; a <= 12; a++) for (let b = a; b <= 12; b++) Stats.recordMul(a, b, true, 2000);
+  Stats.checkUnlocks();
+});
+const wp = await page.evaluate(() => {
+  let bad = 0;
+  const kinds = {};
+  for (let i = 0; i < 1500; i++) {
+    const q = genWord();
+    kinds[q.wkind] = 1;
+    const [x, sym, y] = q.op.split(' ');
+    const calc = sym === '+' ? +x + +y : sym === '−' ? +x - +y : sym === '×' ? +x * +y : +x / +y;
+    if (calc !== q.ans || q.trap === q.ans || !Number.isInteger(q.ans) || q.ans <= 0) bad++;
+  }
+  const q = genWord('wcompare');
+  return { bad, kinds: Object.keys(kinds).length, unlocked: Stats.isUnlocked('word'),
+           trapDiag: diagnose(q, String(q.trap)).why, slipDiag: diagnose(q, String(q.ans + 1)).why };
+});
+check('word problems unlocked by fluency', wp.unlocked);
+check('all four schemas generate', wp.kinds === 4, 'kinds=' + wp.kinds);
+check('1500 generated problems are self-consistent', wp.bad === 0, wp.bad + ' bad');
+check('keyword-matched answer diagnosed as wrong operation', /wrong operation/.test(wp.trapDiag));
+check('right plan + bad arithmetic diagnosed as a slip', /plan was right/.test(wp.slipDiag));
+
 check('no page errors across all scenarios', pageErrors.length === 0, pageErrors.join('; '));
 
 await browser.close();
