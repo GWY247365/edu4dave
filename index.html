@@ -332,6 +332,16 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .qcard.imm-fixing{border-color:#fbbf24}
 .fixpill{margin-top:8px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:8px 12px;font-size:14px;color:#92400e;line-height:1.5}
 .fixpill .fix-ans{font-weight:800;font-size:16px;color:#b45309}
+.sync-health{margin:6px 0 10px;font-size:12.5px;line-height:1.45;padding:8px 10px;border-radius:8px}
+.sync-health.ok{background:#ecfdf5;color:#047857;border:1px solid #a7f3d0}
+.sync-health.bad{background:#fff7ed;color:#9a3412;border:1px solid #fed7aa;font-weight:600}
+.eng-row{display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid var(--border-soft)}
+.eng-dot{width:16px;text-align:center;font-weight:800;flex:none}
+.eng-ok .eng-dot{color:#047857}
+.eng-warn .eng-dot{color:#b45309}
+.eng-bad .eng-dot{color:#b91c1c}
+.eng-label{font-size:13.5px;color:var(--ink);font-weight:600}
+.eng-detail{font-size:12px;color:var(--ink-3);line-height:1.4;margin-top:1px}
 .stats-group{margin-top:12px;background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:0 14px}
 .stats-group[open]{padding-bottom:12px}
 .stats-group-sum{cursor:pointer;display:flex;align-items:center;gap:10px;padding:12px 0;list-style-position:outside}
@@ -490,6 +500,7 @@ const Stats = (() => {
     try { localStorage.setItem(STATS_KEY, JSON.stringify(d)); } catch {}
   }
   let data = load();
+  try { repairSnaps(); } catch {}
   function mulKey(a, b) { return a <= b ? `${a}x${b}` : `${b}x${a}`; }
   function getFact(a, b) { return data.facts[mulKey(a, b)]; }
 
@@ -768,6 +779,59 @@ const Stats = (() => {
     if (list.length > 26) data.snaps = list.slice(-26);
   }
   function getSnaps() { return (data.snaps || []).slice(); }
+  // Quiz counts only ever grow, so a snapshot reporting far fewer quizzes
+  // than an earlier week was computed from a damaged or blank profile
+  // (this happened in the field). Drop those instead of charting them.
+  function repairSnaps() {
+    const list = (data.snaps || []).slice().sort((x, y) => (x.ts || 0) - (y.ts || 0));
+    let maxQ = 0, dropped = 0;
+    const keep = [];
+    for (const s of list) {
+      const q = s.quizzes || 0;
+      if (maxQ >= 10 && q < maxQ * 0.5) { dropped++; continue; }
+      maxQ = Math.max(maxQ, q);
+      keep.push(s);
+    }
+    if (dropped) { data.snaps = keep; save(data); }
+    return dropped;
+  }
+  // Self-calibration report: everything a parent (or a developer) needs to
+  // judge whether the engine is tracking reality — computed on device, so no
+  // data ever has to leave it to be reviewed.
+  function engineCheck() {
+    const out = [];
+    const add = (level, label, detail) => out.push({ level, label, detail });
+    const clean = data.hist.filter(h => (h.c || 0) > 0 || (h.t || 0) > 20);
+    const last = data.hist[data.hist.length - 1];
+    const days = last ? Math.round((Date.now() - last.d) / 86400000) : null;
+    if (days == null) add('warn', 'No practice recorded yet', 'finish a quiz to start tracking');
+    else add(days <= 2 ? 'ok' : days <= 7 ? 'warn' : 'bad',
+             `Last practice ${days === 0 ? 'today' : days + ' day' + (days > 1 ? 's' : '') + ' ago'}`,
+             days > 7 ? 'the engine can only adapt from practice — nothing new has arrived' : '');
+    const m = overallMulMastery(), cov = mulSeenCount() / 66;
+    const eff = m * (0.35 + 0.65 * Math.min(1, cov / 0.75));
+    const band = eff < 0.45 ? 'novice' : eff < 0.70 ? 'developing' : eff < 0.92 ? 'practicing' : 'expert';
+    add('ok', `Difficulty band: ${band}`, `model mastery ${Math.round(m * 100)}% · curriculum coverage ${Math.round(cov * 100)}%`);
+    const acc = (() => {
+      const h = clean.slice(-5); let c = 0, n = 0;
+      for (const q of h) { c += q.c || 0; n += q.n || 0; }
+      return n ? Math.round(100 * c / n) : null;
+    })();
+    if (acc == null) add('warn', 'Not enough scored quizzes to judge difficulty', '');
+    else add(acc >= 78 && acc <= 92 ? 'ok' : 'warn', `Recent accuracy ${acc}%`,
+             acc > 92 ? 'above the 85% target — the engine should be stepping the difficulty up'
+             : acc < 78 ? 'below the 85% target — the engine should be stepping it down'
+             : 'inside the 85%-rule sweet spot');
+    const blanks = data.hist.filter(h => (h.c || 0) === 0 && (h.t || 0) <= 20).length;
+    if (blanks) add('warn', `${blanks} blank submissions in history`, 'old data; new ones are refused');
+    const noPL = Object.values(data.facts).filter(f => f.pL == null && (f.right || 0) + (f.wrong || 0) > 0).length;
+    if (noPL) add('warn', `${noPL} fact records without a mastery estimate`, 'they will be backfilled on next load');
+    const slow = Object.values(data.facts).filter(f => (f.avgT || 0) > 30000).length;
+    if (slow) add('warn', `${slow} facts with an inflated answer time`, 'old idle answers; new ones are capped at 30s');
+    const weak = summary().weak.slice(0, 3).map(w => `${w.a}×${w.b}`);
+    if (weak.length) add('ok', `Currently targeting ${weak.join(', ')}`, 'these lead the warm-up');
+    return out;
+  }
   // ---- Daily session: the system decides, the child just presses start ----
   function getDaily() {
     const today = todayKey();
@@ -1044,7 +1108,7 @@ const Stats = (() => {
     for (const k in rs) if (rs[k]) data.seen[k] = true;
     if (!data.pin && remote.pin) data.pin = remote.pin;
     // Snaps/plans: union by week-key/timestamp, keep newest per week.
-    data.snaps = mergeByKey(data.snaps, remote.snaps, x => x.week, 'ts').slice(-26);
+    data.snaps = mergeSnaps(data.snaps, remote.snaps).slice(-26);
     data.plans = mergeByKey(data.plans, remote.plans, x => `${x.week}|${x.ts}`, 'ts').slice(-12);
     data.errlog = mergeByKey(data.errlog, remote.errlog, x => `${x.d}|${x.k}|${x.g}`, 'd').slice(-200);
     // Daily flags: same day → OR across devices; otherwise the newer day wins.
@@ -1057,6 +1121,20 @@ const Stats = (() => {
     }
     save(data);
   }
+  // Per week keep the snapshot taken from the richer profile (most quizzes,
+  // then most facts mastered); only break ties by recency.
+  function mergeSnaps(a, b) {
+    const byWeek = {};
+    for (const s of [...(a || []), ...(b || [])]) {
+      if (!s || !s.week) continue;
+      const cur = byWeek[s.week];
+      if (!cur) { byWeek[s.week] = s; continue; }
+      const score = (x) => [(x.quizzes || 0), (x.mulMastered || 0), (x.ts || 0)];
+      const [q1, m1, t1] = score(s), [q2, m2, t2] = score(cur);
+      if (q1 > q2 || (q1 === q2 && (m1 > m2 || (m1 === m2 && t1 > t2)))) byWeek[s.week] = s;
+    }
+    return Object.values(byWeek).sort((x, y) => (x.ts || 0) - (y.ts || 0));
+  }
   function mergeByKey(a, b, keyFn, tsField) {
     const all = [...(a || []), ...(b || [])];
     const byKey = {};
@@ -1066,7 +1144,7 @@ const Stats = (() => {
     }
     return Object.values(byKey).sort((x, y) => (x[tsField] || 0) - (y[tsField] || 0));
   }
-  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery, mulSeenCount, recentAccuracy, nextUnlock, isSlowFact, getSnaps, savePlan, getPlans, recordError, errorPatterns, getDaily, markDaily };
+  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery, mulSeenCount, recentAccuracy, nextUnlock, isSlowFact, getSnaps, repairSnaps, engineCheck, savePlan, getPlans, recordError, errorPatterns, getDaily, markDaily };
 })();
 
 // Merge helpers for cross-device sync (keep the richer record, union history)
@@ -1078,16 +1156,21 @@ function mergeCountMap(a, b) {
     const x = a[k], y = b[k];
     if (!x) { out[k] = y; continue; }
     if (!y) { out[k] = x; continue; }
-    // The record touched most recently holds the latest scheduling truth;
-    // use it as the base but never let attempt counts go backward, and keep
-    // a non-null avgT if either side has one.
+    // Scheduling truth follows DEPTH, not recency: the side with more
+    // attempts has strictly more information about this item. Recency lost
+    // real data in the field — a device whose profile had been reset
+    // practiced twice and, being "newer", overwrote months of history
+    // (3x9 stability 24.3d → 0.42d, 2x2 20.3d → 3.0d with no new attempts).
+    // Counts take the max and timestamps take the max either way.
     const xt = x.lastSeen || x.last || 0, yt = y.lastSeen || y.last || 0;
-    const newer = yt >= xt ? y : x, older = yt >= xt ? x : y;
-    const m = { ...older, ...newer };
+    const xn = (x.right || 0) + (x.wrong || 0), yn = (y.right || 0) + (y.wrong || 0);
+    const deeper = yn > xn ? y : yn < xn ? x : (yt >= xt ? y : x);   // tie → newer
+    const other = deeper === y ? x : y;
+    const m = { ...other, ...deeper };
     m.right = Math.max(x.right || 0, y.right || 0);
     m.wrong = Math.max(x.wrong || 0, y.wrong || 0);
-    m.stab = Math.max(newer.stab || 0, 0) || older.stab || 0;
-    if (m.avgT == null) m.avgT = older.avgT != null ? older.avgT : x.avgT != null ? x.avgT : y.avgT;
+    m.stab = Math.max(deeper.stab || 0, 0) || other.stab || 0;
+    if (m.avgT == null) m.avgT = other.avgT != null ? other.avgT : x.avgT != null ? x.avgT : y.avgT;
     const ts = Math.max(xt, yt);
     m.lastSeen = ts; m.last = ts; // keep the two timestamps in lock-step
     out[k] = m;
@@ -1157,22 +1240,47 @@ async function cloudSave(code, data) {
 // Until then we must not blind-overwrite the cloud (local could be near-blank,
 // e.g. corrupted localStorage or a fresh device that was offline at load).
 let syncedThisSession = false;
+// Sync health: failures used to be swallowed entirely, so a device could
+// practice for weeks while the cloud copy sat frozen and nothing anywhere
+// said so (this happened). Every attempt now leaves a trace.
+const SYNC_HEALTH_KEY = 'mathquiz.syncHealth';
+function getSyncHealth() {
+  try { return JSON.parse(localStorage.getItem(SYNC_HEALTH_KEY) || '{}') || {}; } catch { return {}; }
+}
+function setSyncHealth(patch) {
+  try {
+    localStorage.setItem(SYNC_HEALTH_KEY, JSON.stringify({ ...getSyncHealth(), ...patch }));
+  } catch {}
+}
+function noteSyncOk() { setSyncHealth({ lastOk: Date.now(), lastErr: null }); }
+function noteSyncErr(e) { setSyncHealth({ lastErr: { ts: Date.now(), msg: String((e && e.message) || e || 'failed').slice(0, 120) } }); }
 async function cloudSync(code) {
-  const remote = await cloudLoad(code);
-  Stats.importMerge(remote);
-  await cloudSave(code, Stats.exportRaw());
-  syncedThisSession = true;
+  try {
+    const remote = await cloudLoad(code);
+    Stats.importMerge(remote);
+    await cloudSave(code, Stats.exportRaw());
+    syncedThisSession = true;
+    noteSyncOk();
+  } catch (e) { noteSyncErr(e); throw e; }
 }
 function pushIfSynced() {
   const fc = getFamilyCode();
   if (!fc) return;
   if (syncedThisSession) {
-    cloudSave(fc, Stats.exportRaw()).catch(() => {});
+    cloudSave(fc, Stats.exportRaw()).then(noteSyncOk).catch(noteSyncErr);
   } else {
     // Never confirmed the cloud copy this session — merge instead of overwrite
     // so a small/blank local state can't wipe good cloud data.
     cloudSync(fc).catch(() => {});
   }
+}
+// Sync at startup too: waiting for the first submit meant a device that was
+// only browsing never reconciled, and a device whose pushes were failing
+// looked fine until someone opened the panel.
+function syncOnLaunch() {
+  const fc = getFamilyCode();
+  if (!fc) return;
+  cloudSync(fc).then(() => { if (!state.submitted) render(); }).catch(() => { render(); });
 }
 
 // ---------- Parent gate (4-digit PIN, with a math fallback) ----------
@@ -1932,7 +2040,7 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v54';
+const APP_VERSION = 'v55';
 const APP_UPDATED = '2026-09-17';
 // In-progress quiz survives refreshes/crashes/SW updates: every answer
 // keystroke snapshots the session to localStorage; a fresh page load resumes
@@ -3430,6 +3538,20 @@ function renderStatsModal() {
     m.appendChild(planSection);
   }
 
+  const checks = Stats.engineCheck();
+  const bad = checks.filter(c => c.level !== 'ok').length;
+  const engGroup = statsGroup('🔬 Engine check', bad ? `${bad} to look at` : 'all clear', bad > 0);
+  checks.forEach(c => {
+    const row = el('div', 'eng-row eng-' + c.level);
+    row.appendChild(el('span', 'eng-dot', c.level === 'ok' ? '✓' : c.level === 'warn' ? '!' : '×'));
+    const body = el('span', 'eng-body');
+    body.appendChild(el('div', 'eng-label', c.label));
+    if (c.detail) body.appendChild(el('div', 'eng-detail', c.detail));
+    row.appendChild(body);
+    engGroup.appendChild(row);
+  });
+  m.appendChild(engGroup);
+
   const setGroup = statsGroup('⚙️ Sync & settings', getFamilyCode() ? '☁️ on' : '', false);
   setGroup.appendChild(renderSyncSection());
   setGroup.appendChild(renderPinRow());
@@ -3664,6 +3786,25 @@ function renderPinRow() {
 function renderSyncSection() {
   const wrap = el('div', 'sync-section');
   wrap.appendChild(el('h3', 'stats-h3', '☁️ Sync across devices'));
+  if (getFamilyCode()) {
+    const h = getSyncHealth();
+    const ageH = h.lastOk ? (Date.now() - h.lastOk) / 3600000 : null;
+    let cls = 'sync-health', txt;
+    if (h.lastErr && (!h.lastOk || h.lastErr.ts > h.lastOk)) {
+      cls += ' bad';
+      txt = `⚠️ Last sync FAILED (${new Date(h.lastErr.ts).toLocaleString()}): ${h.lastErr.msg}`;
+    } else if (ageH == null) {
+      cls += ' bad';
+      txt = '⚠️ This device has never synced successfully — progress is staying local.';
+    } else if (ageH > 48) {
+      cls += ' bad';
+      txt = `⚠️ Last successful sync ${Math.round(ageH / 24)} days ago — this device may be practicing offline only.`;
+    } else {
+      cls += ' ok';
+      txt = `✓ Last synced ${ageH < 1 ? 'less than an hour ago' : Math.round(ageH) + 'h ago'}.`;
+    }
+    wrap.appendChild(el('div', cls, txt));
+  }
   const row = el('div', 'sync-row');
   const input = document.createElement('input');
   input.className = 'sync-input';
@@ -3743,6 +3884,7 @@ function spanTxt(text, cls) {
 if (state.phase === 'quiz' && !state.submitted) runTicker();
 saveSession();
 render();
+syncOnLaunch();
 setTimeout(() => {
   const first = document.querySelector('.ansbox');
   if (first) first.focus();
