@@ -1932,8 +1932,8 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v53';
-const APP_UPDATED = '2026-08-21';
+const APP_VERSION = 'v54';
+const APP_UPDATED = '2026-09-17';
 // In-progress quiz survives refreshes/crashes/SW updates: every answer
 // keystroke snapshots the session to localStorage; a fresh page load resumes
 // it (questions, typed answers, wall-clock timer) unless it's gone stale.
@@ -3775,24 +3775,48 @@ setTimeout(() => {
 // cache-first, so without an explicit update flow a long-lived install can
 // run stale code for days — check for updates on every launch and again
 // periodically, and swap in the new version as soon as it's safe.
+// The "🔄 Update ready" chip is driven by a real version comparison, never by
+// lifecycle events: ask the controlling worker which release it holds and
+// show the chip only when that differs from the page we are running. A first
+// install, or a worker that matches this page, must never raise it.
+function checkVersionSkew() {
+  const sw = navigator.serviceWorker && navigator.serviceWorker.controller;
+  if (!sw) return;
+  let done = false;
+  const handle = (v) => {
+    if (done) return; done = true;
+    const stale = !!v && !String(v).endsWith('-' + APP_VERSION);
+    if (stale !== !!state.updateReady) { state.updateReady = stale; render(); }
+  };
+  try {
+    const ch = new MessageChannel();
+    ch.port1.onmessage = (e) => handle(e.data && e.data.version);
+    sw.postMessage({ type: 'version' }, [ch.port2]);
+    setTimeout(() => handle(null), 3000); // old worker without the handler
+  } catch { /* messaging unavailable — leave the chip alone */ }
+}
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').then(reg => {
       reg.update().catch(() => {});
+      checkVersionSkew();
       // Long-lived PWA sessions never navigate; poll while visible.
-      setInterval(() => { if (!document.hidden) reg.update().catch(() => {}); }, 60 * 60 * 1000);
+      setInterval(() => {
+        if (document.hidden) return;
+        reg.update().catch(() => {});
+        checkVersionSkew();
+      }, 60 * 60 * 1000);
       reg.addEventListener('updatefound', () => {
         const nw = reg.installing;
         if (!nw) return;
         nw.addEventListener('statechange', () => {
-          if (nw.state !== 'activated') return;
           // Never auto-reload: a navigation racing the child's tap makes
-          // buttons feel dead. Show the chip; the next natural open runs
-          // the new version anyway (the new SW has already taken over).
-          state.updateReady = true; render();
+          // buttons feel dead. Re-check the version instead.
+          if (nw.state === 'activated') checkVersionSkew();
         });
       });
     }).catch(() => {});
+    navigator.serviceWorker.addEventListener('controllerchange', checkVersionSkew);
   });
 }
 </script>
