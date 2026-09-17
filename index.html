@@ -643,6 +643,26 @@ const Stats = (() => {
     for (const q of h) { c += q.c || 0; t += q.n || 0; }
     return t ? c / t : null;
   }
+  // The n most overdue facts by retrievability. Weighted random sampling is
+  // fine for choosing among due items, but at the top bands only one slot per
+  // quiz is a times-table fact, so a 66-fact backlog can sit unvisited for
+  // months. A deterministic review quota guarantees the backlog drains.
+  function pickDueFacts(n, exclude) {
+    const now = Date.now();
+    const skip = new Set(exclude || []);
+    const all = [];
+    for (let a = 2; a <= 12; a++) {
+      for (let b = a; b <= 12; b++) {
+        const k = mulKey(a, b);
+        if (skip.has(k)) continue;
+        const f = getFact(a, b);
+        if (!f || (f.right || 0) + (f.wrong || 0) === 0) continue; // unseen go via the frontier slot
+        all.push({ a, b, r: retr(f, now) });
+      }
+    }
+    all.sort((x, y) => x.r - y.r);
+    return all.slice(0, n);
+  }
   function mulFluentCount() {
     const now = Date.now();
     let m = 0;
@@ -1144,7 +1164,7 @@ const Stats = (() => {
     }
     return Object.values(byKey).sort((x, y) => (x[tsField] || 0) - (y[tsField] || 0));
   }
-  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery, mulSeenCount, recentAccuracy, nextUnlock, isSlowFact, getSnaps, repairSnaps, engineCheck, savePlan, getPlans, recordError, errorPatterns, getDaily, markDaily };
+  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery, mulSeenCount, recentAccuracy, nextUnlock, isSlowFact, pickDueFacts, getSnaps, repairSnaps, engineCheck, savePlan, getPlans, recordError, errorPatterns, getDaily, markDaily };
 })();
 
 // Merge helpers for cross-device sync (keep the richer record, union history)
@@ -1599,34 +1619,42 @@ function newQuiz() {
 
   // Allocate 6 non-add/sub slots by band — more mul-fact reps for novices
   // (easier, builds confidence), more challenge slots for experts.
-  let mul, big, div, frac;
+  let mul, big, div, frac, rev = 0;
   if (band === 'novice') {
     mul = 6 - (divOn ? 1 : 0); big = 0; div = divOn ? 1 : 0; frac = 0;
   } else if (band === 'developing') {
     mul = 4 - (fracOn ? 1 : 0); big = bigOn ? 1 : 0; div = divOn ? 1 : 0; frac = fracOn ? 1 : 0;
   } else if (band === 'practicing') {
-    mul = 2; big = bigOn ? 2 : 0; div = divOn ? 1 : 0; frac = fracOn ? 1 : 0;
+    mul = 1; rev = 1; big = bigOn ? 2 : 0; div = divOn ? 1 : 0; frac = fracOn ? 1 : 0;
   } else { // expert
-    mul = 1; big = bigOn ? 2 : 0; div = divOn ? 2 : 0; frac = fracOn ? 2 : 0;
+    mul = 0; rev = 2; big = bigOn ? 2 : 0; div = divOn ? 1 : 0; frac = fracOn ? 1 : 0;
   }
   // Backfill into mul if some domains are still locked.
   const target = 6;
-  let used = mul + big + div + frac;
+  let used = mul + big + div + frac + rev;
   if (used < target) mul += (target - used);
   // Trim to exactly 6 by dropping from the hardest available domain.
-  used = mul + big + div + frac;
+  used = mul + big + div + frac + rev;
   while (used > target) {
     if (frac > 0 && band !== 'expert') frac--;
     else if (big > 0) big--;
     else if (div > 0) div--;
     else if (mul > 1) mul--;
+    else if (rev > 1) rev--;
     else break;
-    used = mul + big + div + frac;
+    used = mul + big + div + frac + rev;
   }
   // Bias mul-fact selection: novices get easier, experts get harder.
   const mulBias = band === 'novice' || band === 'developing' ? 'easy'
               : band === 'expert' ? 'hard' : 'auto';
+  const takenKeys = [];
   Stats.pickMulFacts(mul, mulBias).forEach(p => {
+    takenKeys.push(Math.min(p.a, p.b) + 'x' + Math.max(p.a, p.b));
+    const flip = Math.random() < 0.5;
+    qs.push(mulQuestion(flip ? p.b : p.a, flip ? p.a : p.b));
+  });
+  // Maintenance review: the most overdue facts, deterministically.
+  Stats.pickDueFacts(rev, takenKeys).forEach(p => {
     const flip = Math.random() < 0.5;
     qs.push(mulQuestion(flip ? p.b : p.a, flip ? p.a : p.b));
   });
@@ -2040,7 +2068,7 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v55';
+const APP_VERSION = 'v56';
 const APP_UPDATED = '2026-09-17';
 // In-progress quiz survives refreshes/crashes/SW updates: every answer
 // keystroke snapshots the session to localStorage; a fresh page load resumes
