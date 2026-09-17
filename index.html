@@ -332,6 +332,8 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .qcard.imm-fixing{border-color:#fbbf24}
 .fixpill{margin-top:8px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:8px 12px;font-size:14px;color:#92400e;line-height:1.5}
 .fixpill .fix-ans{font-weight:800;font-size:16px;color:#b45309}
+.iconbtn.has-alert{position:relative}
+.iconbtn.has-alert::after{content:'';position:absolute;top:5px;right:5px;width:9px;height:9px;border-radius:50%;background:#dc2626;box-shadow:0 0 0 2px #fff}
 .sync-health{margin:6px 0 10px;font-size:12.5px;line-height:1.45;padding:8px 10px;border-radius:8px}
 .sync-health.ok{background:#ecfdf5;color:#047857;border:1px solid #a7f3d0}
 .sync-health.bad{background:#fff7ed;color:#9a3412;border:1px solid #fed7aa;font-weight:600}
@@ -885,8 +887,17 @@ const Stats = (() => {
              days > 7 ? 'the engine can only adapt from practice — nothing new has arrived' : '');
     const m = overallMulMastery(), cov = mulSeenCount() / 66;
     const eff = m * (0.35 + 0.65 * Math.min(1, cov / 0.75));
-    const band = eff < 0.45 ? 'novice' : eff < 0.70 ? 'developing' : eff < 0.92 ? 'practicing' : 'expert';
-    add('ok', `Difficulty band: ${band}`, `model mastery ${Math.round(m * 100)}% · curriculum coverage ${Math.round(cov * 100)}%`);
+    const modelBand = eff < 0.45 ? 'novice' : eff < 0.70 ? 'developing' : eff < 0.92 ? 'practicing' : 'expert';
+    // The live controller may have stepped this up or down from observed
+    // accuracy; report what the quiz is ACTUALLY using.
+    let band = modelBand;
+    try { band = difficultyBand(); } catch {}
+    const ORDER = ['novice', 'developing', 'practicing', 'expert'];
+    const stepped = band === modelBand ? '' :
+      ` · stepped ${ORDER.indexOf(band) > ORDER.indexOf(modelBand) ? 'up' : 'down'} from ${modelBand} by recent accuracy`;
+    const atTop = band === 'expert';
+    add('ok', `Difficulty band: ${band}`,
+        `model mastery ${Math.round(m * 100)}% · curriculum coverage ${Math.round(cov * 100)}%` + stepped);
     const acc = (() => {
       const h = clean.slice(-5); let c = 0, n = 0;
       for (const q of h) { c += q.c || 0; n += q.n || 0; }
@@ -894,8 +905,9 @@ const Stats = (() => {
     })();
     if (acc == null) add('warn', 'Not enough scored quizzes to judge difficulty', '');
     else add(acc >= 78 && acc <= 92 ? 'ok' : 'warn', `Recent accuracy ${acc}%`,
-             acc > 92 ? 'above the 85% target — the engine should be stepping the difficulty up'
-             : acc < 78 ? 'below the 85% target — the engine should be stepping it down'
+             acc > 92 ? (atTop ? 'above the 85% target, and already at the top band — see the ceiling note below'
+                               : 'above the 85% target — the engine is stepping the difficulty up')
+             : acc < 78 ? 'below the 85% target — the engine is stepping it down'
              : 'inside the 85%-rule sweet spot');
     const blanks = data.hist.filter(h => (h.c || 0) === 0 && (h.t || 0) <= 20).length;
     if (blanks) add('warn', `${blanks} blank submissions in history`, 'old data; new ones are refused');
@@ -903,9 +915,7 @@ const Stats = (() => {
     if (noPL) add('warn', `${noPL} fact records without a mastery estimate`, 'they will be backfilled on next load');
     const slow = Object.values(data.facts).filter(f => (f.avgT || 0) > 30000).length;
     if (slow) add('warn', `${slow} facts with an inflated answer time`, 'old idle answers; new ones are capped at 30s');
-    const m2 = overallMulMastery();
-    const eff2 = m2 * (0.35 + 0.65 * Math.min(1, (mulSeenCount() / 66) / 0.75));
-    const band2 = eff2 < 0.45 ? 'novice' : eff2 < 0.70 ? 'developing' : eff2 < 0.92 ? 'practicing' : 'expert';
+    const m2 = m, band2 = band;
     const backlog = dueBacklog(0.3);
     const quota = reviewQuota(band2);
     if (quota) add(backlog > 10 ? 'warn' : 'ok', `${backlog} facts due for review`,
@@ -2321,7 +2331,7 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v58';
+const APP_VERSION = 'v59';
 const APP_UPDATED = '2026-09-17';
 // In-progress quiz survives refreshes/crashes/SW updates: every answer
 // keystroke snapshots the session to localStorage; a fresh page load resumes
@@ -2724,6 +2734,27 @@ function el(tag, cls, txt) {
   return e;
 }
 
+// Findings a parent should act on, whether or not they open the panel:
+// a stalled habit, a device that is no longer syncing, or the engine having
+// run out of difficulty. Deliberately NOT every warning — a dot that is
+// always lit teaches people to ignore it.
+function parentAlerts() {
+  const out = [];
+  try {
+    for (const c of Stats.engineCheck()) {
+      if (c.level === 'bad') out.push(c.label);
+      else if (/ceiling/i.test(c.label)) out.push(c.label);
+    }
+    if (getFamilyCode()) {
+      const h = getSyncHealth();
+      const stale = !h.lastOk || (Date.now() - h.lastOk) > 48 * 3600 * 1000;
+      const failed = h.lastErr && (!h.lastOk || h.lastErr.ts > h.lastOk);
+      if (failed) out.push('sync failing');
+      else if (stale) out.push('not synced recently');
+    }
+  } catch {}
+  return out;
+}
 function renderTopbar() {
   const bar = el('div', 'topbar');
   const brand = el('div', 'brand');
@@ -2771,6 +2802,11 @@ function renderTopbar() {
   stats.setAttribute('aria-label', 'Stats for grown-ups');
   stats.textContent = '📊';
   stats.onclick = () => { state.showStats = true; render(); };
+  const alerts = parentAlerts();
+  if (alerts.length) {
+    stats.classList.add('has-alert');
+    stats.title = 'Stats — needs a look: ' + alerts.join(' · ');
+  }
   const timer = el('div', 'timer'); timer.id = 'timer';
   bar.appendChild(mine); bar.appendChild(sound); bar.appendChild(stats); bar.appendChild(timer);
   if (state.updateReady) {
