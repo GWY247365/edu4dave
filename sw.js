@@ -1,6 +1,6 @@
 // Stale-while-revalidate service worker for Math Quiz.
 // Bump CACHE when shipping a release that needs old caches purged.
-const CACHE = 'mathquiz-v59';
+const CACHE = 'mathquiz-v60';
 const ASSETS = [
   './',
   './index.html',
@@ -47,6 +47,11 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
+  // API calls are live data and must never be answered from cache. Before
+  // this, the cache-first path below returned the PREVIOUS response to every
+  // sync pull, so each device merged a cloud copy one version stale and could
+  // push it over another device's newer progress.
+  if (url.pathname.startsWith('/api/')) return;
 
   // The document goes NETWORK-FIRST (cache only as an offline fallback).
   // Cache-first served yesterday's HTML while the new worker activated

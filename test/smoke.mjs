@@ -13,7 +13,16 @@ import { chromium } from 'playwright';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
 
+let cloudVersion = 1;
 const server = http.createServer(async (req, res) => {
+  const u = new URL(req.url, 'http://x');
+  if (u.pathname === '/api/progress') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(req.method === 'GET'
+      ? JSON.stringify({ data: { hist: [], marker: cloudVersion } })
+      : '{"ok":true}');
+  }
+  if (u.pathname === '/__bump') { cloudVersion++; res.writeHead(200); return res.end(); }
   try {
     const path = req.url === '/' ? '/index.html' : req.url.split('?')[0];
     const body = await readFile(join(root, path));
@@ -200,6 +209,50 @@ check('all four schemas generate', wp.kinds === 4, 'kinds=' + wp.kinds);
 check('1500 generated problems are self-consistent', wp.bad === 0, wp.bad + ' bad');
 check('keyword-matched answer diagnosed as wrong operation', /wrong operation/.test(wp.trapDiag));
 check('right plan + bad arithmetic diagnosed as a slip', /plan was right/.test(wp.slipDiag));
+
+console.log('8. sync reads live cloud data even with the service worker in control');
+await page.goto(base);
+await page.waitForSelector('.ready-start, .qcard');
+await page.waitForTimeout(1500);
+const swOn = await page.evaluate(() => !!navigator.serviceWorker.controller);
+const reads = [];
+for (let i = 0; i < 3; i++) {
+  reads.push(await page.evaluate(() => cloudLoad('fam').then(d => d.marker)));
+  await page.evaluate(() => fetch('/__bump'));
+}
+check('service worker is controlling the page', swOn);
+check('each pull sees the latest cloud version (not the cached one)',
+  reads[1] === reads[0] + 1 && reads[2] === reads[0] + 2, reads.join(' → '));
+
+console.log('9. legacy answer times are capped on load');
+const capped = await page.evaluate(() => {
+  localStorage.setItem('mathquiz.stats.v1', JSON.stringify({
+    facts: { '5x7': { right: 3, wrong: 0, stab: 3.6, recent: '1', avgT: 138507, last: Date.now(), lastSeen: Date.now() } },
+    skills: { 'frac.fcmp': { right: 5, wrong: 1, stab: 5, recent: '11', avgT: 454102, last: Date.now(), lastSeen: Date.now() } },
+    hist: [],
+  }));
+  localStorage.removeItem('mathquiz.session.v1');
+  return true;
+});
+await page.reload();
+await page.waitForSelector('.ready-start, .qcard');
+const caps = await page.evaluate(() => [Stats.getFact(5, 7).avgT, Stats.getSkill('frac.fcmp').avgT]);
+check('fact and skill averages capped at 30s', caps[0] === 30000 && caps[1] === 30000, caps.join(', '));
+
+console.log('10. word problems can be read aloud');
+const spoken = await page.evaluate(() => {
+  window.__said = [];
+  speechSynthesis.speak = u => window.__said.push(u.text);
+  for (let r = 0; r < 8; r++) for (let a = 2; a <= 12; a++) for (let b = a; b <= 12; b++) Stats.recordMul(a, b, true, 2000);
+  Stats.checkUnlocks(); state.showLesson = null; startWordPractice();
+  return true;
+});
+await page.waitForSelector('.wsay');
+const btns = (await page.$$('.wsay')).length, stories = (await page.$$('.wstory')).length;
+check('every word problem has a read-aloud button', btns > 0 && btns === stories, `${btns}/${stories}`);
+const storyText = await page.$eval('.wstory', e => e.textContent);
+await page.click('.wsay');
+check('button reads the story text', (await page.evaluate(() => window.__said[0])) === storyText);
 
 check('no page errors across all scenarios', pageErrors.length === 0, pageErrors.join('; '));
 

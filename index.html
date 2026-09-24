@@ -323,6 +323,15 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .sync-status{margin-top:6px;font-size:13px;color:var(--ink-3);min-height:16px}
 .sync-status.ok{color:var(--ok-deep)}
 .sync-status.err{color:var(--bad-deep)}
+.backup-box{margin-top:10px;font-size:13px}
+.backup-box summary{cursor:pointer;font-weight:600;color:var(--brand-deep);padding:4px 0}
+.backup-list{margin-top:6px}
+.backup-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border-soft)}
+.backup-info{flex:1;min-width:0}
+.backup-when{font-weight:600;color:var(--ink)}
+.backup-meta{font-size:12px;color:var(--ink-3)}
+.backup-restore{flex:none;padding:6px 12px;font-size:13px}
+.backup-empty{color:var(--ink-3);padding:6px 0}
 .sync-signout{width:100%;margin-top:10px;color:var(--warn-deep,#b45309)}
 .sync-hint{margin-top:6px;font-size:12px;color:var(--ink-4);line-height:1.45}
 .app-version{margin-top:10px;text-align:center;font-size:11px;color:var(--ink-3)}
@@ -342,6 +351,9 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .wbar-name{width:44px;font-size:13px;font-weight:700;color:var(--ink-2)}
 .wbar{height:28px;background:var(--brand);color:#fff;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}
 .wbar.extra{background:var(--warn-deep,#d97706)}
+.wstory-wrap{position:relative}
+.wsay{display:inline-flex;align-items:center;gap:4px;margin:-4px 0 10px;padding:6px 12px;border:1px solid var(--brand-soft-2);border-radius:999px;background:#fff;color:var(--brand-deep);font-size:13px;font-weight:700;cursor:pointer}
+.wsay.speaking{background:var(--brand);color:#fff;border-color:var(--brand)}
 .wstory{margin:6px 0 10px;font-size:16px;line-height:1.55;color:var(--ink);background:var(--brand-soft);border:1px solid var(--brand-soft-2);border-radius:12px;padding:12px 14px}
 .qcard.review .wstory{background:#fff}
 .expr .wlabel{font-size:15px;font-weight:700;color:var(--ink-3);letter-spacing:.02em}
@@ -469,6 +481,14 @@ const Stats = (() => {
     // practicing-level learner at novice for months). Estimate by replaying
     // the recent-history string through the BKT update; fall back to capped
     // right/wrong counts.
+    for (const k in facts) {
+      // New answers are capped at 30s before they enter the average, so an
+      // average above 30s can only be legacy contamination (a tablet left
+      // idle mid-question). Cap it now rather than waiting ~8 answers for the
+      // average to decay — until then the item can never reach 'fluent'.
+      const g = facts[k];
+      if (g && typeof g.avgT === 'number' && g.avgT > 30000) g.avgT = 30000;
+    }
     for (const k in facts) {
       const f = facts[k];
       if (f.pL != null || (f.right || 0) + (f.wrong || 0) === 0) continue;
@@ -1335,13 +1355,32 @@ async function cloudLoad(code) {
   if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || ('load ' + res.status)); }
   return (await res.json()).data || null;
 }
-async function cloudSave(code, data) {
+async function cloudSave(code, data, opts) {
   const res = await fetch('/api/progress', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code, data }),
+    body: JSON.stringify({ code, data, allowShrink: !!(opts && opts.allowShrink) }),
   });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || ('save ' + res.status)); }
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    const err = new Error(e.error || ('save ' + res.status));
+    err.shrink = res.status === 409 && e.reason === 'shrink';
+    throw err;
+  }
+}
+async function cloudBackups(code) {
+  const res = await fetch('/api/progress?backups=1&code=' + encodeURIComponent(code));
+  if (!res.ok) throw new Error('backups ' + res.status);
+  return (await res.json()).backups || [];
+}
+async function cloudRestore(code, i) {
+  const res = await fetch('/api/progress', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code, restore: i }),
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || ('restore ' + res.status)); }
+  return (await res.json()).data;
 }
 // True once we've successfully pulled+merged the cloud copy this session.
 // Until then we must not blind-overwrite the cloud (local could be near-blank,
@@ -1374,7 +1413,10 @@ function pushIfSynced() {
   const fc = getFamilyCode();
   if (!fc) return;
   if (syncedThisSession) {
-    cloudSave(fc, Stats.exportRaw()).then(noteSyncOk).catch(noteSyncErr);
+    cloudSave(fc, Stats.exportRaw()).then(noteSyncOk).catch(e => {
+      if (e && e.shrink) { syncedThisSession = false; cloudSync(fc).catch(() => {}); }
+      else noteSyncErr(e);
+    });
   } else {
     // Never confirmed the cloud copy this session — merge instead of overwrite
     // so a small/blank local state can't wipe good cloud data.
@@ -1683,6 +1725,29 @@ const W_GROUPS = [
   { unit: 'row', units: 'rows', one: 'chair', many: 'chairs' },
 ];
 const W_KINDS = ['wjoin', 'wcompare', 'wgroups', 'wshare'];
+// ---- Read-aloud (Web Speech API) ----
+function canSpeak() {
+  try { return 'speechSynthesis' in window && typeof SpeechSynthesisUtterance === 'function'; } catch { return false; }
+}
+let _speakingBtn = null;
+function speakText(text, btn) {
+  if (!canSpeak()) return;
+  const synth = window.speechSynthesis;
+  // A second tap on the button that is talking stops it.
+  if (synth.speaking && _speakingBtn === btn) { synth.cancel(); return; }
+  synth.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'en-US';
+  u.rate = 0.9;            // a touch slower than conversational
+  const voices = synth.getVoices ? synth.getVoices() : [];
+  const en = voices.find(v => /^en[-_]US/i.test(v.lang)) || voices.find(v => /^en/i.test(v.lang));
+  if (en) u.voice = en;
+  const reset = () => { if (btn) btn.classList.remove('speaking'); if (_speakingBtn === btn) _speakingBtn = null; };
+  u.onend = reset; u.onerror = reset;
+  _speakingBtn = btn;
+  if (btn) btn.classList.add('speaking');
+  synth.speak(u);
+}
 function wPick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 function wTwoNames() {
   const a = wPick(W_NAMES);
@@ -2331,8 +2396,8 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v59';
-const APP_UPDATED = '2026-09-17';
+const APP_VERSION = 'v60';
+const APP_UPDATED = '2026-09-24';
 // In-progress quiz survives refreshes/crashes/SW updates: every answer
 // keystroke snapshots the session to localStorage; a fresh page load resumes
 // it (questions, typed answers, wall-clock timer) unless it's gone stale.
@@ -2883,7 +2948,18 @@ function renderQuestion(q, idx) {
   card.appendChild(head);
 
   if (q.type === 'word') {
-    card.appendChild(el('p', 'wstory', q.text));
+    const story = el('div', 'wstory-wrap');
+    story.appendChild(el('p', 'wstory', q.text));
+    // Read-aloud: a word problem should measure the maths, not how well an
+    // eight-year-old decodes the sentence. Built into iPad Safari, no cost.
+    if (canSpeak()) {
+      const say = el('button', 'wsay', '🔊 Read to me');
+      say.type = 'button';
+      say.setAttribute('aria-label', 'Read this problem aloud');
+      say.onclick = () => speakText(q.text, say);
+      story.appendChild(say);
+    }
+    card.appendChild(story);
     // Pre-answer scaffold on a schema the child has missed: name the question
     // being asked rather than hint the operation, so the reading stays theirs.
     if (!state.submitted && q.isReview) {
@@ -3988,11 +4064,19 @@ function renderStatsModal() {
   const reset = el('button', 'btn btn-ghost', '🗑️ Reset (parent only)');
   reset.onclick = () => {
     if (!parentGate()) return;
-    if (confirm('Clear all progress on this device? This cannot be undone.')) {
-      Stats.reset();
-      pushIfSynced();
-      render();
+    const fc = getFamilyCode();
+    const msg = fc
+      ? 'Clear all progress on this device AND in the cloud? A cloud backup is kept, so it can be restored from Sync & settings.'
+      : 'Clear all progress on this device? This cannot be undone.';
+    if (!confirm(msg)) return;
+    Stats.reset();
+    try { localStorage.removeItem(SESSION_KEY); } catch {}
+    if (fc) {
+      cloudSave(fc, Stats.exportRaw(), { allowShrink: true })
+        .then(() => { syncedThisSession = true; noteSyncOk(); })
+        .catch(noteSyncErr);
     }
+    render();
   };
   const ok = el('button', 'btn btn-primary', 'Close');
   ok.onclick = closeStats;
@@ -4304,6 +4388,55 @@ function renderSyncSection() {
       location.reload();           // fresh boot: blank profile, ready screen
     };
     wrap.appendChild(out);
+
+    // Cloud backups: the server keeps the last 14 daily versions plus one
+    // before every reset or restore. Loaded only when opened.
+    const bk = document.createElement('details');
+    bk.className = 'backup-box';
+    const bs = document.createElement('summary');
+    bs.textContent = '🗂️ Cloud backups';
+    bk.appendChild(bs);
+    const list = el('div', 'backup-list', 'Loading…');
+    bk.appendChild(list);
+    let loaded = false;
+    bk.addEventListener('toggle', () => {
+      if (!bk.open || loaded) return;
+      loaded = true;
+      cloudBackups(getFamilyCode()).then(items => {
+        list.innerHTML = '';
+        if (!items.length) { list.appendChild(el('div', 'backup-empty', 'No backups yet — one is kept each day the progress changes.')); return; }
+        items.forEach(b => {
+          const row = el('div', 'backup-row');
+          const when = b.ts ? new Date(b.ts).toLocaleString() : 'unknown time';
+          const last = b.lastPractice ? new Date(b.lastPractice).toLocaleDateString() : '—';
+          const info = el('div', 'backup-info');
+          info.appendChild(el('div', 'backup-when', when));
+          info.appendChild(el('div', 'backup-meta', b.broken ? 'unreadable backup'
+            : `${b.quizzes} quizzes · ${b.factsSeen} facts seen · last practice ${last}`));
+          row.appendChild(info);
+          if (!b.broken) {
+            const btn = el('button', 'btn btn-ghost backup-restore', 'Restore');
+            btn.onclick = async () => {
+              if (Stats.getPinHash() && !parentGate()) return;
+              if (!confirm(`Restore the progress saved ${when}? The current version is backed up first, so this can be undone.`)) return;
+              btn.disabled = true; btn.textContent = 'Restoring…';
+              try {
+                const data = await cloudRestore(getFamilyCode(), b.i);
+                localStorage.setItem(STATS_KEY, JSON.stringify(data));
+                try { localStorage.removeItem(SESSION_KEY); } catch {}
+                location.reload();
+              } catch (e) {
+                btn.disabled = false; btn.textContent = 'Restore';
+                alert('Restore failed: ' + e.message);
+              }
+            };
+            row.appendChild(btn);
+          }
+          list.appendChild(row);
+        });
+      }).catch(e => { list.textContent = 'Could not load backups: ' + e.message; loaded = false; });
+    });
+    wrap.appendChild(bk);
   }
   return wrap;
 }
