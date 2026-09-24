@@ -1,27 +1,37 @@
-# Runs every test suite on each push and pull request:
+# Tests gate production. Every push and pull request runs all suites:
 #   test/api.mjs        cloud backups, anti-wipe guard, restore
 #   test/ratelimit.mjs  daily limits on the paid AI endpoints
 #   test/smoke.mjs      real-browser scenarios (grading, sync, word problems…)
 #
-# A red run here does NOT stop Vercel from deploying the same push; blocking
-# a bad release needs the deployment itself to wait on this check.
+# Production deploys happen ONLY from the deploy job below, and only after
+# the test job has passed. Vercel's own Git auto-deploy is switched off in
+# vercel.json (git.deploymentEnabled: false), so a red run means the release
+# never reaches the device.
+#
+# The deploy job needs three repository secrets:
+#   VERCEL_TOKEN       a Vercel access token
+#   VERCEL_ORG_ID      the Vercel team/account id  (.vercel/project.json → orgId)
+#   VERCEL_PROJECT_ID  the Vercel project id       (.vercel/project.json → projectId)
 name: tests
 
 on:
   push:
   pull_request:
+  workflow_dispatch:   # "Run workflow" button: redeploy the branch on demand
 
 permissions:
   contents: read
 
-concurrency:
-  group: tests-${{ github.ref }}
-  cancel-in-progress: true
+env:
+  SITE_URL: https://edu4dave.vercel.app
 
 jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    concurrency:
+      group: tests-${{ github.ref }}
+      cancel-in-progress: true   # a newer push supersedes this run (and its deploy)
     steps:
       - uses: actions/checkout@v5
 
@@ -37,3 +47,68 @@ jobs:
 
       - name: Run all test suites
         run: npm test
+
+  deploy:
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref_name == 'claude/math-quiz-app-7CzcR'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false  # never interrupt a deploy that has started
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v5
+
+      # With Vercel's auto-deploy off, missing credentials mean nothing ships:
+      # fail loudly instead of passing green.
+      - name: Check deploy credentials
+        run: |
+          missing=""
+          [ -n "$VERCEL_TOKEN" ] || missing="$missing VERCEL_TOKEN"
+          [ -n "$VERCEL_ORG_ID" ] || missing="$missing VERCEL_ORG_ID"
+          [ -n "$VERCEL_PROJECT_ID" ] || missing="$missing VERCEL_PROJECT_ID"
+          if [ -n "$missing" ]; then
+            echo "::error::Tests passed but this commit was NOT deployed — missing repository secrets:$missing"
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Pull production settings
+        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+
+      # Stamp the build with this commit so the live check below can tell a
+      # fresh deploy apart from an old one serving the same app version.
+      - name: Stamp build with commit
+        run: printf '{"sha":"%s","built":"%s"}\n' "$GITHUB_SHA" "$(date -u +%FT%TZ)" > build-info.json
+
+      - name: Build
+        run: vercel build --prod --token="$VERCEL_TOKEN"
+
+      - name: Deploy to production
+        run: vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+
+      # Confirm the public site now serves exactly this commit.
+      - name: Verify the live site
+        run: |
+          got=""
+          for i in $(seq 1 12); do
+            got=$(curl -fsS "$SITE_URL/build-info.json" | grep -oP '"sha":"\K[0-9a-f]+' || true)
+            if [ "$got" = "$GITHUB_SHA" ]; then
+              ver=$(curl -fsS "$SITE_URL/" | grep -oP "const APP_VERSION = '\K[^']+" || true)
+              echo "Live site is serving commit $GITHUB_SHA (app $ver)"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::Live site is on commit '${got:-unknown}', expected $GITHUB_SHA"
+          exit 1
