@@ -36,12 +36,26 @@ if (!r.ok && !presetOrg) {
   const teams = await get('/v2/teams');
   for (const t of (teams.body && teams.body.teams) || []) {
     const tr = await get(`/v9/projects/${idOrName}?teamId=${encodeURIComponent(t.id)}`);
-    if (tr.ok) { r = tr; break; }
+    if (tr.ok) { r = { ...tr, via: `team ${t.id}` }; break; }
   }
 }
 if (r.status === 401 || r.status === 403) fail(`Vercel rejected VERCEL_TOKEN (HTTP ${r.status}) — create a new token and update the secret`);
 if (!r.ok) fail(`Vercel project "${project}" not found for this token (HTTP ${r.status}) — set VERCEL_PROJECT_ID to the project's id or name`);
 const org = presetOrg || r.body.accountId;
 if (!r.body.id || !org) fail('Vercel returned a project without an id or owner; cannot deploy');
+
+// Probe the same two lookups the Vercel CLI makes when linking with these
+// ids, so a failure names which one broke (stderr only: never the token).
+const probes = [
+  ['owner', org.startsWith('team_') ? `/v2/teams/${org}` : '/v2/user'],
+  ['project', `/v9/projects/${r.body.id}${org.startsWith('team_') ? `?teamId=${org}` : ''}`],
+];
+for (const [label, path] of probes) {
+  const p = await get(path);
+  const msg = (p.body && p.body.error && (p.body.error.code || p.body.error.message)) || '';
+  console.error(`probe ${label}: GET ${path.replace(/\?.*/, '')} -> HTTP ${p.status}${msg ? ' ' + msg : ''}`);
+}
+console.error(`resolved via ${r.via || 'direct lookup'}: owner ${org}, project ${r.body.id} (${r.body.name || '?'})`);
+
 console.log(`VERCEL_ORG_ID=${org}`);
 console.log(`VERCEL_PROJECT_ID=${r.body.id}`);
