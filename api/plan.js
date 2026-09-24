@@ -1,5 +1,6 @@
 // Generates a parent-facing weekly math report using Tencent Hunyuan
 // (Tencent Hunyuan) via its OpenAI-compatible Chat Completions API.
+import { checkLimit } from './_ratelimit.js';
 export const config = { maxDuration: 60 };
 
 const BASE_URL = process.env.HUNYUAN_BASE_URL || 'https://api.hunyuan.cloud.tencent.com/v1';
@@ -61,6 +62,11 @@ export default async function handler(req, res) {
     res.status(400).json({ error: 'Missing stats in request body' });
     return;
   }
+
+  // Checked after validation, so malformed requests never count against the
+  // family's allowance, and before the paid model call.
+  const limited = await checkLimit('plan', req);
+  if (limited) { res.status(limited.status).json(limited.body); return; }
 
   try {
     const resp = await fetch(`${BASE_URL}/chat/completions`, {

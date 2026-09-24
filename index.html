@@ -340,6 +340,10 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .qcard.imm-fixed{border-color:#fbbf24;box-shadow:0 0 0 3px rgba(251,191,36,.15)}
 .qcard.imm-fixing{border-color:#fbbf24}
 .fixpill{margin-top:8px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:8px 12px;font-size:14px;color:#92400e;line-height:1.5}
+.fixpill .fix-why{font-weight:800;color:#9a3412}
+.fixpill .fix-reason{margin:2px 0 4px}
+.fixpill .fix-plan{font-weight:700;color:var(--ink)}
+.fixpill .fix-do{margin-top:4px;font-size:13px}
 .fixpill .fix-ans{font-weight:800;font-size:16px;color:#b45309}
 .iconbtn.has-alert{position:relative}
 .iconbtn.has-alert::after{content:'';position:absolute;top:5px;right:5px;width:9px;height:9px;border-radius:50%;background:#dc2626;box-shadow:0 0 0 2px #fff}
@@ -1474,6 +1478,31 @@ function focusNextOpen(fromInp) {
   }
   if (fromInp) fromInp.blur();
 }
+// Immediate-mode correction. For facts, seeing and retyping the answer IS the
+// lesson. For a word problem the lesson is WHY — so it gets the reason and the
+// plan before the retype, instead of waiting for the whole quiz to be marked.
+function buildFixPill(q) {
+  const pill = el('div', 'fixpill');
+  if (q.type === 'word') {
+    const kind = wordMiss(q, Number(String(q.given).trim()));
+    const lead = kind === 'trap' ? "That's the answer to the wrong operation. "
+               : kind === 'slip' ? 'Right idea — just check the arithmetic. '
+               : '';
+    if (lead) pill.appendChild(el('div', 'fix-why', lead));
+    if (kind !== 'slip') pill.appendChild(el('div', 'fix-reason', wordReason(q)));
+    const plan = el('div', 'fix-plan');
+    plan.appendChild(spanTxt('Plan: ', null));
+    plan.appendChild(spanTxt(`${q.op} = `, 'tabular'));
+    plan.appendChild(spanTxt(answerText(q), 'tabular fix-ans'));
+    pill.appendChild(plan);
+    pill.appendChild(el('div', 'fix-do', 'Type ' + answerText(q) + ' to lock it in 💪'));
+    return pill;
+  }
+  pill.appendChild(spanTxt('The answer is ', null));
+  pill.appendChild(spanTxt(answerText(q), 'tabular fix-ans'));
+  pill.appendChild(spanTxt(' — type it to lock it in 💪', null));
+  return pill;
+}
 function immCheck(q, idx, inp, card) {
   if (q._imm || state.submitted || String(q.given).trim() === '') return;
   if (answerCorrect(q)) {
@@ -1487,11 +1516,7 @@ function immCheck(q, idx, inp, card) {
     q._imm = 'fixing';
     q._retype = '';
     card.classList.add('imm-fixing');
-    const pill = el('div', 'fixpill');
-    pill.appendChild(spanTxt('The answer is ', null));
-    pill.appendChild(spanTxt(answerText(q), 'tabular fix-ans'));
-    pill.appendChild(spanTxt(' — type it to lock it in 💪', null));
-    inp.parentElement.parentElement.appendChild(pill);
+    inp.parentElement.parentElement.appendChild(buildFixPill(q));
     inp.value = '';
     try { Sound.soft(); } catch {}
     saveSession();
@@ -2071,9 +2096,9 @@ function diagnose(q, given) {
 // Word problems: separate a SCHEMA error (the wrong operation, usually from
 // keyword-matching) from an arithmetic slip on the right plan. The two need
 // completely different teaching, so the diagnosis never blurs them.
-function diagWord(q, g) {
-  const plan = `Plan: ${q.op} = ${q.ans}`;
-  const asks = {
+// What the story is asking for, in one sentence per schema variant.
+function wordReason(q) {
+  return ({
     result: 'This one starts with an amount and adds more — the question wants the TOTAL.',
     change: 'You know the start and the end — the question wants the CHANGE in between, so you take away.',
     start: 'You know what is LEFT and what went away — to get back to the start you put them together.',
@@ -2083,7 +2108,21 @@ function diagWord(q, g) {
     times: '"Times as many" means groups of the same amount — multiply.',
     each: 'One whole shared into equal parts, asking for the size of a part — divide.',
     howmany: 'One whole split into parts of a known size, asking how many parts — divide.',
-  }[q.wvar] || 'Ask yourself what the question wants: a total, a difference, or a share.';
+  })[q.wvar] || 'Ask yourself what the question wants: a total, a difference, or a share.';
+}
+// Classify a wrong answer to a word problem. 'trap' = the keyword-matched
+// operation; 'slip' = close to the answer, so the plan was right and the
+// arithmetic wasn't; 'unclear' = neither, so claim nothing about the plan.
+function wordMiss(q, g) {
+  if (!Number.isFinite(g)) return 'blank';
+  if (g === q.trap) return 'trap';
+  const d = Math.abs(g - q.ans);
+  if (d <= Math.max(10, Math.round(q.ans * 0.2)) || (d % 10 === 0 && d <= 90)) return 'slip';
+  return 'unclear';
+}
+function diagWord(q, g) {
+  const plan = `Plan: ${q.op} = ${q.ans}`;
+  const asks = wordReason(q);
 
   if (!Number.isFinite(g)) {
     return { why: 'You left this one blank.', work: plan,
@@ -2095,6 +2134,9 @@ function diagWord(q, g) {
       work: plan,
       tip: asks,
     };
+  }
+  if (wordMiss(q, g) === 'unclear') {
+    return { why: `${g} doesn't match this story. Start from what the question is asking for.`, work: plan, tip: asks };
   }
   // Right plan, wrong arithmetic: say so, and show the computation.
   const [x, opSym, y] = q.op.split(' ');
@@ -2396,7 +2438,7 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v60';
+const APP_VERSION = 'v61';
 const APP_UPDATED = '2026-09-24';
 // In-progress quiz survives refreshes/crashes/SW updates: every answer
 // keystroke snapshots the session to localStorage; a fresh page load resumes
@@ -3090,13 +3132,7 @@ function renderQuestion(q, idx) {
     row.appendChild(pill);
   }
   card.appendChild(row);
-  if (!state.submitted && state.immediate && q._imm === 'fixing') {
-    const pill = el('div', 'fixpill');
-    pill.appendChild(spanTxt('The answer is ', null));
-    pill.appendChild(spanTxt(answerText(q), 'tabular fix-ans'));
-    pill.appendChild(spanTxt(' — type it to lock it in 💪', null));
-    card.appendChild(pill);
-  }
+  if (!state.submitted && state.immediate && q._imm === 'fixing') card.appendChild(buildFixPill(q));
 
   // Pre-practice strategy card: review questions (learn, then try) and
   // correct-but-slow facts (the child is counting — teach the shortcut).
@@ -3226,6 +3262,7 @@ function renderFractionRow(q, idx, right, wrong) {
 }
 
 function teachPayload(q) {
+  if (q.type === 'word') return { type: 'word', text: q.text, op: q.op, ans: q.ans };
   if (q.type === 'fnam') return { type: 'fnam', shaded: q.shaded, den: q.den };
   if (q.type === 'feq') return { type: 'feq', n1: q.n1, d1: q.d1, d2: q.d2, ans: q.ans };
   if (q.type === 'fcmp') return { type: 'fcmp', n1: q.n1, d1: q.d1, n2: q.n2, d2: q.d2, ans: q.ans };
@@ -3286,13 +3323,20 @@ function renderDiag(q) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ problem: teachPayload(q) }),
       });
-      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || ('error ' + res.status)); }
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        const err = new Error(e.error || ('error ' + res.status));
+        err.status = res.status;
+        throw err;
+      }
       const data = await res.json();
       teachOut.textContent = data.lesson || '';
       teachBtn.style.display = 'none';
     } catch (e) {
       teachOut.className = 'teach-out err';
-      teachOut.textContent = "Couldn't load a lesson (needs the deployed backend + API key).";
+      teachOut.textContent = e && e.status === 429
+        ? "That's all the AI lessons for today — the worked steps above show how to solve it."
+        : "Couldn't load a lesson (needs the deployed backend + API key).";
     } finally {
       teachBtn.disabled = false;
     }

@@ -254,6 +254,33 @@ const storyText = await page.$eval('.wstory', e => e.textContent);
 await page.click('.wsay');
 check('button reads the story text', (await page.evaluate(() => window.__said[0])) === storyText);
 
+console.log('11. word problems: practice-mode correction explains WHY before the retype');
+const pills = await page.evaluate(() => {
+  const q = genWord('wcompare');
+  const card = document.createElement('div');
+  const box = document.createElement('input');
+  const row = document.createElement('div');
+  row.appendChild(box); card.appendChild(row);
+  const out = {};
+  for (const [kind, val] of [['trap', q.trap], ['slip', q.ans + 1], ['unclear', q.ans + 997]]) {
+    q.given = String(val); q._imm = undefined;
+    out[kind] = buildFixPill(q).textContent;
+    out[kind + 'Diag'] = diagnose(q, String(val)).why;
+  }
+  out.reason = wordReason(q); out.op = q.op; out.ans = String(q.ans);
+  return out;
+});
+check('trap: names the wrong operation and gives the reason',
+  /wrong operation/.test(pills.trap) && pills.trap.includes(pills.reason));
+check('trap: shows the plan and the answer to type',
+  pills.trap.includes(pills.op) && pills.trap.includes('Type ' + pills.ans));
+check('slip: says the idea was right, still shows the plan',
+  /Right idea/.test(pills.slip) && pills.slip.includes(pills.op));
+check('unclear: makes no claim about the plan, gives the reason',
+  !/Right idea|wrong operation/.test(pills.unclear) && pills.unclear.includes(pills.reason));
+check('batch diagnosis no longer calls a wild guess "plan was right"',
+  !/plan was right/.test(pills.unclearDiag) && /plan was right/.test(pills.slipDiag), pills.unclearDiag.slice(0, 60));
+
 check('no page errors across all scenarios', pageErrors.length === 0, pageErrors.join('; '));
 
 await browser.close();

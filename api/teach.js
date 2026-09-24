@@ -1,5 +1,6 @@
 // Kid-facing mini-lesson for one problem, via Tencent Hunyuan
 // (OpenAI-compatible Chat Completions API).
+import { checkLimit } from './_ratelimit.js';
 export const config = { maxDuration: 30 };
 
 const BASE_URL = process.env.HUNYUAN_BASE_URL || 'https://api.hunyuan.cloud.tencent.com/v1';
@@ -21,6 +22,10 @@ function validProblem(p) {
   if (p.type === 'fnam') return isNum(p.shaded) && isNum(p.den);
   if (p.type === 'feq') return isNum(p.n1) && isNum(p.d1) && isNum(p.d2) && isNum(p.ans);
   if (p.type === 'fcmp') return isNum(p.n1) && isNum(p.d1) && isNum(p.n2) && isNum(p.d2) && typeof p.ans === 'string';
+  // Word problems carry their own story; bounded so the endpoint cannot be
+  // used as a general-purpose prompt.
+  if (p.type === 'word') return typeof p.text === 'string' && p.text.length > 0 && p.text.length <= 400 &&
+                                typeof p.op === 'string' && p.op.length <= 40 && isNum(p.ans);
   return false;
 }
 function describe(p) {
@@ -31,6 +36,12 @@ function describe(p) {
   if (p.type === 'div') return `${a} ÷ ${b} (the answer is ${a / b}); it helps to remember ${b} × ${a / b} = ${a}`;
   if (p.type === 'fnam') return `naming the fraction shown by a bar split into ${p.den} equal parts with ${p.shaded} shaded — the answer is the fraction ${p.shaded}/${p.den}`;
   if (p.type === 'feq') return `finding the missing top number so the fractions are equal: ${p.n1}/${p.d1} = ?/${p.d2} — the answer is ${p.ans}, because you multiply top and bottom by ${p.d2 / p.d1}`;
+  if (p.type === 'word') {
+    const story = p.text.replace(/\s+/g, ' ').trim();
+    return `a word problem: "${story}" — the right plan is ${p.op} = ${p.ans}. ` +
+      'The real skill here is working out from the story whether it asks for a total, a difference, or a share — ' +
+      'words like "more" or "gave away" can point to the wrong operation, so explain how the story itself tells you which one to use';
+  }
   if (p.type === 'fcmp') return `comparing two fractions ${p.n1}/${p.d1} and ${p.n2}/${p.d2} using <, =, or > — the correct comparison is ${p.n1}/${p.d1} ${p.ans} ${p.n2}/${p.d2}`;
   return 'this problem';
 }
@@ -46,6 +57,11 @@ export default async function handler(req, res) {
     res.status(400).json({ error: 'Missing or invalid problem' });
     return;
   }
+
+  // Checked after validation, so malformed requests never count against the
+  // family's allowance, and before the paid model call.
+  const limited = await checkLimit('teach', req);
+  if (limited) { res.status(limited.status).json(limited.body); return; }
 
   try {
     const resp = await fetch(`${BASE_URL}/chat/completions`, {
