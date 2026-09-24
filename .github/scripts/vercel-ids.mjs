@@ -9,9 +9,14 @@
 //   VERCEL_ORG_ID=…
 //   VERCEL_PROJECT_ID=…
 //
-// The token only sees its owner's projects, so looking the project up by
-// name cannot land on somebody else's. Personal projects resolve directly;
-// team-owned ones are found by trying each team the token can see.
+// The owner id must be one the Vercel CLI can actually open, and that is
+// not always the project's accountId: a token can read a project while
+// being refused the team object that owns it (403 team_unauthorized), and
+// the CLI gives up if it cannot read the owner. So each candidate owner —
+// the token's own user scope, the project's accountId, and every team the
+// token can see — is checked with the same two lookups the CLI makes, and
+// the first that passes both wins. The token only sees its owner's
+// projects, so a lookup by name cannot land on anyone else's.
 const token = process.env.VERCEL_TOKEN;
 const project = (process.env.VERCEL_PROJECT || '').trim() || 'edu4dave';
 const presetOrg = (process.env.VERCEL_ORG || '').trim();
@@ -29,33 +34,50 @@ async function get(path) {
   try { body = await res.json(); } catch {}
   return { ok: res.ok, status: res.status, body };
 }
-
+const why = (r) => {
+  const e = r.body && r.body.error;
+  return `HTTP ${r.status}${e && (e.code || e.message) ? ' ' + (e.code || e.message) : ''}`;
+};
+const q = (team) => (team ? `?teamId=${encodeURIComponent(team)}` : '');
 const idOrName = encodeURIComponent(project);
-let r = await get(`/v9/projects/${idOrName}${presetOrg ? `?teamId=${encodeURIComponent(presetOrg)}` : ''}`);
-if (!r.ok && !presetOrg) {
-  const teams = await get('/v2/teams');
-  for (const t of (teams.body && teams.body.teams) || []) {
-    const tr = await get(`/v9/projects/${idOrName}?teamId=${encodeURIComponent(t.id)}`);
-    if (tr.ok) { r = { ...tr, via: `team ${t.id}` }; break; }
+
+// Candidate owners, most specific first.
+const candidates = [];
+if (presetOrg) candidates.push({ org: presetOrg, team: presetOrg.startsWith('team_') ? presetOrg : null, via: 'VERCEL_ORG_ID secret' });
+const me = await get('/v2/user');
+if (me.status === 401 || me.status === 403) {
+  // Might be a team-only token; the team candidates below still get a try.
+  console.error(`probe user scope: ${why(me)}`);
+}
+const userId = me.ok && me.body && me.body.user && (me.body.user.id || me.body.user.uid);
+if (userId) candidates.push({ org: userId, team: null, via: 'personal scope' });
+const teams = await get('/v2/teams');
+for (const t of (teams.ok && teams.body && teams.body.teams) || []) candidates.push({ org: t.id, team: t.id, via: `team ${t.slug || t.id}` });
+
+const tried = [];
+let found = null, sawProject = null;
+for (const c of candidates) {
+  const p = await get(`/v9/projects/${idOrName}${q(c.team)}`);
+  if (!p.ok) { tried.push(`${c.via}: project ${why(p)}`); continue; }
+  sawProject = p.body;
+  // Candidate owners from the project record itself (its accountId).
+  if (p.body.accountId && !candidates.some(x => x.org === p.body.accountId)) {
+    candidates.push({ org: p.body.accountId, team: p.body.accountId.startsWith('team_') ? p.body.accountId : null, via: 'project accountId' });
   }
+  const owner = c.team ? await get(`/v2/teams/${encodeURIComponent(c.team)}`) : me;
+  if (!owner.ok) { tried.push(`${c.via}: project ok, owner ${why(owner)}`); continue; }
+  found = { org: c.org, id: p.body.id, name: p.body.name, via: c.via };
+  break;
 }
-if (r.status === 401 || r.status === 403) fail(`Vercel rejected VERCEL_TOKEN (HTTP ${r.status}) — create a new token and update the secret`);
-if (!r.ok) fail(`Vercel project "${project}" not found for this token (HTTP ${r.status}) — set VERCEL_PROJECT_ID to the project's id or name`);
-const org = presetOrg || r.body.accountId;
-if (!r.body.id || !org) fail('Vercel returned a project without an id or owner; cannot deploy');
 
-// Probe the same two lookups the Vercel CLI makes when linking with these
-// ids, so a failure names which one broke (stderr only: never the token).
-const probes = [
-  ['owner', org.startsWith('team_') ? `/v2/teams/${org}` : '/v2/user'],
-  ['project', `/v9/projects/${r.body.id}${org.startsWith('team_') ? `?teamId=${org}` : ''}`],
-];
-for (const [label, path] of probes) {
-  const p = await get(path);
-  const msg = (p.body && p.body.error && (p.body.error.code || p.body.error.message)) || '';
-  console.error(`probe ${label}: GET ${path.replace(/\?.*/, '')} -> HTTP ${p.status}${msg ? ' ' + msg : ''}`);
+if (!found) {
+  for (const t of tried) console.error(`  tried ${t}`);
+  if (me.status === 401 || (me.status === 403 && !tried.length)) {
+    fail(`Vercel rejected VERCEL_TOKEN (${why(me)}) — create a new token and update the secret`);
+  }
+  if (!sawProject) fail(`Vercel project "${project}" not found for this token — set VERCEL_PROJECT_ID to the project's id or name`);
+  fail('The token can read the project but not any account that owns it, so the Vercel CLI cannot link it — recreate the token with its scope set to the account that owns the project');
 }
-console.error(`resolved via ${r.via || 'direct lookup'}: owner ${org}, project ${r.body.id} (${r.body.name || '?'})`);
-
-console.log(`VERCEL_ORG_ID=${org}`);
-console.log(`VERCEL_PROJECT_ID=${r.body.id}`);
+console.error(`resolved via ${found.via}: owner ${found.org}, project ${found.id} (${found.name || '?'})`);
+console.log(`VERCEL_ORG_ID=${found.org}`);
+console.log(`VERCEL_PROJECT_ID=${found.id}`);
