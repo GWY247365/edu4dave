@@ -342,6 +342,61 @@ await page.waitForTimeout(300);
 kinds.push(await page.evaluate(() => Stats.exportRaw().hist.slice(-1)[0].k));
 check('real sessions are tagged warm-up, quiz, practice', kinds.join(',') === 'warmup,quiz,practice', kinds.join(','));
 
+console.log('14. daily log: each day, each session, each question');
+await page.evaluate(() => { localStorage.clear(); });
+await page.goto(base);
+await page.waitForSelector('.ready-start');
+await startIfReady();                       // today's warm-up
+await page.waitForSelector('.qcard');
+await fillAll('7');
+await page.click('button:has-text("Check answers")');
+await page.waitForTimeout(300);
+await page.click(`button:has-text("Today's quiz")`);
+await page.waitForTimeout(300);
+// answer the quiz with one deliberate miss so the log has something to show
+await page.evaluate(() => {
+  state.quiz.forEach((q, i) => {
+    if (q.type === 'fnam') { q.givenNum = String(q.ansNum); q.givenDen = String(q.ansDen); }
+    else q.given = i === 0 && q.type !== 'fcmp' ? String(Number(q.ans) + 1) : String(q.ans);
+  });
+  document.querySelectorAll('.ansbox').forEach(b => {
+    const id = Number(b.dataset.id);
+    if (Number.isInteger(id)) b.value = state.quiz[id].given;
+  });
+});
+await page.click('button:has-text("Check answers")');
+await page.waitForTimeout(300);
+// an older day from before question-level detail existed
+await page.evaluate(() => {
+  const t = Date.now() - 3 * 86400000;
+  Stats.importMerge({
+    hist: [{ d: t, n: 10, c: 8, t: 400 }],
+    errlog: [{ d: t + 1000, k: 'mul:7x8', x: [7, 8], g: '54', ans: '56' }],
+  });
+  state.showStats = true; render();
+  document.querySelectorAll('details.stats-group').forEach(d => d.open = true);
+  document.querySelectorAll('details.dlog-session').forEach(d => d.open = true);
+});
+const log = await page.evaluate(() => {
+  const days = [...document.querySelectorAll('.dlog-day')];
+  const first = days[0];
+  return {
+    days: days.length,
+    todaySessions: first ? [...first.querySelectorAll('.dlog-kind')].map(e => e.textContent) : [],
+    todayQuestions: first ? first.querySelectorAll('.dlog-q').length : 0,
+    todayMisses: first ? first.querySelectorAll('.dlog-q.bad').length : 0,
+    gap: (document.querySelector('.dlog-gap') || {}).textContent || '',
+    oldMistakes: days[1] ? (days[1].querySelector('.dlog-errs') || {}).textContent || '' : '',
+    stored: Stats.getHist().filter(h => Array.isArray(h.q)).map(h => h.q.length),
+  };
+});
+check('today and an older day are listed', log.days === 2, `days=${log.days}`);
+check("today's two sessions, in order", log.todaySessions.join(',') === '🎯 Warm-up,📝 Quiz', log.todaySessions.join(','));
+check('every question of both sessions is listed', log.todayQuestions === log.stored.reduce((a, b) => a + b, 0) && log.todayQuestions >= 15, `${log.todayQuestions} rows`);
+check('the deliberate miss is marked', log.todayMisses >= 1, `misses=${log.todayMisses}`);
+check('days without practice are called out', /2 days without practice/.test(log.gap), log.gap);
+check('an older day shows its mistakes from the error log', /7 × 8: 54 → 56/.test(log.oldMistakes), log.oldMistakes);
+
 console.log('13. a release is announced when the app is resumed, not only on reload');
 await page.goto(base);
 await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 20000 });

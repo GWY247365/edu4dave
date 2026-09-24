@@ -368,6 +368,28 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .eng-bad .eng-dot{color:#b91c1c}
 .eng-label{font-size:13.5px;color:var(--ink);font-weight:600}
 .eng-detail{font-size:12px;color:var(--ink-3);line-height:1.4;margin-top:1px}
+.dlog-day{padding:8px 0 6px;border-bottom:1px solid var(--border-soft)}
+.dlog-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:4px}
+.dlog-date{font-weight:700;color:var(--ink);font-size:14px}
+.dlog-sum{font-size:12.5px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.dlog-session{margin:2px 0}
+.dlog-session summary{cursor:pointer;display:flex;gap:10px;align-items:baseline;font-size:13px;padding:3px 0;font-variant-numeric:tabular-nums}
+.dlog-kind{min-width:92px;color:var(--ink-2)}
+.dlog-score{min-width:42px;font-weight:700;color:var(--ink)}
+.dlog-time,.dlog-at{color:var(--ink-3);font-size:12px}
+.dlog-qs{margin:4px 0 6px 12px}
+.dlog-q{display:flex;gap:8px;font-size:12.5px;padding:2px 0;font-variant-numeric:tabular-nums}
+.dlog-q.bad{color:#b91c1c}
+.dlog-mark{width:12px;font-weight:800}
+.dlog-q.ok .dlog-mark{color:#047857}
+.dlog-label{min-width:120px}
+.dlog-ans{color:var(--ink-3)}
+.dlog-q.bad .dlog-ans{color:#b91c1c}
+.dlog-story{font-size:12px;color:var(--ink-3);margin:0 0 4px 20px;line-height:1.4}
+.dlog-none{font-size:12px;color:var(--ink-4);margin:2px 0 4px 12px}
+.dlog-errs{font-size:12.5px;color:var(--ink-2);margin-top:4px;line-height:1.5}
+.dlog-errs-h{font-weight:700}
+.dlog-gap{font-size:12px;color:var(--warn-deep,#b45309);padding:6px 0;text-align:center}
 .stats-group{margin-top:12px;background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:0 14px}
 .stats-group[open]{padding-bottom:12px}
 .stats-group-sum{cursor:pointer;display:flex;align-items:center;gap:10px;padding:12px 0;list-style-position:outside}
@@ -855,8 +877,18 @@ const Stats = (() => {
   // 'warmup' (immediate-feedback drill on weak items), or 'practice'
   // (focused practice from a lesson or the panel). Only 'quiz' records may
   // steer the difficulty controller; the others are learning, not testing.
-  function recordQuiz(total, correct, elapsedSec, kind) {
-    data.hist.push({ d: Date.now(), n: total, c: correct, t: elapsedSec, k: kind || 'quiz' });
+  // qs (optional): one compact row per question — [label, given, answer, ok]
+  // plus the story for a missed word problem — so a parent can see exactly
+  // what was practised on a given day.
+  function recordQuiz(total, correct, elapsedSec, kind, qs) {
+    const entry = { d: Date.now(), n: total, c: correct, t: elapsedSec, k: kind || 'quiz' };
+    if (Array.isArray(qs) && qs.length) entry.q = qs;
+    data.hist.push(entry);
+    // Keep question-level detail for the most recent 60 sessions only (about
+    // a month of daily practice); older sessions keep their summary. Bounds
+    // the synced blob well under the server's 200KB limit.
+    const cut = data.hist.length - 60;
+    for (let i = 0; i < cut; i++) if (data.hist[i].q) delete data.hist[i].q;
     if (data.hist.length > 100) data.hist = data.hist.slice(-100);
     bumpStreak();
     try { rollWeeklySnap(); } catch {} // reporting must never block grading
@@ -897,6 +929,8 @@ const Stats = (() => {
     if (list.length > 26) data.snaps = list.slice(-26);
   }
   function getSnaps() { return (data.snaps || []).slice(); }
+  function getHist() { return (data.hist || []).slice(); }
+  function getErrlog() { return (data.errlog || []).slice(); }
   // Quiz counts only ever grow, so a snapshot reporting far fewer quizzes
   // than an earlier week was computed from a damaged or blank profile
   // (this happened in the field). Drop those instead of charting them.
@@ -1291,7 +1325,7 @@ const Stats = (() => {
     }
     return Object.values(byKey).sort((x, y) => (x[tsField] || 0) - (y[tsField] || 0));
   }
-  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery, mulSeenCount, recentAccuracy, nextUnlock, isSlowFact, pickDueFacts, pickMasteredFact, dueBacklog, reviewQuota, getSnaps, repairSnaps, engineCheck, savePlan, getPlans, recordError, errorPatterns, getDaily, markDaily };
+  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery, mulSeenCount, recentAccuracy, nextUnlock, isSlowFact, pickDueFacts, getHist, getErrlog, pickMasteredFact, dueBacklog, reviewQuota, getSnaps, repairSnaps, engineCheck, savePlan, getPlans, recordError, errorPatterns, getDaily, markDaily };
 })();
 
 // Merge helpers for cross-device sync (keep the richer record, union history)
@@ -2454,7 +2488,7 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v63';
+const APP_VERSION = 'v64';
 const APP_UPDATED = '2026-09-24';
 // In-progress quiz survives refreshes/crashes/SW updates: every answer
 // keystroke snapshots the session to localStorage; a fresh page load resumes
@@ -2746,7 +2780,7 @@ function submit(fromTimeout) {
     if (!isRight) { try { Stats.recordError(errEntry(q)); } catch {} }
   });
   const sessionKind = state.dailyStep === 'warmup' ? 'warmup' : state.immediate ? 'practice' : 'quiz';
-  if (!state.isPractice) Stats.recordQuiz(state.quiz.length, correctCount, state.finalElapsed, sessionKind);
+  if (!state.isPractice) Stats.recordQuiz(state.quiz.length, correctCount, state.finalElapsed, sessionKind, sessionQuestions(state.quiz));
   if (!state.isPractice && (state.dailyStep === 'warmup' || state.dailyStep === 'quiz')) Stats.markDaily(state.dailyStep);
   // Sound feedback (opt-in via topbar): perfect → triumphant; mostly right →
   // happy chime; otherwise gentle low tone — never punishing. Guarded: an
@@ -3827,6 +3861,128 @@ function statsGroup(title, hint, open) {
   d.appendChild(sum);
   return d;
 }
+// ---- Daily log ----
+function qLabel(q) {
+  if (q.type === 'mul') return `${q.a} × ${q.b}`;
+  if (q.type === 'div') return `${q.a} ÷ ${q.b}`;
+  if (q.type === 'add') return `${q.a} + ${q.b}`;
+  if (q.type === 'sub') return `${q.a} − ${q.b}`;
+  if (q.type === 'fnam') return `name ${q.shaded} of ${q.den} shaded`;
+  if (q.type === 'feq') return `${q.n1}/${q.d1} = ?/${q.d2}`;
+  if (q.type === 'fcmp') return `${q.n1}/${q.d1} ? ${q.n2}/${q.d2}`;
+  if (q.type === 'word') return `📖 ${wordKindLabel(q.wkind)}`;
+  return q.type;
+}
+function sessionQuestions(quiz) {
+  return quiz.map(q => {
+    const given = (q.type === 'fnam' ? `${q.givenNum || ''}/${q.givenDen || ''}` : String(q.given == null ? '' : q.given)).trim().slice(0, 16);
+    const ok = answerCorrect(q) ? 1 : 0;
+    const row = [qLabel(q), given === '/' ? '' : given, answerText(q), ok];
+    if (!ok && q.type === 'word' && q.text) row.push(String(q.text).slice(0, 240));
+    return row;
+  });
+}
+// Error-log entries (older sessions have no per-question list) as text.
+function errLabel(e) {
+  const k = e.k || '';
+  if (k.startsWith('mul:') && e.x) return `${e.x[0]} × ${e.x[1]}`;
+  if (k.startsWith('div:') && e.x) return `${e.x[0]} ÷ ${e.x[1]}`;
+  if (k === 'bigmul') return '2-digit ×';
+  if (k.startsWith('add:')) { const n = Number(k.slice(4)); return `addition, ${n} carr${n === 1 ? 'y' : 'ies'}`; }
+  if (k.startsWith('sub:')) { const n = Number(k.slice(4)); return `subtraction, ${n} borrow${n === 1 ? '' : 's'}`; }
+  if (k === 'fnam') return 'naming a fraction';
+  if (k === 'feq') return 'equal fractions';
+  if (k === 'fcmp') return 'comparing fractions';
+  if (k.startsWith('word.')) return `📖 ${wordKindLabel(k.slice(5))}`;
+  return k;
+}
+function localDayKey(ts) {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+// Group history into days, newest first, with the gap before each day.
+function buildDailyLog(hist, errlog) {
+  const byDay = new Map();
+  for (const h of hist) {
+    const key = localDayKey(h.d);
+    if (!byDay.has(key)) byDay.set(key, { key, sessions: [], errs: [] });
+    byDay.get(key).sessions.push(h);
+  }
+  for (const e of errlog) {
+    const day = byDay.get(localDayKey(e.d));
+    if (day) day.errs.push(e);
+  }
+  const days = [...byDay.values()].sort((a, b) => (a.key < b.key ? 1 : -1));
+  days.forEach((day, i) => {
+    day.sessions.sort((a, b) => a.d - b.d);
+    const real = day.sessions.filter(h => !((h.c || 0) === 0 && (h.t || 0) <= 20));
+    day.questions = real.reduce((s, h) => s + (h.n || 0), 0);
+    day.correct = real.reduce((s, h) => s + (h.c || 0), 0);
+    day.seconds = real.reduce((s, h) => s + (h.t || 0), 0);
+    const older = days[i + 1];
+    day.gapBefore = older ? Math.round((new Date(day.key) - new Date(older.key)) / 86400000) - 1 : 0;
+  });
+  return days;
+}
+function sessionName(h) {
+  const k = h.k || ((h.n || 0) >= 10 ? 'quiz' : 'warmup');
+  return k === 'warmup' ? '🎯 Warm-up' : k === 'practice' ? '✏️ Practice' : '📝 Quiz';
+}
+function renderDailyLog() {
+  const days = buildDailyLog(Stats.getHist(), Stats.getErrlog());
+  const today = days[0];
+  const hint = !today ? '' : `${today.key === localDayKey(Date.now()) ? 'today' : new Date(today.key + 'T12:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}: ${today.questions} questions`;
+  const group = statsGroup('📅 Daily log', hint, false);
+  if (!days.length) { group.appendChild(el('p', 'stats-line', 'No practice recorded yet.')); return group; }
+  days.forEach(day => {
+    const box = el('div', 'dlog-day');
+    const date = new Date(day.key + 'T12:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+    const acc = day.questions ? Math.round(100 * day.correct / day.questions) : 0;
+    const head = el('div', 'dlog-head');
+    head.appendChild(el('span', 'dlog-date', date));
+    head.appendChild(el('span', 'dlog-sum', `${day.questions} questions · ${acc}% · ${Math.round(day.seconds / 60)} min`));
+    box.appendChild(head);
+    let hasLists = true;
+    day.sessions.forEach(h => {
+      const blank = (h.c || 0) === 0 && (h.t || 0) <= 20;
+      const det = document.createElement('details');
+      det.className = 'dlog-session';
+      const sum = document.createElement('summary');
+      sum.appendChild(spanTxt(sessionName(h), 'dlog-kind'));
+      sum.appendChild(spanTxt(blank ? 'blank submit' : `${h.c}/${h.n}`, 'dlog-score'));
+      sum.appendChild(spanTxt(fmtElapsed(h.t || 0), 'dlog-time'));
+      sum.appendChild(spanTxt(new Date(h.d).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }), 'dlog-at'));
+      det.appendChild(sum);
+      if (Array.isArray(h.q)) {
+        const list = el('div', 'dlog-qs');
+        h.q.forEach(([label, given, ans, ok, story]) => {
+          const row = el('div', 'dlog-q ' + (ok ? 'ok' : 'bad'));
+          row.appendChild(spanTxt(ok ? '✓' : '✗', 'dlog-mark'));
+          row.appendChild(spanTxt(label, 'dlog-label'));
+          row.appendChild(spanTxt(ok ? ans : `${given || '(blank)'} → ${ans}`, 'dlog-ans'));
+          list.appendChild(row);
+          if (story) list.appendChild(el('div', 'dlog-story', story));
+        });
+        det.appendChild(list);
+      } else {
+        hasLists = false;
+        det.appendChild(el('div', 'dlog-none', 'Question-by-question detail is kept for sessions from v64 on.'));
+      }
+      box.appendChild(det);
+    });
+    // Older days have no per-question list; their mistakes still show from
+    // the error log.
+    if (!hasLists && day.errs.length) {
+      const m = el('div', 'dlog-errs');
+      m.appendChild(spanTxt('Mistakes: ', 'dlog-errs-h'));
+      m.appendChild(spanTxt(day.errs.map(e => `${errLabel(e)}: ${e.g ? e.g : '(blank)'} → ${e.ans}`).join(' · '), null));
+      box.appendChild(m);
+    }
+    group.appendChild(box);
+    if (day.gapBefore > 0) group.appendChild(el('div', 'dlog-gap', `${day.gapBefore} day${day.gapBefore > 1 ? 's' : ''} without practice`));
+  });
+  return group;
+}
 function renderStatsModal() {
   const s = Stats.summary();
   const bg = el('div', 'modal-bg');
@@ -4071,6 +4227,7 @@ function renderStatsModal() {
     }
 
     if (trendGroup && trendGroup.children.length > 1) m.appendChild(trendGroup);
+    m.appendChild(renderDailyLog());
 
     const planSection = el('div', 'plan-section');
     planSection.appendChild(el('h3', 'stats-h3', '✨ AI Learning Plan'));
