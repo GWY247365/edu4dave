@@ -45,6 +45,14 @@ const idOrName = encodeURIComponent(project);
 const candidates = [];
 if (presetOrg) candidates.push({ org: presetOrg, team: presetOrg.startsWith('team_') ? presetOrg : null, via: 'VERCEL_ORG_ID secret' });
 const me = await get('/v2/user');
+// Shape report (ids and field names only — never the token), so a failure
+// here can be diagnosed from the job log.
+{
+  const u = me.body && (me.body.user || me.body);
+  console.error(`diag /v2/user: HTTP ${me.status}; top-level keys [${Object.keys(me.body || {}).join(', ')}]; ` +
+    `user keys [${Object.keys((me.body && me.body.user) || {}).join(', ')}]; ` +
+    `id=${u && (u.id || u.uid) || '-'} defaultTeamId=${u && u.defaultTeamId || '-'}`);
+}
 if (me.status === 401 || me.status === 403) {
   // Might be a team-only token; the team candidates below still get a try.
   console.error(`probe user scope: ${why(me)}`);
@@ -52,6 +60,11 @@ if (me.status === 401 || me.status === 403) {
 const userId = me.ok && me.body && me.body.user && (me.body.user.id || me.body.user.uid);
 if (userId) candidates.push({ org: userId, team: null, via: 'personal scope' });
 const teams = await get('/v2/teams');
+console.error(`diag /v2/teams: HTTP ${teams.status}; teams [${((teams.body && teams.body.teams) || []).map(t => t.id).join(', ')}]`);
+{
+  const dp = await get(`/v9/projects/${encodeURIComponent(project)}`);
+  console.error(`diag project in default scope: HTTP ${dp.status}; id=${dp.body && dp.body.id || '-'} accountId=${dp.body && dp.body.accountId || '-'}`);
+}
 for (const t of (teams.ok && teams.body && teams.body.teams) || []) candidates.push({ org: t.id, team: t.id, via: `team ${t.slug || t.id}` });
 
 const tried = [];

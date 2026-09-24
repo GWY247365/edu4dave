@@ -74,6 +74,18 @@ jobs:
       - name: Resolve Vercel project
         run: node .github/scripts/vercel-ids.mjs >> "$GITHUB_ENV"
 
+      # Diagnostic (temporary): if resolution fails, let the Vercel CLI try to
+      # link the project on its own with this token, and report which owner
+      # id it picks. Prints ids only, never the token.
+      - name: Diagnose how the Vercel CLI links this project
+        if: failure()
+        run: |
+          npm install --global vercel@latest >/dev/null 2>&1
+          d=$(mktemp -d) && cd "$d"
+          env -u VERCEL_ORG_ID -u VERCEL_PROJECT_ID vercel link --yes --project edu4dave --token="$VERCEL_TOKEN" 2>&1 | tail -15 || true
+          echo "--- .vercel/project.json ---"
+          cat .vercel/project.json 2>/dev/null || echo "(not created)"
+
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
 
