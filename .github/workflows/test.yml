@@ -8,10 +8,11 @@
 # vercel.json (git.deploymentEnabled: false), so a red run means the release
 # never reaches the device.
 #
-# The deploy job needs three repository secrets:
+# The deploy job needs one repository secret:
 #   VERCEL_TOKEN       a Vercel access token
-#   VERCEL_ORG_ID      the Vercel team/account id  (.vercel/project.json → orgId)
-#   VERCEL_PROJECT_ID  the Vercel project id       (.vercel/project.json → projectId)
+# Optional overrides (normally not needed — resolved from the token):
+#   VERCEL_PROJECT_ID  project id or name (default: edu4dave)
+#   VERCEL_ORG_ID      owner id (default: looked up from the project)
 name: tests
 
 on:
@@ -58,27 +59,20 @@ jobs:
       cancel-in-progress: false  # never interrupt a deploy that has started
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_PROJECT: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_ORG: ${{ secrets.VERCEL_ORG_ID }}
     steps:
       - uses: actions/checkout@v5
-
-      # With Vercel's auto-deploy off, missing credentials mean nothing ships:
-      # fail loudly instead of passing green.
-      - name: Check deploy credentials
-        run: |
-          missing=""
-          [ -n "$VERCEL_TOKEN" ] || missing="$missing VERCEL_TOKEN"
-          [ -n "$VERCEL_ORG_ID" ] || missing="$missing VERCEL_ORG_ID"
-          [ -n "$VERCEL_PROJECT_ID" ] || missing="$missing VERCEL_PROJECT_ID"
-          if [ -n "$missing" ]; then
-            echo "::error::Tests passed but this commit was NOT deployed — missing repository secrets:$missing"
-            exit 1
-          fi
 
       - uses: actions/setup-node@v5
         with:
           node-version: 22
+
+      # Only the token is required; the project and owner ids are looked up
+      # with it. With Vercel's auto-deploy off, a missing or bad token means
+      # nothing ships, so this fails loudly instead of passing green.
+      - name: Resolve Vercel project
+        run: node .github/scripts/vercel-ids.mjs >> "$GITHUB_ENV"
 
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
