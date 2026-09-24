@@ -72,7 +72,10 @@ await page.goto(base);
 await page.waitForSelector('.ready-start');
 check('boot shows ready screen, no questions, no clock', (await page.$$('.qcard')).length === 0
   && (await page.$eval('#timer', e => e.textContent)) === '');
-await page.waitForTimeout(1500); // let first-install SW settle (it re-renders once)
+// Let the first-install service worker take control (it re-renders once).
+// Waiting on the real condition, not a fixed sleep, keeps slow CI runners green.
+await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 20000 });
+await page.waitForTimeout(300);
 await startIfReady();
 await page.waitForSelector('.qcard');
 await fillAll('7');
@@ -213,7 +216,7 @@ check('right plan + bad arithmetic diagnosed as a slip', /plan was right/.test(w
 console.log('8. sync reads live cloud data even with the service worker in control');
 await page.goto(base);
 await page.waitForSelector('.ready-start, .qcard');
-await page.waitForTimeout(1500);
+await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 20000 }).catch(() => {});
 const swOn = await page.evaluate(() => !!navigator.serviceWorker.controller);
 const reads = [];
 for (let i = 0; i < 3; i++) {

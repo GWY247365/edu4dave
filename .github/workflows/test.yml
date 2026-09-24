@@ -1,0 +1,39 @@
+# Runs every test suite on each push and pull request:
+#   test/api.mjs        cloud backups, anti-wipe guard, restore
+#   test/ratelimit.mjs  daily limits on the paid AI endpoints
+#   test/smoke.mjs      real-browser scenarios (grading, sync, word problems…)
+#
+# A red run here does NOT stop Vercel from deploying the same push; blocking
+# a bad release needs the deployment itself to wait on this check.
+name: tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Run all test suites
+        run: npm test
