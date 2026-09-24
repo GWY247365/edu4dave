@@ -9,10 +9,9 @@
 # never reaches the device.
 #
 # The deploy job needs one repository secret:
-#   VERCEL_TOKEN       a Vercel access token
-# Optional overrides (normally not needed — resolved from the token):
+#   VERCEL_TOKEN       a Vercel access token allowed to deploy the project
+# Optional:
 #   VERCEL_PROJECT_ID  project id or name (default: edu4dave)
-#   VERCEL_ORG_ID      owner id (default: looked up from the project)
 name: tests
 
 on:
@@ -60,7 +59,6 @@ jobs:
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_PROJECT: ${{ secrets.VERCEL_PROJECT_ID }}
-      VERCEL_ORG: ${{ secrets.VERCEL_ORG_ID }}
     steps:
       - uses: actions/checkout@v5
 
@@ -68,40 +66,16 @@ jobs:
         with:
           node-version: 22
 
-      # Only the token is required; the project and owner ids are looked up
-      # with it. With Vercel's auto-deploy off, a missing or bad token means
-      # nothing ships, so this fails loudly instead of passing green.
-      - name: Resolve Vercel project
-        run: node .github/scripts/vercel-ids.mjs >> "$GITHUB_ENV"
-
-      # Diagnostic (temporary): if resolution fails, let the Vercel CLI try to
-      # link the project on its own with this token, and report which owner
-      # id it picks. Prints ids only, never the token.
-      - name: Diagnose how the Vercel CLI links this project
-        if: failure()
-        run: |
-          npm install --global vercel@latest >/dev/null 2>&1
-          d=$(mktemp -d) && cd "$d"
-          env -u VERCEL_ORG_ID -u VERCEL_PROJECT_ID vercel link --yes --project edu4dave --token="$VERCEL_TOKEN" 2>&1 | tail -15 || true
-          echo "--- .vercel/project.json ---"
-          cat .vercel/project.json 2>/dev/null || echo "(not created)"
-
-      - name: Install Vercel CLI
-        run: npm install --global vercel@latest
-
-      - name: Pull production settings
-        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
-
       # Stamp the build with this commit so the live check below can tell a
       # fresh deploy apart from an old one serving the same app version.
       - name: Stamp build with commit
         run: printf '{"sha":"%s","built":"%s"}\n' "$GITHUB_SHA" "$(date -u +%FT%TZ)" > build-info.json
 
-      - name: Build
-        run: vercel build --prod --token="$VERCEL_TOKEN"
-
+      # REST API rather than the Vercel CLI: the CLI insists on a user
+      # identity this deploy token does not have. Only the token is required;
+      # it fails loudly if missing or not allowed to deploy.
       - name: Deploy to production
-        run: vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+        run: node .github/scripts/vercel-deploy.mjs
 
       # Confirm the public site now serves exactly this commit.
       - name: Verify the live site
