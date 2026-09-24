@@ -14,6 +14,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
 
 let cloudVersion = 1;
+let shipped = false;
 const server = http.createServer(async (req, res) => {
   const u = new URL(req.url, 'http://x');
   if (u.pathname === '/api/progress') {
@@ -23,9 +24,17 @@ const server = http.createServer(async (req, res) => {
       : '{"ok":true}');
   }
   if (u.pathname === '/__bump') { cloudVersion++; res.writeHead(200); return res.end(); }
+  // Simulates a release landing: from now on sw.js and the page are served
+  // one version higher (in memory — nothing on disk changes).
+  if (u.pathname === '/__ship') { shipped = true; res.writeHead(200); return res.end(); }
   try {
     const path = req.url === '/' ? '/index.html' : req.url.split('?')[0];
-    const body = await readFile(join(root, path));
+    let body = await readFile(join(root, path));
+    if (shipped && (path === '/sw.js' || path === '/index.html')) {
+      body = Buffer.from(body.toString('utf8')
+        .replace(/mathquiz-v(\d+)/, (m, n) => `mathquiz-v${Number(n) + 1}`)
+        .replace(/const APP_VERSION = 'v(\d+)'/, (m, n) => `const APP_VERSION = 'v${Number(n) + 1}'`));
+    }
     res.writeHead(200, { 'Content-Type': MIME[extname(path)] || 'application/octet-stream' });
     res.end(body);
   } catch {
@@ -332,6 +341,22 @@ await page.click('button:has-text("Check answers")');
 await page.waitForTimeout(300);
 kinds.push(await page.evaluate(() => Stats.exportRaw().hist.slice(-1)[0].k));
 check('real sessions are tagged warm-up, quiz, practice', kinds.join(',') === 'warmup,quiz,practice', kinds.join(','));
+
+console.log('13. a release is announced when the app is resumed, not only on reload');
+await page.goto(base);
+await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 20000 });
+await page.waitForFunction(async () => {
+  const r = await navigator.serviceWorker.getRegistration();
+  return r && r.active && !r.installing && !r.waiting;
+}, null, { timeout: 20000 });
+await page.waitForTimeout(11000); // past the resume-check throttle window
+check('no update prompt while nothing new has shipped', !(await page.$('.update-chip')));
+await page.evaluate(() => fetch('/__ship'));
+// the child brings the home-screen app back: resumed, not reloaded
+await page.evaluate(() => { document.dispatchEvent(new Event('visibilitychange')); window.dispatchEvent(new Event('focus')); });
+let announced = false;
+for (let i = 0; i < 20 && !announced; i++) { await page.waitForTimeout(500); announced = !!(await page.$('.update-chip')); }
+check('resuming the app surfaces a release shipped while it was open', announced);
 
 check('no page errors across all scenarios', pageErrors.length === 0, pageErrors.join('; '));
 
