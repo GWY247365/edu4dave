@@ -670,8 +670,21 @@ const Stats = (() => {
   }
   // Rolling observed accuracy over the last n scored quizzes (the direct
   // signal the 85%-rule controller should track). null until 2 quizzes exist.
+  // History entries that count as a measurement of the child's level.
+  // Tagged entries: only 'quiz'. Untagged (older) entries: a full 10+ quiz
+  // counts, a 5-6 question compact warm-up does not; and the blank
+  // submissions older versions accepted never count.
+  function isMeasurement(h) {
+    if ((h.c || 0) === 0 && (h.t || 0) <= 20) return false;
+    return h.k ? h.k === 'quiz' : (h.n || 0) >= 10;
+  }
+  function measuredHist() { return data.hist.filter(isMeasurement); }
+  // Observed accuracy over the last n MEASURED quizzes — the signal the
+  // closed-loop controller corrects the model with. Warm-ups and focused
+  // practice are excluded: they drill weak items with feedback on the spot,
+  // so their accuracy says little about the level the quiz should be set at.
   function recentAccuracy(n) {
-    const h = data.hist.slice(-(n || 5));
+    const h = measuredHist().slice(-(n || 5));
     if (h.length < 2) return null;
     let c = 0, t = 0;
     for (const q of h) { c += q.c || 0; t += q.n || 0; }
@@ -838,8 +851,12 @@ const Stats = (() => {
     const atRisk = active && diff === 2;
     return { current: active ? s.current : 0, best: s.best, active, atRisk, lastDay: s.lastDay };
   }
-  function recordQuiz(total, correct, elapsedSec) {
-    data.hist.push({ d: Date.now(), n: total, c: correct, t: elapsedSec });
+  // kind: 'quiz' (the batch-graded adaptive quiz — the measurement),
+  // 'warmup' (immediate-feedback drill on weak items), or 'practice'
+  // (focused practice from a lesson or the panel). Only 'quiz' records may
+  // steer the difficulty controller; the others are learning, not testing.
+  function recordQuiz(total, correct, elapsedSec, kind) {
+    data.hist.push({ d: Date.now(), n: total, c: correct, t: elapsedSec, k: kind || 'quiz' });
     if (data.hist.length > 100) data.hist = data.hist.slice(-100);
     bumpStreak();
     try { rollWeeklySnap(); } catch {} // reporting must never block grading
@@ -902,7 +919,6 @@ const Stats = (() => {
   function engineCheck() {
     const out = [];
     const add = (level, label, detail) => out.push({ level, label, detail });
-    const clean = data.hist.filter(h => (h.c || 0) > 0 || (h.t || 0) > 20);
     const last = data.hist[data.hist.length - 1];
     const days = last ? Math.round((Date.now() - last.d) / 86400000) : null;
     if (days == null) add('warn', 'No practice recorded yet', 'finish a quiz to start tracking');
@@ -923,7 +939,7 @@ const Stats = (() => {
     add('ok', `Difficulty band: ${band}`,
         `model mastery ${Math.round(m * 100)}% · curriculum coverage ${Math.round(cov * 100)}%` + stepped);
     const acc = (() => {
-      const h = clean.slice(-5); let c = 0, n = 0;
+      const h = measuredHist().slice(-5); let c = 0, n = 0;
       for (const q of h) { c += q.c || 0; n += q.n || 0; }
       return n ? Math.round(100 * c / n) : null;
     })();
@@ -2438,7 +2454,7 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v61';
+const APP_VERSION = 'v62';
 const APP_UPDATED = '2026-09-24';
 // In-progress quiz survives refreshes/crashes/SW updates: every answer
 // keystroke snapshots the session to localStorage; a fresh page load resumes
@@ -2729,7 +2745,8 @@ function submit(fromTimeout) {
     else if (q.bucket) Stats.recordBucket(q.bucket, isRight);
     if (!isRight) { try { Stats.recordError(errEntry(q)); } catch {} }
   });
-  if (!state.isPractice) Stats.recordQuiz(state.quiz.length, correctCount, state.finalElapsed);
+  const sessionKind = state.dailyStep === 'warmup' ? 'warmup' : state.immediate ? 'practice' : 'quiz';
+  if (!state.isPractice) Stats.recordQuiz(state.quiz.length, correctCount, state.finalElapsed, sessionKind);
   if (!state.isPractice && (state.dailyStep === 'warmup' || state.dailyStep === 'quiz')) Stats.markDaily(state.dailyStep);
   // Sound feedback (opt-in via topbar): perfect → triumphant; mostly right →
   // happy chime; otherwise gentle low tone — never punishing. Guarded: an
@@ -4220,7 +4237,8 @@ async function generatePlan(container, btn) {
       subtractionByBorrows: s.buckets.sub.map(b => ({
         borrows: b.k, accuracyPct: b.accuracy, attempts: b.total,
       })),
-      recentQuizzes: s.hist.map(h => ({ correct: h.c, outOf: h.n, seconds: h.t })),
+      recentQuizzes: s.hist.map(h => ({ correct: h.c, outOf: h.n, seconds: h.t,
+        kind: h.k || ((h.n || 0) >= 10 ? 'quiz' : 'warmup') })),
       division: s.division.unlocked
         ? { attempts: s.division.attempts, accuracyPct: s.division.accuracy, masteryPct: s.division.mastery }
         : 'locked',

@@ -284,6 +284,55 @@ check('unclear: makes no claim about the plan, gives the reason',
 check('batch diagnosis no longer calls a wild guess "plan was right"',
   !/plan was right/.test(pills.unclearDiag) && /plan was right/.test(pills.slipDiag), pills.unclearDiag.slice(0, 60));
 
+console.log('12. the difficulty controller reads only measured quizzes');
+const ctl = await page.evaluate(() => {
+  localStorage.clear(); Stats.reset();
+  // Quizzes around 65%, interleaved with easy warm-ups and practice at 100%,
+  // plus legacy untagged records. Distinct timestamps: history merges dedupe
+  // by timestamp, and real sessions are minutes apart.
+  const t0 = Date.now() - 3600000;
+  const hist = [
+    { n: 10, c: 6, t: 300, k: 'quiz' },
+    { n: 5, c: 5, t: 60, k: 'warmup' },
+    { n: 10, c: 7, t: 300, k: 'quiz' },
+    { n: 10, c: 10, t: 200, k: 'practice' },
+    { n: 10, c: 6, t: 300, k: 'quiz' },
+    { n: 5, c: 5, t: 60, k: 'warmup' },
+    { n: 5, c: 5, t: 50 },              // legacy compact warm-up: not a measurement
+    { n: 10, c: 0, t: 3 },              // legacy blank submit: not a measurement
+    { n: 10, c: 7, t: 300 },            // legacy full quiz: counts
+  ].map((h, i) => ({ ...h, d: t0 + i * 60000 }));
+  Stats.importMerge({ hist });
+  const row = Stats.engineCheck().find(c => /Recent accuracy/.test(c.label));
+  return { acc: Math.round(100 * Stats.recentAccuracy(5)), row: row && row.label };
+});
+check('controller accuracy uses quizzes only (6+7+6+7 of 40)', ctl.acc === 65, `acc=${ctl.acc}%`);
+check('engine check reports the same number', ctl.row === 'Recent accuracy 65%', ctl.row);
+
+const kinds = [];
+await page.evaluate(() => { localStorage.clear(); });
+await page.goto(base);
+await page.waitForSelector('.ready-start');
+await startIfReady();
+await page.waitForSelector('.qcard');
+await fillAll('7');
+await page.click('button:has-text("Check answers")');
+await page.waitForTimeout(300);
+kinds.push(await page.evaluate(() => Stats.exportRaw().hist.slice(-1)[0].k));
+await page.click(`button:has-text("Today's quiz")`);
+await page.waitForTimeout(300);
+await fillAll('7');
+await page.click('button:has-text("Check answers")');
+await page.waitForTimeout(300);
+kinds.push(await page.evaluate(() => Stats.exportRaw().hist.slice(-1)[0].k));
+await page.evaluate(() => startFocus());
+await page.waitForTimeout(300);
+await fillAll('7');
+await page.click('button:has-text("Check answers")');
+await page.waitForTimeout(300);
+kinds.push(await page.evaluate(() => Stats.exportRaw().hist.slice(-1)[0].k));
+check('real sessions are tagged warm-up, quiz, practice', kinds.join(',') === 'warmup,quiz,practice', kinds.join(','));
+
 check('no page errors across all scenarios', pageErrors.length === 0, pageErrors.join('; '));
 
 await browser.close();
