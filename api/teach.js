@@ -22,6 +22,9 @@ function validProblem(p) {
   if (p.type === 'fnam') return isNum(p.shaded) && isNum(p.den);
   if (p.type === 'feq') return isNum(p.n1) && isNum(p.d1) && isNum(p.d2) && isNum(p.ans);
   if (p.type === 'fcmp') return isNum(p.n1) && isNum(p.d1) && isNum(p.n2) && isNum(p.d2) && typeof p.ans === 'string';
+  // Must be a real division, or the model would be told a wrong answer.
+  if (p.type === 'ldiv') return isNum(p.a) && isNum(p.b) && isNum(p.q) && isNum(p.r) && p.b > 0 && p.a < 10000 &&
+                                p.r >= 0 && p.r < p.b && p.b * p.q + p.r === p.a;
   // Word problems carry their own story; bounded so the endpoint cannot be
   // used as a general-purpose prompt.
   if (p.type === 'word') return typeof p.text === 'string' && p.text.length > 0 && p.text.length <= 400 &&
@@ -36,6 +39,11 @@ function describe(p) {
   if (p.type === 'div') return `${a} ÷ ${b} (the answer is ${a / b}); it helps to remember ${b} × ${a / b} = ${a}`;
   if (p.type === 'fnam') return `naming the fraction shown by a bar split into ${p.den} equal parts with ${p.shaded} shaded — the answer is the fraction ${p.shaded}/${p.den}`;
   if (p.type === 'feq') return `finding the missing top number so the fractions are equal: ${p.n1}/${p.d1} = ?/${p.d2} — the answer is ${p.ans}, because you multiply top and bottom by ${p.d2 / p.d1}`;
+  if (p.type === 'ldiv') {
+    return `${p.a} ÷ ${p.b} with a remainder — the answer is ${p.q} remainder ${p.r}, because ${p.b} × ${p.q} = ${p.b * p.q} and ` +
+      `${p.a} − ${p.b * p.q} = ${p.r}. The remainder is always smaller than ${p.b}; for bigger numbers use divide, multiply, subtract, bring down, ` +
+      'and write a 0 in the answer whenever the divisor does not fit';
+  }
   if (p.type === 'word') {
     const story = p.text.replace(/\s+/g, ' ').trim();
     return `a word problem: "${story}" — the right plan is ${p.op} = ${p.ans}. ` +

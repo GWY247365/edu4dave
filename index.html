@@ -350,6 +350,12 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .sync-health{margin:6px 0 10px;font-size:12.5px;line-height:1.45;padding:8px 10px;border-radius:8px}
 .sync-health.ok{background:#ecfdf5;color:#047857;border:1px solid #a7f3d0}
 .sync-health.bad{background:#fff7ed;color:#9a3412;border:1px solid #fed7aa;font-weight:600}
+.ldiv-answer{display:flex;align-items:center;gap:8px}
+.ldiv-answer .ldiv-q{width:92px}
+.ldiv-answer .ldiv-r{width:64px}
+.ldiv-R{font-weight:800;color:var(--ink-2);font-size:18px}
+.ldiv-cookies{font-size:20px;line-height:1.6;margin:6px 0 8px;word-break:break-word}
+.ldiv-steps{font-family:'JetBrains Mono','SF Mono',Menlo,monospace;font-size:13px;line-height:1.6;white-space:pre-wrap;background:#fff;border:1px dashed var(--border);border-radius:8px;padding:8px 10px;margin:6px 0 10px}
 .wbars{margin:8px 0 10px}
 .wbar-row{display:flex;align-items:center;gap:6px;margin:6px 0}
 .wbar-name{width:44px;font-size:13px;font-weight:700;color:var(--ink-2)}
@@ -471,7 +477,7 @@ const Stats = (() => {
   const FAST_MS = 6000;      // fluency threshold for single mul facts
   // Multi-step questions take longer even when fluent — one global 6s bar
   // made 'fluent' unreachable for them and suppressed stability growth.
-  const FAST_BY_SKILL = { div: 8000, bigmul: 25000, fractions: 15000 };
+  const FAST_BY_SKILL = { div: 8000, bigmul: 25000, fractions: 15000, longdiv: 25000 };
   const STAB_FLUENT = 12;    // days of stability needed to count a fact as mastered
   const STAB_MAX = 400;      // cap on stability (days)
   // Bayesian Knowledge Tracing params → a calibrated P(known) per fact.
@@ -542,7 +548,7 @@ const Stats = (() => {
         snaps: d.snaps || [],
         buckets: d.buckets || {},
         streak: d.streak || { current: 0, best: 0, lastDay: null },
-        unlocked: Object.assign({ division: false, bigmul: false, fractions: false, word: false }, d.unlocked || {}),
+        unlocked: Object.assign({ division: false, bigmul: false, fractions: false, word: false, longdiv: false }, d.unlocked || {}),
         seen: d.seen || {},
         plans: d.plans || [],
         errlog: d.errlog || [],
@@ -551,7 +557,7 @@ const Stats = (() => {
       };
     } catch { return blank(); }
   }
-  function blank() { return { facts: {}, divFacts: {}, skills: {}, hist: [], snaps: [], buckets: {}, streak: { current: 0, best: 0, lastDay: null }, unlocked: { division: false, bigmul: false, fractions: false, word: false }, seen: {}, plans: [], errlog: [], daily: { day: null, warmup: false, quiz: false }, pin: null }; }
+  function blank() { return { facts: {}, divFacts: {}, skills: {}, hist: [], snaps: [], buckets: {}, streak: { current: 0, best: 0, lastDay: null }, unlocked: { division: false, bigmul: false, fractions: false, word: false, longdiv: false }, seen: {}, plans: [], errlog: [], daily: { day: null, warmup: false, quiz: false }, pin: null }; }
   function save(d) {
     try { localStorage.setItem(STATS_KEY, JSON.stringify(d)); } catch {}
   }
@@ -566,7 +572,11 @@ const Stats = (() => {
     const days = (now - (f.last || f.lastSeen || 0)) / 86400000;
     return Math.exp(-days / f.stab);
   }
-  function skillFast(name) { return name === 'bigmul' ? FAST_BY_SKILL.bigmul : name.indexOf('frac') === 0 ? FAST_BY_SKILL.fractions : FAST_MS; }
+  function skillFast(name) {
+    if (name === 'bigmul') return FAST_BY_SKILL.bigmul;
+    if (name === 'longdiv' || name.indexOf('ldiv.') === 0) return FAST_BY_SKILL.longdiv;
+    return name.indexOf('frac') === 0 ? FAST_BY_SKILL.fractions : FAST_MS;
+  }
   function factState(f, now, fastMs) {
     fastMs = fastMs || FAST_MS;
     if (!f || (f.right || 0) + (f.wrong || 0) === 0) return 'new';
@@ -759,6 +769,14 @@ const Stats = (() => {
     // The warm-up takes the rest of the backlog (see focusQuiz).
     return Math.min(2, base + extra);
   }
+  function divMasteredCount() {
+    const now = Date.now();
+    let n = 0;
+    for (const k in data.divFacts) if (isMasteredState(factState(data.divFacts[k], now, FAST_BY_SKILL.div))) n++;
+    return n;
+  }
+  // P(known) of an aggregate skill, for weighing domains against each other.
+  function skillP(name) { const f = data.skills[name]; return f && f.pL != null ? f.pL : BKT.L0; }
   function mulFluentCount() {
     const now = Date.now();
     let m = 0;
@@ -781,12 +799,14 @@ const Stats = (() => {
     if (q.type === 'div' && q.fam) return factState(getDivFact(q.fam[0], q.fam[1]), now, FAST_BY_SKILL.div);
     if (q.type === 'fnam' || q.type === 'feq' || q.type === 'fcmp') return skillState('fractions');
     if (q.type === 'word') return skillState('word.' + q.wkind);
+    if (q.type === 'ldiv') return skillState('ldiv.' + q.ldk);
     return 'new';
   }
   const DIV_UNLOCK_AT = 24;    // division unlocks once enough mul facts are fluent
   const BIGMUL_UNLOCK_AT = 40; // 2-digit multiplication unlocks with strong table fluency
   const FRAC_UNLOCK_AT = 50;   // fractions unlock once tables are very solid
   const WORD_UNLOCK_AT = 55;   // word problems need the operations to be automatic first
+  const LDIV_UNLOCK_AT = 40;   // remainders & long division: 40 of 66 division families solid
   function checkUnlocks() {
     let newly = null;
     const fluent = mulFluentCount();
@@ -801,6 +821,9 @@ const Stats = (() => {
     }
     if (!data.unlocked.word && fluent >= WORD_UNLOCK_AT) {
       data.unlocked.word = true; newly = newly || 'word'; save(data);
+    }
+    if (!data.unlocked.longdiv && data.unlocked.word && divMasteredCount() >= LDIV_UNLOCK_AT) {
+      data.unlocked.longdiv = true; newly = newly || 'longdiv'; save(data);
     }
     return newly;
   }
@@ -827,6 +850,7 @@ const Stats = (() => {
     if (!data.unlocked.bigmul) return { name: 'Bigger ×', emoji: '🔢', have: fluent, need: BIGMUL_UNLOCK_AT };
     if (!data.unlocked.fractions) return { name: 'Fractions', emoji: '🍕', have: fluent, need: FRAC_UNLOCK_AT };
     if (!data.unlocked.word) return { name: 'Word problems', emoji: '📖', have: fluent, need: WORD_UNLOCK_AT };
+    if (!data.unlocked.longdiv) return { name: 'Long division', emoji: '🧩', have: divMasteredCount(), need: LDIV_UNLOCK_AT, unit: 'division facts' };
     return null;
   }
   // Correct-but-slow = the child is counting/deriving, not retrieving
@@ -1070,6 +1094,13 @@ const Stats = (() => {
         const bigden = list.filter(e => e.bigden).length;
         if (bigden >= 2) { kind = 'misconception'; label = `Thinks a bigger bottom number means a bigger fraction (${bigden}×) — more pieces = smaller pieces`; }
         else label = `Comparing fractions: missed ${list.length}×`;
+      } else if (k.indexOf('ldiv.') === 0) {
+        const big = list.filter(e => e.bigrem).length, nor = list.filter(e => e.norem).length, zs = list.filter(e => e.zskip).length;
+        const nm = { 'ldiv.rem': 'Remainders', 'ldiv.long2': '2-digit long division', 'ldiv.long3': '3-digit long division' }[k] || 'Long division';
+        if (big >= 2) { kind = 'misconception'; label = `${nm}: remainder as big as the divisor (${big}×) — another group still fits`; }
+        else if (zs >= 2) { kind = 'misconception'; label = `${nm}: drops the zero inside the answer (${zs}×) — write 0 when the divisor doesn't fit`; }
+        else if (nor >= 2) { kind = 'misconception'; label = `${nm}: forgets the remainder (${nor}×) — check what is left over`; }
+        else label = `${nm}: missed ${list.length}×`;
       } else if (k.indexOf('word.') === 0) {
         const schema = list.filter(e => e.schema).length;
         const nm = { 'word.wjoin': 'Join/separate', 'word.wcompare': 'Comparing',
@@ -1254,6 +1285,7 @@ const Stats = (() => {
       bigmul: skillSummary('bigmul'),
       fractions: skillSummary('fractions'),
       word: skillSummary('word'),
+      longdiv: skillSummary('longdiv'),
       hist: data.hist.slice(-10),
       streak: streakStatus(),
       buckets: bucketSummary(),
@@ -1325,7 +1357,7 @@ const Stats = (() => {
     }
     return Object.values(byKey).sort((x, y) => (x[tsField] || 0) - (y[tsField] || 0));
   }
-  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery, mulSeenCount, recentAccuracy, nextUnlock, isSlowFact, pickDueFacts, getHist, getErrlog, pickMasteredFact, dueBacklog, reviewQuota, getSnaps, repairSnaps, engineCheck, savePlan, getPlans, recordError, errorPatterns, getDaily, markDaily };
+  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery, mulSeenCount, recentAccuracy, nextUnlock, divMasteredCount, skillP, isSlowFact, pickDueFacts, getHist, getErrlog, pickMasteredFact, dueBacklog, reviewQuota, getSnaps, repairSnaps, engineCheck, savePlan, getPlans, recordError, errorPatterns, getDaily, markDaily };
 })();
 
 // Merge helpers for cross-device sync (keep the richer record, union history)
@@ -1915,6 +1947,71 @@ function genWord(kind) {
     ans: groups, trap: total - per, op: `${total} ÷ ${per}` };
 }
 
+/* ---------- Remainders & long division ---------- */
+// Three sub-skills, weighted toward the weakest like fractions and word
+// problems: a fact with a remainder (47 ÷ 6 = 7 R 5), 2-digit ÷ 1-digit, and
+// 3-digit ÷ 1-digit — which sometimes has a zero inside the quotient (624 ÷ 6
+// = 104), the step children most often skip.
+const LD_KINDS = ['rem', 'long2', 'long3'];
+function ldKindLabel(k) { return { rem: 'Remainders', long2: '2-digit ÷', long3: '3-digit ÷' }[k] || k; }
+function pickLongDivKind() {
+  const ws = LD_KINDS.map(k => Stats.factWeight(Stats.getSkill('ldiv.' + k)));
+  let r = Math.random() * ws.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < LD_KINDS.length; i++) { r -= ws[i]; if (r <= 0) return LD_KINDS[i]; }
+  return LD_KINDS[LD_KINDS.length - 1];
+}
+function genLongDiv(kind) {
+  kind = kind || pickLongDivKind();
+  const st = Stats.getSkill('ldiv.' + kind);
+  const isReview = !!st && (st.wrong || 0) > 0 && Stats.factWeight(st) > 1.5;
+  let d, q, r;
+  if (kind === 'rem') {
+    d = rint(3, 9); q = rint(2, 9); r = rint(1, d - 1);
+  } else if (kind === 'long2') {
+    d = rint(2, 9); q = rint(11, Math.floor(99 / d));
+    r = Math.random() < 0.5 ? 0 : rint(1, d - 1);
+    if (d * q + r > 99) r = 0;
+  } else {
+    d = rint(2, 9); q = rint(Math.ceil(100 / d), Math.floor(999 / d));
+    if (q >= 100 && Math.random() < 0.35) q = Math.floor(q / 100) * 100 + (q % 10); // zero in the tens place
+    r = Math.random() < 0.5 ? 0 : rint(1, d - 1);
+    if (d * q + r > 999) r = 0;
+  }
+  return { type: 'ldiv', ldk: kind, a: d * q + r, b: d, ans: q, rem: r,
+           label: kind === 'rem' ? 'Division · remainders' : 'Long division', isReview };
+}
+// The divide-multiply-subtract-bring-down trace, one line per step.
+function longDivSteps(a, b) {
+  const digits = String(a).split('').map(Number);
+  const lines = [];
+  let cur = 0, quot = '', started = false;
+  for (let i = 0; i < digits.length; i++) {
+    cur = cur * 10 + digits[i];
+    const qd = Math.floor(cur / b);
+    const last = i === digits.length - 1;
+    if (!started && qd === 0 && !last) { lines.push(`${cur} ÷ ${b}: ${b} doesn't fit into ${cur}, so use the next digit too`); continue; }
+    if (started && qd === 0) {
+      lines.push(`${cur} ÷ ${b}: ${b} doesn't fit, so write 0 in the answer` + (last ? '' : `, then bring down ${digits[i + 1]}`));
+      quot += '0';
+      continue;
+    }
+    started = true;
+    quot += String(qd);
+    const prod = qd * b, rest = cur - prod;
+    lines.push(`${cur} ÷ ${b} = ${qd}.  ${qd} × ${b} = ${prod}.  ${cur} − ${prod} = ${rest}` + (last ? '' : `.  Bring down ${digits[i + 1]}`));
+    cur = rest;
+  }
+  lines.push(`Answer: ${Number(quot)} R ${cur}`);
+  return lines;
+}
+function longDivQuiz() {
+  const qs = LD_KINDS.map(k => genLongDiv(k));
+  for (let i = 0; i < 5; i++) qs.push(genLongDiv());
+  qs.push(genAdd(Stats.pickBucket('add')));
+  qs.push(genSub(Stats.pickBucket('sub')));
+  return shuffleQuiz(qs);
+}
+
 function shuffleQuiz(qs) {
   for (let i = qs.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -1950,10 +2047,11 @@ function newQuiz() {
   const bigOn = Stats.isUnlocked('bigmul');
   const fracOn = Stats.isUnlocked('fractions');
   const wordOn = Stats.isUnlocked('word');
+  const longOn = Stats.isUnlocked('longdiv');
 
   // Allocate 6 non-add/sub slots by band — more mul-fact reps for novices
   // (easier, builds confidence), more challenge slots for experts.
-  let mul, big, div, frac, rev = 0, word = 0;
+  let mul, big, div, frac, rev = 0, word = 0, longdiv = 0;
   if (band === 'novice') {
     mul = 6 - (divOn ? 1 : 0); big = 0; div = divOn ? 1 : 0; frac = 0;
   } else if (band === 'developing') {
@@ -1961,6 +2059,31 @@ function newQuiz() {
   } else if (band === 'practicing') {
     rev = Stats.reviewQuota(band); mul = Math.max(0, 2 - rev);
     big = bigOn ? 1 : 0; div = divOn ? 1 : 0; frac = fracOn ? 1 : 0; word = wordOn ? 1 : 0;
+    longdiv = longOn ? 1 : 0;
+  } else if (wordOn || longOn) { // expert with learning domains open
+    // The domains still being learned (word problems, long division) each
+    // get a slot and the weaker of them one more; the near-mastered domains
+    // (division, 2-digit ×, fractions) share what is left in rotation, so
+    // none of them is dropped for good.
+    rev = Stats.reviewQuota(band); mul = 0;
+    let budget = 6 - rev;
+    const learning = [];
+    if (wordOn) learning.push('word');
+    if (longOn) learning.push('longdiv');
+    const give = { word: 0, longdiv: 0 };
+    for (const d of learning) if (budget > 0) { give[d]++; budget--; }
+    if (budget > 1) {
+      const weakest = learning.slice().sort((x, y) => Stats.skillP(x) - Stats.skillP(y))[0];
+      give[weakest]++; budget--;
+    }
+    const pool = [];
+    if (divOn) pool.push('div');
+    if (bigOn) pool.push('big');
+    if (fracOn) pool.push('frac');
+    for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+    const take = { div: 0, big: 0, frac: 0 };
+    for (let i = 0; i < budget && pool.length; i++) take[pool[i % pool.length]]++;
+    word = give.word; longdiv = give.longdiv; div = take.div; big = take.big; frac = take.frac;
   } else { // expert
     // Six slots for five demands, so the two near-mastered domains (2-digit ×
     // and fractions) alternate rather than one of them always being trimmed
@@ -1974,19 +2097,20 @@ function newQuiz() {
   }
   // Backfill into mul if some domains are still locked.
   const target = 6;
-  let used = mul + big + div + frac + rev + word;
+  let used = mul + big + div + frac + rev + word + longdiv;
   if (used < target) mul += (target - used);
   // Trim to exactly 6 by dropping from the hardest available domain.
-  used = mul + big + div + frac + rev + word;
+  used = mul + big + div + frac + rev + word + longdiv;
   while (used > target) {
     if (frac > 0 && band !== 'expert') frac--;
     else if (big > 0) big--;
     else if (div > 0) div--;
     else if (mul > 1) mul--;
     else if (word > 1) word--;
+    else if (longdiv > 1) longdiv--;
     else if (rev > 1) rev--;
     else break;
-    used = mul + big + div + frac + rev + word;
+    used = mul + big + div + frac + rev + word + longdiv;
   }
   // Bias mul-fact selection: novices get easier, experts get harder.
   const mulBias = band === 'novice' || band === 'developing' ? 'easy'
@@ -2006,6 +2130,7 @@ function newQuiz() {
   for (let i = 0; i < div; i++) qs.push(genDiv());
   for (let i = 0; i < frac; i++) qs.push(genFraction());
   for (let i = 0; i < word; i++) qs.push(genWord());
+  for (let i = 0; i < longdiv; i++) qs.push(genLongDiv());
   const bucketBias = band === 'novice' ? 'easy' : band === 'expert' ? 'hard' : 'auto';
   for (let i = 0; i < 2; i++) qs.push(genAdd(Stats.pickBucket('add', bucketBias)));
   for (let i = 0; i < 2; i++) qs.push(genSub(Stats.pickBucket('sub', bucketBias)));
@@ -2126,7 +2251,36 @@ function diagFraction(q) {
   return { why: q.given ? `Not quite — ${q.n1}/${q.d1} ${q.ans} ${q.n2}/${q.d2}.` : 'You didn\'t pick one.', work, tip };
 }
 
+// Remainder and long-division mistakes each need different teaching: a
+// remainder as big as the divisor means another group still fits; a
+// forgotten remainder means the leftovers were ignored; a quotient missing
+// its zero means a step where the divisor didn't fit was skipped.
+function ldivMiss(q) {
+  const g = ldivGiven(q);
+  if (g.gq === '' && g.gr === '') return 'blank';
+  if (g.r >= q.b) return 'bigrem';
+  if (g.q === q.ans && g.r === 0 && q.rem > 0) return 'norem';
+  if (g.q === q.ans) return 'remslip';
+  const qs = String(q.ans);
+  if (qs.includes('0') && g.q === Number(qs.replace(/0/g, ''))) return 'zeroskip';
+  return 'other';
+}
+function diagLongDiv(q) {
+  const work = q.ldk === 'rem'
+    ? `${q.b} × ${q.ans} = ${q.b * q.ans} is the biggest that fits into ${q.a}.\n${q.a} − ${q.b * q.ans} = ${q.rem} left over.\nAnswer: ${q.ans} R ${q.rem}`
+    : longDivSteps(q.a, q.b).join('\n');
+  const g = ldivGiven(q);
+  switch (ldivMiss(q)) {
+    case 'blank': return { why: 'You left this one blank.', work, tip: 'Divide, multiply, subtract, bring down — one step at a time.' };
+    case 'bigrem': return { why: `Your remainder ${g.r} is not smaller than ${q.b}, so another group of ${q.b} still fits.`, work, tip: `The remainder is always smaller than the number you divide by (${q.b}).` };
+    case 'norem': return { why: `You found the groups (${q.ans}) but forgot what was left over.`, work, tip: `After dividing, check: ${q.a} − ${q.b} × ${q.ans} = ${q.rem} is left over.` };
+    case 'remslip': return { why: `${q.ans} is right! The leftover is ${q.rem}, not ${g.r}.`, work, tip: `Leftover = ${q.a} − ${q.b * q.ans}.` };
+    case 'zeroskip': return { why: `A zero is missing from your answer. When ${q.b} doesn't fit into a step, you write 0 there and bring down the next digit.`, work, tip: 'Every digit you bring down gets a digit in the answer, even if it is 0.' };
+    default: return { why: `Let's go through it step by step.`, work, tip: 'Divide, multiply, subtract, bring down.' };
+  }
+}
 function diagnose(q, given) {
+  if (q.type === 'ldiv') return diagLongDiv(q);
   if (q.type === 'fnam' || q.type === 'feq' || q.type === 'fcmp') return diagFraction(q);
   if (q.type === 'word') return diagWord(q, Number(given));
   const g = Number(given);
@@ -2488,8 +2642,8 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v64';
-const APP_UPDATED = '2026-09-24';
+const APP_VERSION = 'v65';
+const APP_UPDATED = '2026-09-25';
 // In-progress quiz survives refreshes/crashes/SW updates: every answer
 // keystroke snapshots the session to localStorage; a fresh page load resumes
 // it (questions, typed answers, wall-clock timer) unless it's gone stale.
@@ -2532,7 +2686,8 @@ const _resumed = loadSession();
 // those resume straight into the quiz. An untouched quiz goes back to the
 // ready screen (and its unanswered questions still carry over on start).
 const _hasProgress = !!_resumed && (_resumed.submitted ||
-  (_resumed.quiz || []).some(q => (q.given || '') !== '' || (q.givenNum || '') !== '' || (q.givenDen || '') !== '' || q._imm));
+  (_resumed.quiz || []).some(q => (q.given || '') !== '' || (q.givenNum || '') !== '' || (q.givenDen || '') !== '' ||
+    (q.givenQ || '') !== '' || (q.givenR || '') !== '' || q._imm));
 const _boot = _resumed ? null : composeDailyStep();
 const state = {
   phase: _hasProgress ? 'quiz' : 'ready',
@@ -2609,6 +2764,7 @@ function renderTimer() {
 function qSig(q) {
   if (q.type === 'mul' || q.type === 'div') return `${q.type}:${Math.min(q.a, q.b)}x${Math.max(q.a, q.b)}${q.big ? ':big' : ''}`;
   if (q.type === 'word') return `word:${q.wkind}:${q.wvar}:${q.ans}`;
+  if (q.type === 'ldiv') return `ldiv:${q.a}/${q.b}`;
   if (q.type === 'fnam') return `fnam:${q.den}:${q.shaded}`;
   if (q.type === 'feq') return `feq:${q.n1}/${q.d1}=${q.d2}`;
   if (q.type === 'fcmp') return `fcmp:${q.n1}/${q.d1}v${q.n2}/${q.d2}`;
@@ -2623,7 +2779,7 @@ function startNew() {
   const isAS = q => q.type === 'add' || q.type === 'sub';
   const unanswered = (!state.submitted && Array.isArray(state.quiz))
     ? state.quiz.filter(q => !answered(q))
-        .map(q => ({ ...q, given: '', givenNum: '', givenDen: '', _t0: undefined, _t1: undefined, _imm: undefined, _retype: undefined, _priorState: undefined }))
+        .map(q => ({ ...q, given: '', givenNum: '', givenDen: '', givenQ: '', givenR: '', _t0: undefined, _t1: undefined, _imm: undefined, _retype: undefined, _priorState: undefined }))
     : [];
   const stepInfo = composeDailyStep();
   let fresh = stepInfo.quiz;
@@ -2686,7 +2842,7 @@ function startFocus() {
 function retryWrong() {
   const wrong = state.quiz.filter(q => !answerCorrect(q));
   if (!wrong.length) { startNew(); return; }
-  state.quiz = wrong.map((q, i) => ({ ...q, id: i, given: '', givenNum: '', givenDen: '', _imm: undefined, _retype: undefined, _t0: undefined, _t1: undefined }));
+  state.quiz = wrong.map((q, i) => ({ ...q, id: i, given: '', givenNum: '', givenDen: '', givenQ: '', givenR: '', _imm: undefined, _retype: undefined, _t0: undefined, _t1: undefined }));
   state.phase = 'quiz';
   state.immediate = true; // relearning missed items → immediate corrective feedback
   state.isPractice = true; // don't log a partial set to history/streak
@@ -2729,6 +2885,11 @@ function errEntry(q) {
              bigden: q.n1 === q.n2 && ((q.given === '>' && q.d1 > q.d2) || (q.given === '<' && q.d2 > q.d1)) };
   }
   if (q.type === 'feq') return { d, k: 'feq', g: String(q.given || ''), ans: String(q.ans), sc };
+  if (q.type === 'ldiv') {
+    const g = ldivGiven(q), miss = ldivMiss(q);
+    return { d, k: 'ldiv.' + q.ldk, x: [q.a, q.b], g: g.gq === '' && g.gr === '' ? '' : `${g.gq} R ${g.gr || 0}`, ans: answerText(q), sc,
+             bigrem: miss === 'bigrem', norem: miss === 'norem', zskip: miss === 'zeroskip' };
+  }
   if (q.type === 'word') {
     return { d, k: 'word.' + q.wkind, g: String(q.given || ''), ans: String(q.ans), sc,
              schema: num(q.given) === q.trap };  // picked the keyword-matched operation
@@ -2775,6 +2936,10 @@ function submit(fromTimeout) {
     else if (q.type === 'word') {
       Stats.recordSkill('word', isRight, ms, sc);
       Stats.recordSkill('word.' + q.wkind, isRight, ms, sc);
+    }
+    else if (q.type === 'ldiv') {
+      Stats.recordSkill('longdiv', isRight, ms, sc);
+      Stats.recordSkill('ldiv.' + q.ldk, isRight, ms, sc);
     }
     else if (q.bucket) Stats.recordBucket(q.bucket, isRight);
     if (!isRight) { try { Stats.recordError(errEntry(q)); } catch {} }
@@ -2924,6 +3089,7 @@ function renderTopbar() {
   if (Stats.isUnlocked('bigmul')) parts.push(['🔢', '2-digit ×']);
   if (Stats.isUnlocked('fractions')) parts.push(['🍕', 'Fractions']);
   if (Stats.isUnlocked('word')) parts.push(['📖', 'Word problems']);
+  if (Stats.isUnlocked('longdiv')) parts.push(['🧩', 'Remainders & long division']);
   const sub = el('p', null, parts.map(p => p[0]).join(' ') + ' · 10-min timer');
   sub.title = parts.map(p => p[1]).join(' · ');
   txt.appendChild(sub);
@@ -2977,12 +3143,19 @@ function renderTopbar() {
 }
 
 // Unified answer checking (fractions/compare aren't single numbers).
+function ldivGiven(q) {
+  const gq = String(q.givenQ == null ? '' : q.givenQ).trim();
+  const gr = String(q.givenR == null ? '' : q.givenR).trim();
+  return { gq, gr, q: gq === '' ? NaN : Number(gq), r: gr === '' ? 0 : Number(gr) }; // blank remainder = 0
+}
 function answerCorrect(q) {
+  if (q.type === 'ldiv') { const g = ldivGiven(q); return g.q === q.ans && g.r === q.rem; }
   if (q.type === 'fnam') return Number(q.givenNum) === q.ansNum && Number(q.givenDen) === q.ansDen;
   if (q.type === 'fcmp') return q.given === q.ans;
   return Number(q.given) === q.ans;
 }
 function answerText(q) {
+  if (q.type === 'ldiv') return `${q.ans} R ${q.rem}`;
   if (q.type === 'fnam') return q.ansNum + '/' + q.ansDen;
   return String(q.ans);
 }
@@ -2997,9 +3170,11 @@ function exprText(q) {
   if (q.type === 'feq') return `${q.n1}/${q.d1} = ?/${q.d2}`;
   if (q.type === 'fcmp') return `${q.n1}/${q.d1} ? ${q.n2}/${q.d2}`;
   if (q.type === 'fnam') return 'this fraction';
+  if (q.type === 'ldiv') return `${q.a} ÷ ${q.b}`;
   return '';
 }
 function answered(q) {
+  if (q.type === 'ldiv') return String(q.givenQ || '') !== '' || String(q.givenR || '') !== '';
   if (q.type === 'fnam') return (q.givenNum || '') !== '' || (q.givenDen || '') !== '';
   return (q.given || '') !== '';
 }
@@ -3061,6 +3236,34 @@ function renderQuestion(q, idx) {
       tip.appendChild(spanTxt('Read it twice. What is the question actually asking for — a total, a difference, or a share?', null));
       card.appendChild(tip);
     }
+  }
+
+  if (q.type === 'ldiv') {
+    const row = el('div', 'qrow ldiv-row');
+    const expr = el('div', 'expr');
+    expr.appendChild(spanTxt(q.a, 'tabular'));
+    expr.appendChild(spanTxt('÷', 'op'));
+    expr.appendChild(spanTxt(q.b, 'tabular'));
+    expr.appendChild(spanTxt('=', 'eq'));
+    row.appendChild(expr);
+    const box = el('div', 'ldiv-answer');
+    const qi = fracInput(q, idx, 'givenQ', '?'); qi.classList.add('ldiv-q');
+    qi.setAttribute('aria-label', `Question ${idx + 1}: ${q.a} divided by ${q.b}, the answer`);
+    const ri = fracInput(q, idx, 'givenR', '0'); ri.classList.add('ldiv-r');
+    ri.setAttribute('aria-label', `Question ${idx + 1}: the remainder`);
+    if (state.submitted) { qi.classList.add(right ? 'ok' : 'bad'); ri.classList.add(right ? 'ok' : 'bad'); }
+    box.appendChild(qi); box.appendChild(el('span', 'ldiv-R', 'R')); box.appendChild(ri);
+    row.appendChild(box);
+    if (wrong) { const pill = el('div', 'correct-pill'); pill.appendChild(spanTxt('Answer', 'ar')); pill.appendChild(spanTxt(answerText(q), 'tabular')); row.appendChild(pill); }
+    card.appendChild(row);
+    if (!state.submitted && q.isReview) {
+      const tip = el('div', 'pretip');
+      tip.appendChild(spanTxt('💡 ', null));
+      tip.appendChild(spanTxt(`Divide, multiply, subtract, bring down. The remainder must be smaller than ${q.b}.`, null));
+      card.appendChild(tip);
+    }
+    if (wrong) card.appendChild(renderDiag(q));
+    return card;
   }
 
   if (q.type === 'fnam' || q.type === 'feq' || q.type === 'fcmp') {
@@ -3314,6 +3517,7 @@ function renderFractionRow(q, idx, right, wrong) {
 
 function teachPayload(q) {
   if (q.type === 'word') return { type: 'word', text: q.text, op: q.op, ans: q.ans };
+  if (q.type === 'ldiv') return { type: 'ldiv', a: q.a, b: q.b, q: q.ans, r: q.rem };
   if (q.type === 'fnam') return { type: 'fnam', shaded: q.shaded, den: q.den };
   if (q.type === 'feq') return { type: 'feq', n1: q.n1, d1: q.d1, d2: q.d2, ans: q.ans };
   if (q.type === 'fcmp') return { type: 'fcmp', n1: q.n1, d1: q.d1, n2: q.n2, d2: q.d2, ans: q.ans };
@@ -3559,6 +3763,7 @@ function startDivisionPractice() { startFocusedQuiz('divisionLesson', divisionQu
 function startBigmulPractice() { startFocusedQuiz('bigmulLesson', bigmulQuiz); }
 function startFractionPractice() { startFocusedQuiz('fractionsLesson', fractionQuiz); }
 function startWordPractice() { startFocusedQuiz('wordLesson', wordQuiz); }
+function startLongDivPractice() { startFocusedQuiz('longdivLesson', longDivQuiz); }
 
 // Concrete → Representational → Abstract lesson for a domain.
 function renderLessonModal(domain) {
@@ -3636,6 +3841,31 @@ function renderLessonModal(domain) {
     actions.appendChild(later);
     actions.appendChild(go);
     m.appendChild(actions);
+  } else if (domain === 'longdiv') {
+    const fresh = !Stats.hasSeen('longdivLesson');
+    m.appendChild(el('div', 'ico-big', '🧩'));
+    m.appendChild(el('h2', null, fresh ? '🎉 New skill unlocked: Remainders & long division' : 'Remainders & long division'));
+    m.appendChild(el('p', null, 'Sometimes things don\'t share out evenly — and big numbers can be shared one digit at a time.'));
+
+    m.appendChild(el('h3', 'lesson-h', '1) Share it out'));
+    m.appendChild(el('p', 'lesson-p', '14 cookies shared between 4 friends: each friend gets 3, and 2 are left over.'));
+    m.appendChild(el('div', 'ldiv-cookies', '🍪🍪🍪 · 🍪🍪🍪 · 🍪🍪🍪 · 🍪🍪🍪   left over: 🍪🍪'));
+    m.appendChild(el('p', 'lesson-p', 'We write that as 14 ÷ 4 = 3 R 2. The "R" means remainder — what is left over.'));
+
+    m.appendChild(el('h3', 'lesson-h', '2) The remainder rule'));
+    m.appendChild(el('p', 'lesson-p', 'The remainder is always smaller than the number you divide by. If you have 4 or more left over when sharing between 4, everyone can get one more!'));
+
+    m.appendChild(el('h3', 'lesson-h', '3) Long division: four steps, repeated'));
+    m.appendChild(el('p', 'lesson-p', 'Divide · Multiply · Subtract · Bring down. Here is 156 ÷ 6:'));
+    m.appendChild(el('div', 'ldiv-steps', longDivSteps(156, 6).join('\n')));
+
+    m.appendChild(el('h3', 'lesson-h', '4) Watch for zeros'));
+    m.appendChild(el('p', 'lesson-p', 'In 624 ÷ 6, after 6 goes into 6 once, 6 does not fit into 2 — so you write 0 in the answer and bring down the 4. The answer is 104, not 14.'));
+    m.appendChild(el('div', 'ldiv-steps', longDivSteps(624, 6).join('\n')));
+
+    const go = el('button', 'btn btn-primary lesson-go', '✏️ Try some');
+    go.onclick = startLongDivPractice;
+    m.appendChild(go);
   } else if (domain === 'word') {
     const fresh = !Stats.hasSeen('wordLesson');
     m.appendChild(el('div', 'ico-big', '📖'));
@@ -3771,6 +4001,7 @@ function renderMineModal() {
   if (s.bigmul.unlocked) rows.push({ name: 'Bigger ×', emoji: '🔢', mastery: s.bigmul.mastery });
   if (s.fractions.unlocked) rows.push({ name: 'Fractions', emoji: '🍕', mastery: s.fractions.mastery });
   if (s.word.unlocked) rows.push({ name: 'Word problems', emoji: '📖', mastery: s.word.mastery });
+  if (s.longdiv.unlocked) rows.push({ name: 'Long division', emoji: '🧩', mastery: s.longdiv.mastery });
   rows.forEach(r => {
     const stg = masteryStage(r.mastery);
     const card = el('div', 'mine-card');
@@ -3785,6 +4016,13 @@ function renderMineModal() {
       const chips = el('div', 'mine-chips');
       [['frac.fnam', 'Naming'], ['frac.feq', 'Equal'], ['frac.fcmp', 'Compare']].forEach(([k, label]) => {
         chips.appendChild(el('span', 'mine-chip', `${stEmoji[Stats.skillState(k)] || '⚪'} ${label}`));
+      });
+      card.appendChild(chips);
+    }
+    if (r.name === 'Long division') {
+      const chips = el('div', 'mine-chips');
+      LD_KINDS.forEach(k => {
+        chips.appendChild(el('span', 'mine-chip', `${stEmoji[Stats.skillState('ldiv.' + k)] || '⚪'} ${ldKindLabel(k)}`));
       });
       card.appendChild(chips);
     }
@@ -3837,7 +4075,7 @@ function renderMineModal() {
     fill.style.width = Math.min(100, Math.round(100 * nu.have / nu.need)) + '%';
     meter.appendChild(fill);
     uc.appendChild(meter);
-    uc.appendChild(el('div', 'unlock-sub', `⚡ ${nu.have} of ${nu.need} facts fast & steady — ${nu.need - nu.have} to go!`));
+    uc.appendChild(el('div', 'unlock-sub', `⚡ ${nu.have} of ${nu.need} ${nu.unit || 'facts'} fast & steady — ${nu.need - nu.have} to go!`));
     m.appendChild(uc);
   }
 
@@ -3871,11 +4109,14 @@ function qLabel(q) {
   if (q.type === 'feq') return `${q.n1}/${q.d1} = ?/${q.d2}`;
   if (q.type === 'fcmp') return `${q.n1}/${q.d1} ? ${q.n2}/${q.d2}`;
   if (q.type === 'word') return `📖 ${wordKindLabel(q.wkind)}`;
+  if (q.type === 'ldiv') return `${q.a} ÷ ${q.b} (with R)`;
   return q.type;
 }
 function sessionQuestions(quiz) {
   return quiz.map(q => {
-    const given = (q.type === 'fnam' ? `${q.givenNum || ''}/${q.givenDen || ''}` : String(q.given == null ? '' : q.given)).trim().slice(0, 16);
+    const given = (q.type === 'fnam' ? `${q.givenNum || ''}/${q.givenDen || ''}`
+      : q.type === 'ldiv' ? (answered(q) ? `${q.givenQ || ''} R ${q.givenR || 0}` : '')
+      : String(q.given == null ? '' : q.given)).trim().slice(0, 16);
     const ok = answerCorrect(q) ? 1 : 0;
     const row = [qLabel(q), given === '/' ? '' : given, answerText(q), ok];
     if (!ok && q.type === 'word' && q.text) row.push(String(q.text).slice(0, 240));
@@ -3894,6 +4135,7 @@ function errLabel(e) {
   if (k === 'feq') return 'equal fractions';
   if (k === 'fcmp') return 'comparing fractions';
   if (k.startsWith('word.')) return `📖 ${wordKindLabel(k.slice(5))}`;
+  if (k.startsWith('ldiv.') && e.x) return `${e.x[0]} ÷ ${e.x[1]}`;
   return k;
 }
 function localDayKey(ts) {
@@ -4029,6 +4271,7 @@ function renderStatsModal() {
     if (s.bigmul.unlocked) domHintParts.push(`🔢 ${s.bigmul.mastery}%`);
     if (s.fractions.unlocked) domHintParts.push(`🍕 ${s.fractions.mastery}%`);
     if (s.word.unlocked) domHintParts.push(`📖 ${s.word.mastery}%`);
+    if (s.longdiv.unlocked) domHintParts.push(`🧩 ${s.longdiv.mastery}%`);
     const domGroup = statsGroup('📚 By domain', domHintParts.join(' · '), false);
     const factsLine = el('p', 'stats-line',
       `Multiplication: ${s.totalAttempts} attempts · ${s.totalAccuracy}% accurate · ${s.mastered}/66 facts mastered`);
@@ -4168,6 +4411,29 @@ function renderStatsModal() {
       prac4.onclick = startWordPractice;
       row4.appendChild(learn4); row4.appendChild(prac4);
       domGroup.appendChild(row4);
+    }
+
+    domGroup.appendChild(el('h3', 'stats-h3', '🧩 Remainders & long division'));
+    if (!s.longdiv.unlocked) {
+      domGroup.appendChild(el('p', 'stats-line', s.word.unlocked
+        ? `Locked — unlocks at 40 mastered division facts (now ${Stats.divMasteredCount()}/40).`
+        : 'Locked — comes after word problems, once division facts are solid.'));
+    } else {
+      const stTxt = s.longdiv.state === 'fluent' ? 'fluent 🌟' : s.longdiv.state === 'accurate' ? 'accurate' : 'learning';
+      domGroup.appendChild(el('p', 'stats-line', `${s.longdiv.attempts} attempts · ${s.longdiv.accuracy}% accurate · ${s.longdiv.mastery}% mastery · ${stTxt}`));
+      domGroup.appendChild(masteryMeter(s.longdiv.mastery));
+      domGroup.appendChild(el('p', 'stats-line', LD_KINDS.map(k => {
+        const f = Stats.getSkill('ldiv.' + k);
+        const n = f ? (f.right || 0) + (f.wrong || 0) : 0;
+        return `${ldKindLabel(k)} ${n ? Math.round(100 * (f.right || 0) / n) + '%' : '—'}`;
+      }).join(' · ')));
+      const row5 = el('div', 'div-actions');
+      const learn5 = el('button', 'btn btn-ghost', '📖 Lesson');
+      learn5.onclick = () => { state.showLesson = 'longdiv'; render(); };
+      const prac5 = el('button', 'btn btn-primary', '✏️ Practice long division');
+      prac5.onclick = startLongDivPractice;
+      row5.appendChild(learn5); row5.appendChild(prac5);
+      domGroup.appendChild(row5);
     }
     m.appendChild(domGroup);
 
@@ -4352,6 +4618,7 @@ function openPrintView() {
   ${dom('2-digit multiplication', s.bigmul, s.bigmul.unlocked ? s.bigmul.accuracy : null)}
   ${dom('Fractions', s.fractions, s.fractions.unlocked ? s.fractions.accuracy : null)}
   ${dom('Word problems', s.word, s.word.unlocked ? s.word.accuracy : null)}
+  ${dom('Remainders & long division', s.longdiv, s.longdiv.unlocked ? s.longdiv.accuracy : null)}
 </tbody></table>
 <h2>Practice these next</h2>
 <p>${weak}</p>
@@ -4401,6 +4668,14 @@ async function generatePlan(container, btn) {
         : 'locked',
       twoDigitMultiplication: s.bigmul.unlocked
         ? { attempts: s.bigmul.attempts, accuracyPct: s.bigmul.accuracy, masteryPct: s.bigmul.mastery }
+        : 'locked',
+      longDivision: s.longdiv.unlocked
+        ? { attempts: s.longdiv.attempts, accuracyPct: s.longdiv.accuracy, masteryPct: s.longdiv.mastery,
+            byKind: LD_KINDS.reduce((o, k) => {
+              const f = Stats.getSkill('ldiv.' + k), n = f ? (f.right || 0) + (f.wrong || 0) : 0;
+              o[ldKindLabel(k)] = n ? Math.round(100 * (f.right || 0) / n) + '%' : 'not seen';
+              return o;
+            }, {}) }
         : 'locked',
       wordProblems: s.word.unlocked
         ? { attempts: s.word.attempts, accuracyPct: s.word.accuracy, masteryPct: s.word.mastery,

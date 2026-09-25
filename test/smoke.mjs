@@ -397,6 +397,111 @@ check('the deliberate miss is marked', log.todayMisses >= 1, `misses=${log.today
 check('days without practice are called out', /2 days without practice/.test(log.gap), log.gap);
 check('an older day shows its mistakes from the error log', /7 × 8: 54 → 56/.test(log.oldMistakes), log.oldMistakes);
 
+console.log('15. remainders & long division: generator, steps, diagnosis, unlock, real inputs');
+await page.evaluate(() => { localStorage.clear(); });
+await page.goto(base);
+await page.waitForSelector('.ready-start, .qcard');
+const ld = await page.evaluate(() => {
+  const bad = [];
+  let zeroInside = 0;
+  for (let i = 0; i < 1500; i++) {
+    const q = genLongDiv();
+    if (q.a !== q.b * q.ans + q.rem || q.rem < 0 || q.rem >= q.b) bad.push(`${q.a}÷${q.b}=${q.ans}R${q.rem}`);
+    if (q.ldk === 'rem' && q.rem === 0) bad.push('rem kind without remainder');
+    if (q.ldk === 'long2' && (q.a > 99 || q.ans < 11)) bad.push(`long2 ${q.a}`);
+    if (q.ldk === 'long3' && (q.a < 100 || q.a > 999)) bad.push(`long3 ${q.a}`);
+    if (String(q.ans).slice(1).includes('0')) zeroInside++;
+    const last = longDivSteps(q.a, q.b).slice(-1)[0];
+    if (last !== `Answer: ${q.ans} R ${q.rem}`) bad.push(`steps ${q.a}÷${q.b}: ${last}`);
+  }
+  const mk = (a, b, ans, rem, ldk, gq, gr) => ({ type: 'ldiv', ldk, a, b, ans, rem, givenQ: gq, givenR: gr });
+  const miss = [
+    ldivMiss(mk(47, 6, 7, 5, 'rem', '6', '11')),
+    ldivMiss(mk(47, 6, 7, 5, 'rem', '7', '')),
+    ldivMiss(mk(47, 6, 7, 5, 'rem', '7', '4')),
+    ldivMiss(mk(624, 6, 104, 0, 'long3', '14', '0')),
+    ldivMiss(mk(156, 6, 26, 0, 'long2', '31', '0')),
+    ldivMiss(mk(156, 6, 26, 0, 'long2', '', '')),
+  ].join(',');
+  const grade = [
+    answerCorrect(mk(84, 4, 21, 0, 'long2', '21', '')),   // blank remainder means 0
+    answerCorrect(mk(47, 6, 7, 5, 'rem', '7', '5')),
+    !answerCorrect(mk(47, 6, 7, 5, 'rem', '7', '')),      // forgotten remainder is wrong
+  ].every(Boolean);
+  const zeroStep = longDivSteps(624, 6).some(l => /doesn't fit, so write 0/.test(l));
+  // unlock: word problems first, then 40 solid division families
+  localStorage.clear(); Stats.reset();
+  for (let r = 0; r < 8; r++) for (let a = 2; a <= 12; a++) for (let b = a; b <= 12; b++) Stats.recordMul(a, b, true, 2000);
+  Stats.checkUnlocks();
+  const before = { word: Stats.isUnlocked('word'), longdiv: Stats.isUnlocked('longdiv'), next: (Stats.nextUnlock() || {}).name };
+  let n = 0;
+  for (let b = 2; b <= 12 && n < 40; b++) for (let c = b; c <= 12 && n < 40; c++) { for (let r = 0; r < 4; r++) Stats.recordDiv(b, c, true, 3000); n++; }
+  const newly = Stats.checkUnlocks();
+  const inQuiz = Array.from({ length: 20 }, () => newQuiz().filter(q => q.type === 'ldiv').length);
+  return { bad: bad.slice(0, 3), badCount: bad.length, zeroInside, miss, grade, zeroStep, before, newly,
+           solid: Stats.divMasteredCount(), inQuiz: Math.min(...inQuiz) };
+});
+check('1500 generated problems: a = b × q + r, r < b, ranges per kind, steps end in the answer', ld.badCount === 0, ld.bad.join('; '));
+check('some quotients have a zero inside', ld.zeroInside > 0, `${ld.zeroInside}`);
+check('the worked steps write the 0 when the divisor does not fit', ld.zeroStep);
+check('grading needs both quotient and remainder; blank remainder means 0', ld.grade);
+check('diagnosis classes: big remainder, no remainder, remainder slip, dropped zero, other, blank',
+  ld.miss === 'bigrem,norem,remslip,zeroskip,other,blank', ld.miss);
+check('locked until division is solid, and it is the next unlock after word problems',
+  ld.before.word && !ld.before.longdiv && ld.before.next === 'Long division', JSON.stringify(ld.before));
+check('unlocks at 40 solid division families', ld.newly === 'longdiv' && ld.solid >= 40, `newly=${ld.newly} solid=${ld.solid}`);
+check('once unlocked, every daily quiz includes long division', ld.inQuiz >= 1, `min per quiz=${ld.inQuiz}`);
+
+// the child types through the real inputs; the first answer drops the zero
+await page.evaluate(() => {
+  startLongDivPractice();
+  state.quiz[0] = { type: 'ldiv', ldk: 'long3', a: 624, b: 6, ans: 104, rem: 0, label: 'Long division', isReview: false, id: 0, given: '' };
+  render();
+});
+await page.waitForSelector('.ldiv-row');
+const nq = await page.evaluate(() => state.quiz.length);
+for (let i = 0; i < nq; i++) {
+  const q = await page.evaluate(i => state.quiz[i], i);
+  const card = (await page.$$('.qcard'))[i];
+  if (q.type === 'ldiv') {
+    const [qi, ri] = await card.$$('input');
+    await qi.fill(i === 0 ? '14' : String(q.ans));
+    await ri.fill(String(q.rem));
+  } else {
+    await (await card.$('input')).fill(String(q.ans));
+  }
+}
+await page.click('button:has-text("Check answers")');
+await page.waitForTimeout(400);
+const ldRun = await page.evaluate(() => {
+  const raw = Stats.exportRaw();
+  const sk = raw.skills.longdiv || {};
+  const firstCard = document.querySelector('.qcard');
+  return {
+    submitted: state.submitted,
+    wrong: state.quiz.filter(q => !answerCorrect(q)).map(q => q.a).join(','),
+    ldivCount: state.quiz.filter(q => q.type === 'ldiv').length,
+    recorded: (sk.right || 0) + (sk.wrong || 0), right: sk.right || 0,
+    err: raw.errlog.slice(-1)[0] || {},
+    logRow: (raw.hist.slice(-1)[0].q || []).find(r => String(r[0]).startsWith('624')) || [],
+    diagText: firstCard ? firstCard.textContent : '',
+    teach: JSON.stringify(teachPayload(state.quiz[0])),
+  };
+});
+check('long-division practice grades through the real inputs', ldRun.submitted && ldRun.wrong === '624', `wrong=${ldRun.wrong}`);
+check('every long-division answer is recorded', ldRun.recorded === ldRun.ldivCount && ldRun.right === ldRun.ldivCount - 1,
+  `${ldRun.right}/${ldRun.recorded} of ${ldRun.ldivCount}`);
+check('the dropped zero is logged as such', ldRun.err.k === 'ldiv.long3' && ldRun.err.zskip === true && ldRun.err.g === '14 R 0', JSON.stringify(ldRun.err));
+check('the card explains the missing zero and shows the steps',
+  /zero is missing/.test(ldRun.diagText) && /write 0 in the answer/.test(ldRun.diagText));
+check('the daily log shows the question with both answers', ldRun.logRow[1] === '14 R 0' && ldRun.logRow[2] === '104 R 0', JSON.stringify(ldRun.logRow));
+check('"Teach me this" sends the whole problem', ldRun.teach === '{"type":"ldiv","a":624,"b":6,"q":104,"r":0}', ldRun.teach);
+await page.evaluate(() => { state.showLesson = 'longdiv'; render(); });
+await page.waitForTimeout(200);
+check('the long-division lesson opens and offers practice',
+  await page.evaluate(() => { const m = document.querySelector('.modal'); return !!m && /Try some/.test(m.textContent); }));
+await page.evaluate(() => { state.showLesson = null; localStorage.clear(); });
+
 console.log('13. a release is announced when the app is resumed, not only on reload');
 await page.goto(base);
 await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 20000 });

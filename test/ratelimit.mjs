@@ -77,5 +77,15 @@ check('prompt carries the story and the plan', /Sam has 75 cards/.test(lastModel
 r = await call(teach, { problem: { type: 'word', text: 'x'.repeat(401), op: '1 + 1', ans: 2 } });
 check('oversized story is rejected before any model call', r.status === 400);
 
+console.log('6) long division is accepted by Teach me this, but only if the numbers add up');
+kv.clear();
+r = await call(teach, { problem: { type: 'ldiv', a: 624, b: 6, q: 104, r: 0 } });
+check('long division gets a lesson', r.status === 200 && r.out.lesson === 'a lesson');
+check('prompt carries the answer and the zero rule', /104 remainder 0/.test(lastModelPrompt) && /write a 0/.test(lastModelPrompt));
+r = await call(teach, { problem: { type: 'ldiv', a: 47, b: 6, q: 6, r: 11 } });
+check('a remainder not smaller than the divisor is rejected', r.status === 400);
+r = await call(teach, { problem: { type: 'ldiv', a: 50, b: 6, q: 7, r: 5 } });
+check('numbers that do not add up are rejected', r.status === 400);
+
 console.log(fails ? `\n${fails} FAILURE(S)` : '\nall rate-limit tests passed');
 process.exit(fails ? 1 : 0);
