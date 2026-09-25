@@ -362,6 +362,9 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .wbar{height:28px;background:var(--brand);color:#fff;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}
 .wbar.extra{background:var(--warn-deep,#d97706)}
 .wstory-wrap{position:relative}
+.m2-grid{display:grid;grid-template-columns:repeat(3,64px);gap:4px;margin:6px 0 8px;font-variant-numeric:tabular-nums}
+.m2-head{font-weight:700;color:var(--ink-3);text-align:center;padding:6px 0}
+.m2-cell{background:var(--brand-soft-2);border:1px solid var(--brand);border-radius:6px;text-align:center;padding:10px 0;font-weight:700;color:var(--ink)}
 .geo-fig{display:flex;justify-content:center;margin:4px 0 6px;overflow-x:auto}
 .geo-fig svg{max-width:100%;height:auto}
 .geo-shape{fill:var(--brand-soft-2);stroke:var(--brand-deep);stroke-width:2}
@@ -484,7 +487,7 @@ const Stats = (() => {
   const FAST_MS = 6000;      // fluency threshold for single mul facts
   // Multi-step questions take longer even when fluent — one global 6s bar
   // made 'fluent' unreachable for them and suppressed stability growth.
-  const FAST_BY_SKILL = { div: 8000, bigmul: 25000, fractions: 15000, longdiv: 25000, multi: 45000, geo: 20000 };
+  const FAST_BY_SKILL = { div: 8000, bigmul: 25000, fractions: 15000, longdiv: 25000, multi: 45000, geo: 20000, mul2: 45000 };
   const STAB_FLUENT = 12;    // days of stability needed to count a fact as mastered
   const STAB_MAX = 400;      // cap on stability (days)
   // Bayesian Knowledge Tracing params → a calibrated P(known) per fact.
@@ -555,7 +558,7 @@ const Stats = (() => {
         snaps: d.snaps || [],
         buckets: d.buckets || {},
         streak: d.streak || { current: 0, best: 0, lastDay: null },
-        unlocked: Object.assign({ division: false, bigmul: false, fractions: false, word: false, longdiv: false, multi: false, geo: false }, d.unlocked || {}),
+        unlocked: Object.assign({ division: false, bigmul: false, fractions: false, word: false, longdiv: false, multi: false, geo: false, mul2: false }, d.unlocked || {}),
         seen: d.seen || {},
         plans: d.plans || [],
         errlog: d.errlog || [],
@@ -564,7 +567,7 @@ const Stats = (() => {
       };
     } catch { return blank(); }
   }
-  function blank() { return { facts: {}, divFacts: {}, skills: {}, hist: [], snaps: [], buckets: {}, streak: { current: 0, best: 0, lastDay: null }, unlocked: { division: false, bigmul: false, fractions: false, word: false, longdiv: false, multi: false, geo: false }, seen: {}, plans: [], errlog: [], daily: { day: null, warmup: false, quiz: false }, pin: null }; }
+  function blank() { return { facts: {}, divFacts: {}, skills: {}, hist: [], snaps: [], buckets: {}, streak: { current: 0, best: 0, lastDay: null }, unlocked: { division: false, bigmul: false, fractions: false, word: false, longdiv: false, multi: false, geo: false, mul2: false }, seen: {}, plans: [], errlog: [], daily: { day: null, warmup: false, quiz: false }, pin: null }; }
   function save(d) {
     try { localStorage.setItem(STATS_KEY, JSON.stringify(d)); } catch {}
   }
@@ -584,6 +587,7 @@ const Stats = (() => {
     if (name === 'longdiv' || name.indexOf('ldiv.') === 0) return FAST_BY_SKILL.longdiv;
     if (name === 'multi' || name.indexOf('multi.') === 0) return FAST_BY_SKILL.multi;
     if (name === 'geo' || name.indexOf('geo.') === 0) return FAST_BY_SKILL.geo;
+    if (name === 'mul2' || name.indexOf('mul2.') === 0) return FAST_BY_SKILL.mul2;
     return name.indexOf('frac') === 0 ? FAST_BY_SKILL.fractions : FAST_MS;
   }
   function factState(f, now, fastMs) {
@@ -782,6 +786,10 @@ const Stats = (() => {
   function wordSolidCount() {
     return ['wjoin', 'wcompare', 'wgroups', 'wshare'].filter(k => isMasteredState(skillState('word.' + k))).length;
   }
+  function bigmulRecentRight() {
+    const r = (data.skills.bigmul && data.skills.bigmul.recent) || '';
+    return r.length < 8 ? Math.min(r.split('1').length - 1, MUL2_UNLOCK_AT - 1) : r.split('1').length - 1;
+  }
   function divMasteredCount() {
     const now = Date.now();
     let n = 0;
@@ -814,10 +822,12 @@ const Stats = (() => {
     if (q.type === 'word') return skillState((q.multi ? 'multi.' : 'word.') + q.wkind);
     if (q.type === 'ldiv') return skillState('ldiv.' + q.ldk);
     if (q.type === 'geo') return skillState('geo.' + q.gk);
+    if (q.type === 'mul2') return skillState('mul2.' + q.mk);
     return 'new';
   }
   const DIV_UNLOCK_AT = 24;    // division unlocks once enough mul facts are fluent
   const BIGMUL_UNLOCK_AT = 40; // 2-digit multiplication unlocks with strong table fluency
+  const MUL2_UNLOCK_AT = 7;    // 2-digit × 2-digit: 7 of the last 8 two-digit × one-digit right
   const GEO_UNLOCK_AT = 45;    // area is multiplication in rows and columns
   const FRAC_UNLOCK_AT = 50;   // fractions unlock once tables are very solid
   const WORD_UNLOCK_AT = 55;   // word problems need the operations to be automatic first
@@ -831,6 +841,9 @@ const Stats = (() => {
     }
     if (!data.unlocked.bigmul && fluent >= BIGMUL_UNLOCK_AT) {
       data.unlocked.bigmul = true; newly = newly || 'bigmul'; save(data);
+    }
+    if (!data.unlocked.mul2 && data.unlocked.bigmul && bigmulRecentRight() >= MUL2_UNLOCK_AT) {
+      data.unlocked.mul2 = true; newly = newly || 'mul2'; save(data);
     }
     if (!data.unlocked.geo && fluent >= GEO_UNLOCK_AT) {
       data.unlocked.geo = true; newly = newly || 'geo'; save(data);
@@ -873,9 +886,11 @@ const Stats = (() => {
     if (!data.unlocked.geo) return { name: 'Area & perimeter', emoji: '📏', have: fluent, need: GEO_UNLOCK_AT };
     if (!data.unlocked.fractions) return { name: 'Fractions', emoji: '🍕', have: fluent, need: FRAC_UNLOCK_AT };
     if (!data.unlocked.word) return { name: 'Word problems', emoji: '📖', have: fluent, need: WORD_UNLOCK_AT };
-    // After word problems two domains open independently; show whichever is closer.
+    // After word problems the remaining domains open independently; show whichever is closest.
     const after = [];
     if (!data.unlocked.longdiv) after.push({ name: 'Long division', emoji: '🧩', have: divMasteredCount(), need: LDIV_UNLOCK_AT, unit: 'division facts' });
+    if (!data.unlocked.mul2) after.push({ name: '2-digit × 2-digit', emoji: '🧮', have: bigmulRecentRight(), need: MUL2_UNLOCK_AT,
+      text: `${bigmulRecentRight()} of the last 8 two-digit × one-digit answers right, ${MUL2_UNLOCK_AT} needed` });
     if (!data.unlocked.multi) after.push({ name: 'Two-step problems', emoji: '🪜', have: wordSolidCount(), need: MULTI_UNLOCK_AT, unit: 'word-problem kinds' });
     return after.sort((x, y) => y.have / y.need - x.have / x.need)[0] || null;
   }
@@ -1127,6 +1142,13 @@ const Stats = (() => {
         else if (zs >= 2) { kind = 'misconception'; label = `${nm}: drops the zero inside the answer (${zs}×) — write 0 when the divisor doesn't fit`; }
         else if (nor >= 2) { kind = 'misconception'; label = `${nm}: forgets the remainder (${nor}×) — check what is left over`; }
         else label = `${nm}: missed ${list.length}×`;
+      } else if (k.indexOf('mul2.') === 0) {
+        const cross = list.filter(e => e.cross).length, shift = list.filter(e => e.shift).length, one = list.filter(e => e.onerow).length;
+        const nm = k === 'mul2.tens' ? '× a multiple of 10' : '2-digit × 2-digit';
+        if (cross >= 2) { kind = 'misconception'; label = `${nm}: multiplies only tens × tens and ones × ones (${cross}×) — four products, not two; draw the area model`; }
+        else if (shift >= 2) { kind = 'misconception'; label = `${nm}: treats the tens digit as ones (${shift}×) — the second row needs its zero`; }
+        else if (one >= 2) { kind = 'misconception'; label = `${nm}: stops after one row (${one}×) — multiply by the tens AND the ones, then add`; }
+        else label = `${nm}: missed ${list.length}×`;
       } else if (k.indexOf('geo.') === 0) {
         const mix = list.filter(e => e.mix).length, sides = list.filter(e => e.sides).length, bbox = list.filter(e => e.bbox).length;
         const nm = { 'geo.area': 'Area', 'geo.perim': 'Perimeter', 'geo.lshape': 'L-shapes', 'geo.missing': 'Missing side' }[k] || 'Area & perimeter';
@@ -1329,6 +1351,7 @@ const Stats = (() => {
       longdiv: skillSummary('longdiv'),
       multi: skillSummary('multi'),
       geo: skillSummary('geo'),
+      mul2: skillSummary('mul2'),
       hist: data.hist.slice(-10),
       streak: streakStatus(),
       buckets: bucketSummary(),
@@ -1400,7 +1423,7 @@ const Stats = (() => {
     }
     return Object.values(byKey).sort((x, y) => (x[tsField] || 0) - (y[tsField] || 0));
   }
-  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery, mulSeenCount, recentAccuracy, nextUnlock, divMasteredCount, wordSolidCount, skillP, isSlowFact, pickDueFacts, getHist, getErrlog, pickMasteredFact, dueBacklog, reviewQuota, getSnaps, repairSnaps, engineCheck, savePlan, getPlans, recordError, errorPatterns, getDaily, markDaily };
+  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery, mulSeenCount, recentAccuracy, nextUnlock, divMasteredCount, wordSolidCount, bigmulRecentRight, skillP, isSlowFact, pickDueFacts, getHist, getErrlog, pickMasteredFact, dueBacklog, reviewQuota, getSnaps, repairSnaps, engineCheck, savePlan, getPlans, recordError, errorPatterns, getDaily, markDaily };
 })();
 
 // Merge helpers for cross-device sync (keep the richer record, union history)
@@ -1608,9 +1631,9 @@ function focusNextOpen(fromInp) {
 // plan before the retype, instead of waiting for the whole quiz to be marked.
 function buildFixPill(q) {
   const pill = el('div', 'fixpill');
-  if ((q.type === 'word' && q.multi) || q.type === 'geo') {
+  if ((q.type === 'word' && q.multi) || q.type === 'geo' || q.type === 'mul2') {
     const g = Number(String(q.given).trim());
-    const m = q.type === 'geo' ? geoMiss(q, g) : multiMiss(q, g);
+    const m = q.type === 'geo' ? geoMiss(q, g) : q.type === 'mul2' ? mul2Miss(q, g) : multiMiss(q, g);
     if (m.why) pill.appendChild(el('div', 'fix-why', m.why));
     else if (m.cls === 'slip') pill.appendChild(el('div', 'fix-why', 'Right idea — just check the arithmetic.'));
     else pill.appendChild(el('div', 'fix-reason', q.plan));
@@ -2167,6 +2190,79 @@ function multiQuiz() {
   return shuffleQuiz(qs);
 }
 
+/* ---------- 2-digit × 2-digit ---------- */
+// CCSS 4.NBT.B.5, taught with the area model: split both numbers into tens
+// and ones and add the four partial products. The classic errors each drop
+// part of that picture: multiplying only tens by tens and ones by ones (the
+// two cross products missing), forgetting that the tens digit is worth ten
+// (no zero on the second row), or stopping after one row.
+const M2_KINDS = ['tens', 'full'];
+function mul2KindLabel(k) { return { tens: '× a multiple of 10', full: '2-digit × 2-digit' }[k] || k; }
+function pickMul2Kind() {
+  const ws = M2_KINDS.map(k => Stats.factWeight(Stats.getSkill('mul2.' + k)));
+  return Math.random() * (ws[0] + ws[1]) < ws[0] ? 'tens' : 'full';
+}
+function genMul2(kind) {
+  kind = kind || pickMul2Kind();
+  const st = Stats.getSkill('mul2.' + kind);
+  const isReview = !!st && (st.wrong || 0) > 0 && Stats.factWeight(st) > 1.5;
+  const two = () => { let n; do { n = rint(12, 98); } while (n % 10 === 0); return n; };
+  let q;
+  if (kind === 'tens') {
+    const a = two(), t = rint(2, 9), b = t * 10, x = a * t, ans = a * b;
+    q = { a, b, ans,
+      steps: [`${a} × ${b} = ${a} × ${t} × 10`, `${a} × ${t} = ${x}`, `${x} × 10 = ${ans}`],
+      plan: `× ${b} is × ${t}, then × 10.`,
+      wrongs: [
+        { v: x, cls: 'nozero', why: `${x} is ${a} × ${t}. But ${b} is ${t} TENS, so the answer is ten times bigger: ${x} × 10.` },
+        { v: a + b, cls: 'added', why: `You added. ${a} × ${b} means ${b} groups of ${a}.` },
+      ] };
+  } else {
+    const a = two(), b = two();
+    const at = a - a % 10, ao = a % 10, bt = b - b % 10, bo = b % 10;
+    const p1 = at * bt, p2 = at * bo, p3 = ao * bt, p4 = ao * bo, ans = a * b;
+    q = { a, b, ans,
+      steps: [`Split: ${a} = ${at} + ${ao} and ${b} = ${bt} + ${bo}`,
+              `${at} × ${bt} = ${p1},  ${at} × ${bo} = ${p2}`,
+              `${ao} × ${bt} = ${p3},  ${ao} × ${bo} = ${p4}`,
+              `${p1} + ${p2} + ${p3} + ${p4} = ${ans}`],
+      plan: 'Split both numbers into tens and ones: four small products, then add them all.',
+      wrongs: [
+        { v: p1 + p4, cls: 'cross', why: `You did ${at} × ${bt} and ${ao} × ${bo}, but missed ${at} × ${bo} and ${ao} × ${bt}. Every part of ${a} multiplies every part of ${b}: four products.` },
+        { v: a * bo + a * (bt / 10), cls: 'noshift', why: `The ${bt / 10} in ${b} is ${bt / 10} TENS, so that row is ${a} × ${bt} = ${a * bt}, not ${a * (bt / 10)}.` },
+        { v: a * bo, cls: 'onerow', why: `${a * bo} is only ${a} × ${bo}. There is also ${a} × ${bt} = ${a * bt} to add.` },
+        { v: a * bt, cls: 'onerow', why: `${a * bt} is only ${a} × ${bt}. There is also ${a} × ${bo} = ${a * bo} to add.` },
+        { v: at * bt + ao + bo, cls: 'cross', why: `Every part of ${a} multiplies every part of ${b}: four products, then add them.` },
+      ] };
+  }
+  const seen = new Set([q.ans]);
+  q.wrongs = q.wrongs.filter(w => Number.isInteger(w.v) && w.v > 0 && !seen.has(w.v) && seen.add(w.v));
+  // Learners get the completion scaffold: the rows are shown, they finish it.
+  const fresh = ['new', 'learning'].includes(Stats.skillState('mul2.' + kind));
+  return { type: 'mul2', mk: kind, label: 'Multiplication · 2-digit × 2-digit', isReview, ...q,
+           scaffold: fresh && Math.random() < 0.5 ? { kind: 'rows' } : null };
+}
+function mul2Scaffold(q) {
+  if (q.mk === 'tens') return `${q.a} × ${q.b} = ${q.a} × ${q.b / 10} × 10 = ${q.a * q.b / 10} × 10 =`;
+  const bt = q.b - q.b % 10, bo = q.b % 10;
+  return `${q.a} × ${q.b} = ${q.a} × ${bt} + ${q.a} × ${bo} = ${q.a * bt} + ${q.a * bo} =`;
+}
+function mul2Miss(q, g) { return listedMiss(q, g, d => d <= 20 || (d % 10 === 0 && d <= 900)); }
+function diagMul2(q, g) {
+  const work = stepsText(q).join('\n'), m = mul2Miss(q, g);
+  if (m.cls === 'blank') return { why: 'You left this one blank.', work, tip: q.plan };
+  if (m.why) return { why: m.why, work, tip: q.plan };
+  if (m.cls === 'slip') return { why: `${g} is close to ${q.ans}: the method is right, but one product or a carry slipped. Check each part.`, work, tip: 'Write each partial product down before adding.' };
+  return { why: `Let's use the area model.`, work, tip: q.plan };
+}
+function mul2Quiz() {
+  const qs = [genMul2('tens'), genMul2('full')];
+  while (qs.length < 8) qs.push(genMul2());
+  qs.push(genAdd(Stats.pickBucket('add')));
+  qs.push(genSub(Stats.pickBucket('sub')));
+  return shuffleQuiz(qs);
+}
+
 /* ---------- Area & perimeter ---------- */
 // CCSS 3.MD.C.5-7 and 3.MD.D.8. The central misconception is confusing the
 // two measures, so every area problem lists its perimeter as a tempting wrong
@@ -2443,10 +2539,15 @@ function newQuiz() {
   const longOn = Stats.isUnlocked('longdiv');
   const multiOn = Stats.isUnlocked('multi');
   const geoOn = Stats.isUnlocked('geo');
+  const mul2On = Stats.isUnlocked('mul2');
+  // An expert with learning domains open gets 8 adaptive slots and one each
+  // of 3-digit + and − (long mastered by then) instead of two each.
+  const lean = band === 'expert' && (wordOn || longOn || multiOn || geoOn || mul2On);
+  const target = lean ? 8 : 6, asEach = lean ? 1 : 2;
 
   // Allocate 6 non-add/sub slots by band — more mul-fact reps for novices
   // (easier, builds confidence), more challenge slots for experts.
-  let mul, big, div, frac, rev = 0, word = 0, longdiv = 0, multi = 0, geo = 0;
+  let mul, big, div, frac, rev = 0, word = 0, longdiv = 0, multi = 0, geo = 0, mul2 = 0;
   if (band === 'novice') {
     mul = 6 - (divOn ? 1 : 0); big = 0; div = divOn ? 1 : 0; frac = 0;
   } else if (band === 'developing') {
@@ -2455,15 +2556,15 @@ function newQuiz() {
   } else if (band === 'practicing') {
     rev = Stats.reviewQuota(band); mul = Math.max(0, 2 - rev);
     big = bigOn ? 1 : 0; div = divOn ? 1 : 0; frac = fracOn ? 1 : 0; word = wordOn ? 1 : 0;
-    longdiv = longOn ? 1 : 0; multi = multiOn ? 1 : 0; geo = geoOn ? 1 : 0;
-  } else if (wordOn || longOn || multiOn || geoOn) { // expert with learning domains open
+    longdiv = longOn ? 1 : 0; multi = multiOn ? 1 : 0; geo = geoOn ? 1 : 0; mul2 = mul2On ? 1 : 0;
+  } else if (lean) { // expert with learning domains open
     // The domains still being learned (word problems, long division, two-step
     // problems) each
     // get a slot and the weaker of them one more; the near-mastered domains
     // (division, 2-digit ×, fractions) share what is left in rotation, so
     // none of them is dropped for good.
     rev = Stats.reviewQuota(band); mul = 0;
-    let budget = 6 - rev;
+    let budget = target - rev;
     // Once two-step problems are open, one-step word problems (their
     // prerequisite, already solid) move to the rotation.
     const learning = [];
@@ -2471,7 +2572,8 @@ function newQuiz() {
     if (longOn) learning.push('longdiv');
     if (multiOn) learning.push('multi');
     if (geoOn) learning.push('geo');
-    const give = { word: 0, longdiv: 0, multi: 0, geo: 0 };
+    if (mul2On) learning.push('mul2');
+    const give = { word: 0, longdiv: 0, multi: 0, geo: 0, mul2: 0 };
     for (const d of learning) if (budget > 0) { give[d]++; budget--; }
     if (budget > 1) {
       const weakest = learning.slice().sort((x, y) => Stats.skillP(x) - Stats.skillP(y))[0];
@@ -2485,7 +2587,7 @@ function newQuiz() {
     for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
     const take = { div: 0, big: 0, frac: 0, word: 0 };
     for (let i = 0; i < budget && pool.length; i++) take[pool[i % pool.length]]++;
-    word = give.word + take.word; longdiv = give.longdiv; multi = give.multi; geo = give.geo; div = take.div; big = take.big; frac = take.frac;
+    word = give.word + take.word; longdiv = give.longdiv; multi = give.multi; geo = give.geo; mul2 = give.mul2; div = take.div; big = take.big; frac = take.frac;
   } else { // expert
     // Six slots for five demands, so the two near-mastered domains (2-digit ×
     // and fractions) alternate rather than one of them always being trimmed
@@ -2498,11 +2600,10 @@ function newQuiz() {
     } else { big = bigOn ? 1 : 0; frac = fracOn ? 1 : 0; }
   }
   // Backfill into mul if some domains are still locked.
-  const target = 6;
-  let used = mul + big + div + frac + rev + word + longdiv + multi + geo;
+  let used = mul + big + div + frac + rev + word + longdiv + multi + geo + mul2;
   if (used < target) mul += (target - used);
   // Trim to exactly 6 by dropping from the hardest available domain.
-  used = mul + big + div + frac + rev + word + longdiv + multi + geo;
+  used = mul + big + div + frac + rev + word + longdiv + multi + geo + mul2;
   while (used > target) {
     if (frac > 0 && band !== 'expert') frac--;
     else if (big > 0) big--;
@@ -2512,9 +2613,10 @@ function newQuiz() {
     else if (longdiv > 1) longdiv--;
     else if (multi > 1) multi--;
     else if (geo > 1) geo--;
+    else if (mul2 > 1) mul2--;
     else if (rev > 1) rev--;
     else break;
-    used = mul + big + div + frac + rev + word + longdiv + multi + geo;
+    used = mul + big + div + frac + rev + word + longdiv + multi + geo + mul2;
   }
   // Bias mul-fact selection: novices get easier, experts get harder.
   const mulBias = band === 'novice' || band === 'developing' ? 'easy'
@@ -2537,9 +2639,10 @@ function newQuiz() {
   for (let i = 0; i < longdiv; i++) qs.push(genLongDiv());
   for (let i = 0; i < multi; i++) qs.push(genMulti());
   for (let i = 0; i < geo; i++) qs.push(genGeo());
+  for (let i = 0; i < mul2; i++) qs.push(genMul2());
   const bucketBias = band === 'novice' ? 'easy' : band === 'expert' ? 'hard' : 'auto';
-  for (let i = 0; i < 2; i++) qs.push(genAdd(Stats.pickBucket('add', bucketBias)));
-  for (let i = 0; i < 2; i++) qs.push(genSub(Stats.pickBucket('sub', bucketBias)));
+  for (let i = 0; i < asEach; i++) qs.push(genAdd(Stats.pickBucket('add', bucketBias)));
+  for (let i = 0; i < asEach; i++) qs.push(genSub(Stats.pickBucket('sub', bucketBias)));
   return shuffleQuiz(qs);
 }
 
@@ -2687,6 +2790,7 @@ function diagLongDiv(q) {
 }
 function diagnose(q, given) {
   if (q.type === 'ldiv') return diagLongDiv(q);
+  if (q.type === 'mul2') return diagMul2(q, String(given == null ? '' : given).trim() === '' ? NaN : Number(given));
   if (q.type === 'geo') return diagGeo(q, String(given == null ? '' : given).trim() === '' ? NaN : Number(given));
   if (q.type === 'fnam' || q.type === 'feq' || q.type === 'fcmp') return diagFraction(q);
   if (q.type === 'word') {
@@ -3066,7 +3170,7 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v67';
+const APP_VERSION = 'v68';
 const APP_UPDATED = '2026-09-25';
 // In-progress quiz survives refreshes/crashes/SW updates: every answer
 // keystroke snapshots the session to localStorage; a fresh page load resumes
@@ -3315,6 +3419,11 @@ function errEntry(q) {
     return { d, k: 'ldiv.' + q.ldk, x: [q.a, q.b], g: g.gq === '' && g.gr === '' ? '' : `${g.gq} R ${g.gr || 0}`, ans: answerText(q), sc,
              bigrem: miss === 'bigrem', norem: miss === 'norem', zskip: miss === 'zeroskip' };
   }
+  if (q.type === 'mul2') {
+    const m = mul2Miss(q, String(q.given || '').trim() === '' ? NaN : Number(q.given));
+    return { d, k: 'mul2.' + q.mk, x: [q.a, q.b], g: String(q.given || ''), ans: String(q.ans), sc,
+             cross: m.cls === 'cross', shift: m.cls === 'noshift' || m.cls === 'nozero', onerow: m.cls === 'onerow' };
+  }
   if (q.type === 'geo') {
     const m = geoMiss(q, String(q.given || '').trim() === '' ? NaN : Number(q.given));
     return { d, k: 'geo.' + q.gk, g: String(q.given || ''), ans: String(q.ans), sc, x: geoDims(q),
@@ -3376,6 +3485,10 @@ function submit(fromTimeout) {
     else if (q.type === 'word') {
       Stats.recordSkill('word', isRight, ms, sc);
       Stats.recordSkill('word.' + q.wkind, isRight, ms, sc);
+    }
+    else if (q.type === 'mul2') {
+      Stats.recordSkill('mul2', isRight, ms, sc);
+      Stats.recordSkill('mul2.' + q.mk, isRight, ms, sc);
     }
     else if (q.type === 'geo') {
       Stats.recordSkill('geo', isRight, ms, sc);
@@ -3531,6 +3644,7 @@ function renderTopbar() {
   const parts = [['✖️', 'Times tables'], ['➕', 'Addition'], ['➖', 'Subtraction']];
   if (Stats.isUnlocked('division')) parts.push(['➗', 'Division']);
   if (Stats.isUnlocked('bigmul')) parts.push(['🔢', '2-digit ×']);
+  if (Stats.isUnlocked('mul2')) parts.push(['🧮', '2-digit × 2-digit']);
   if (Stats.isUnlocked('geo')) parts.push(['📏', 'Area & perimeter']);
   if (Stats.isUnlocked('fractions')) parts.push(['🍕', 'Fractions']);
   if (Stats.isUnlocked('word')) parts.push(['📖', 'Word problems']);
@@ -3617,6 +3731,7 @@ function exprText(q) {
   if (q.type === 'fcmp') return `${q.n1}/${q.d1} ? ${q.n2}/${q.d2}`;
   if (q.type === 'fnam') return 'this fraction';
   if (q.type === 'ldiv') return `${q.a} ÷ ${q.b}`;
+  if (q.type === 'mul2') return `${q.a} × ${q.b}`;
   if (q.type === 'word') return q.op || '';
   return '';
 }
@@ -3765,6 +3880,9 @@ function renderQuestion(q, idx) {
       const partA = s.lo * half, partB = s.lo * rest;
       expr.appendChild(spanTxt(`${q.a} × ${q.b} = (${s.lo}×${half}) + (${s.lo}×${rest}) = ${partA} + ${partB} =`, 'scaffold-line'));
     }
+  } else if (q.scaffold && q.type === 'mul2') {
+    expr.classList.add('expr-scaffold');
+    expr.appendChild(spanTxt(mul2Scaffold(q), 'scaffold-line'));
   } else if (q.scaffold && q.type === 'div' && q.scaffold.kind === 'inverse') {
     // Reframe division as inverse multiplication ("7 × ? = 56"), the form
     // the child has already mastered.
@@ -3783,7 +3901,7 @@ function renderQuestion(q, idx) {
     expr.appendChild(spanTxt(`(${ah*100}+${at*10}+${ao}) − (${bh*100}+${bt*10}+${bo}) =`, 'scaffold-line'));
   } else {
     expr.appendChild(spanTxt(q.a, 'tabular'));
-    expr.appendChild(spanTxt(q.type === 'mul' ? '×' : q.type === 'add' ? '+' : q.type === 'sub' ? '−' : '÷', 'op'));
+    expr.appendChild(spanTxt(q.type === 'mul' || q.type === 'mul2' ? '×' : q.type === 'add' ? '+' : q.type === 'sub' ? '−' : '÷', 'op'));
     expr.appendChild(spanTxt(q.b, 'tabular'));
     expr.appendChild(spanTxt('=', 'eq'));
   }
@@ -3800,7 +3918,7 @@ function renderQuestion(q, idx) {
   inp.value = q.given;
   inp.placeholder = '?';
   if (q.type === 'geo' || q.type === 'word') inp.setAttribute('aria-label', `Question ${idx + 1}: your answer`);
-  else inp.setAttribute('aria-label', `Question ${idx + 1}: ${q.a} ${q.type === 'mul' ? 'times' : q.type === 'add' ? 'plus' : q.type === 'sub' ? 'minus' : 'divided by'} ${q.b}`);
+  else inp.setAttribute('aria-label', `Question ${idx + 1}: ${q.a} ${q.type === 'mul' || q.type === 'mul2' ? 'times' : q.type === 'add' ? 'plus' : q.type === 'sub' ? 'minus' : 'divided by'} ${q.b}`);
   if (state.submitted) {
     inp.readOnly = true;
     if (right) inp.classList.add('ok');
@@ -3864,6 +3982,7 @@ function renderQuestion(q, idx) {
     if (q.type === 'mul' && q.big) tipText = `Break ${Math.floor(q.a / 10) * 10} + ${q.a % 10}: multiply each by ${q.b}, then add.`;
     else if (q.type === 'mul' && q.a <= 12 && q.b <= 12) tipText = factTip(q.a, q.b);
     else if (q.type === 'div') tipText = `Think: ${q.b} × ? = ${q.a}. Use the ${q.b} times table.`;
+    else if (q.type === 'mul2' && !q.scaffold) tipText = q.plan;
     if (tipText) {
       const tip = el('div', 'pretip');
       tip.appendChild(spanTxt(q.isSlow ? '⚡ ' : '💡 ', null));
@@ -4239,6 +4358,7 @@ function startWordPractice() { startFocusedQuiz('wordLesson', wordQuiz); }
 function startLongDivPractice() { startFocusedQuiz('longdivLesson', longDivQuiz); }
 function startMultiPractice() { startFocusedQuiz('multiLesson', multiQuiz); }
 function startGeoPractice() { startFocusedQuiz('geoLesson', geoQuiz); }
+function startMul2Practice() { startFocusedQuiz('mul2Lesson', mul2Quiz); }
 
 // Concrete → Representational → Abstract lesson for a domain.
 function renderLessonModal(domain) {
@@ -4340,6 +4460,30 @@ function renderLessonModal(domain) {
 
     const go = el('button', 'btn btn-primary lesson-go', '✏️ Try some');
     go.onclick = startLongDivPractice;
+    m.appendChild(go);
+  } else if (domain === 'mul2') {
+    const fresh = !Stats.hasSeen('mul2Lesson');
+    m.appendChild(el('div', 'ico-big', '🧮'));
+    m.appendChild(el('h2', null, fresh ? '🎉 New skill unlocked: 2-digit × 2-digit' : '2-digit × 2-digit'));
+    m.appendChild(el('p', null, 'You already split one number into tens and ones. Now split both.'));
+
+    m.appendChild(el('h3', 'lesson-h', '1) × a multiple of 10'));
+    m.appendChild(el('p', 'lesson-p', '23 × 40 is 23 × 4 × 10. 23 × 4 = 92, and 92 × 10 = 920.'));
+
+    m.appendChild(el('h3', 'lesson-h', '2) The area model'));
+    m.appendChild(el('p', 'lesson-p', '34 × 26: split 34 into 30 + 4 and 26 into 20 + 6. That makes four boxes:'));
+    const grid = el('div', 'm2-grid');
+    [['×', '20', '6'], ['30', '600', '180'], ['4', '80', '24']].forEach((row, i) => row.forEach((c, j) => {
+      grid.appendChild(el('div', i === 0 || j === 0 ? 'm2-head' : 'm2-cell', c));
+    }));
+    m.appendChild(grid);
+    m.appendChild(el('p', 'lesson-p', 'Add all four: 600 + 180 + 80 + 24 = 884.'));
+
+    m.appendChild(el('h3', 'lesson-h', '3) Watch out'));
+    m.appendChild(el('p', 'lesson-p', 'Four boxes, not two: 30 × 20 + 4 × 6 = 624 forgets 30 × 6 and 4 × 20. And the 2 in 26 is 2 tens, so that row is 34 × 20 = 680, not 34 × 2.'));
+
+    const go = el('button', 'btn btn-primary lesson-go', '✏️ Try some');
+    go.onclick = startMul2Practice;
     m.appendChild(go);
   } else if (domain === 'geo') {
     const fresh = !Stats.hasSeen('geoLesson');
@@ -4545,6 +4689,7 @@ function renderMineModal() {
   rows.push({ name: 'Times tables', emoji: '✖️', mastery: s.mastery });
   if (s.division.unlocked) rows.push({ name: 'Division', emoji: '➗', mastery: s.division.mastery });
   if (s.bigmul.unlocked) rows.push({ name: 'Bigger ×', emoji: '🔢', mastery: s.bigmul.mastery });
+  if (s.mul2.unlocked) rows.push({ name: '2-digit × 2-digit', emoji: '🧮', mastery: s.mul2.mastery });
   if (s.geo.unlocked) rows.push({ name: 'Area & perimeter', emoji: '📏', mastery: s.geo.mastery });
   if (s.fractions.unlocked) rows.push({ name: 'Fractions', emoji: '🍕', mastery: s.fractions.mastery });
   if (s.word.unlocked) rows.push({ name: 'Word problems', emoji: '📖', mastery: s.word.mastery });
@@ -4572,6 +4717,11 @@ function renderMineModal() {
       LD_KINDS.forEach(k => {
         chips.appendChild(el('span', 'mine-chip', `${stEmoji[Stats.skillState('ldiv.' + k)] || '⚪'} ${ldKindLabel(k)}`));
       });
+      card.appendChild(chips);
+    }
+    if (r.name === '2-digit × 2-digit') {
+      const chips = el('div', 'mine-chips');
+      M2_KINDS.forEach(k => chips.appendChild(el('span', 'mine-chip', `${stEmoji[Stats.skillState('mul2.' + k)] || '⚪'} ${k === 'tens' ? '× tens' : 'Both 2-digit'}`)));
       card.appendChild(chips);
     }
     if (r.name === 'Area & perimeter') {
@@ -4637,7 +4787,7 @@ function renderMineModal() {
     fill.style.width = Math.min(100, Math.round(100 * nu.have / nu.need)) + '%';
     meter.appendChild(fill);
     uc.appendChild(meter);
-    uc.appendChild(el('div', 'unlock-sub', `⚡ ${nu.have} of ${nu.need} ${nu.unit ? nu.unit + ' solid' : 'facts fast & steady'} — ${nu.need - nu.have} to go!`));
+    uc.appendChild(el('div', 'unlock-sub', nu.text ? `⚡ ${nu.text}` : `⚡ ${nu.have} of ${nu.need} ${nu.unit ? nu.unit + ' solid' : 'facts fast & steady'} — ${nu.need - nu.have} to go!`));
     m.appendChild(uc);
   }
 
@@ -4673,6 +4823,7 @@ function qLabel(q) {
   if (q.type === 'word') return q.multi ? `🪜 ${multiKindLabel(q.wkind)}` : `📖 ${wordKindLabel(q.wkind)}`;
   if (q.type === 'ldiv') return `${q.a} ÷ ${q.b} (with R)`;
   if (q.type === 'geo') return `📏 ${geoKindLabel(q.gk)}: ${geoDims(q)}`;
+  if (q.type === 'mul2') return `${q.a} × ${q.b}`;
   return q.type;
 }
 function sessionQuestions(quiz) {
@@ -4700,6 +4851,7 @@ function errLabel(e) {
   if (k === 'fcmp') return 'comparing fractions';
   if (k.startsWith('word.')) return `📖 ${wordKindLabel(k.slice(5))}`;
   if (k.startsWith('multi.')) return `🪜 ${multiKindLabel(k.slice(6))}`;
+  if (k.startsWith('mul2.') && e.x) return `${e.x[0]} × ${e.x[1]}`;
   if (k.startsWith('geo.')) return `📏 ${geoKindLabel(k.slice(4))}${e.x ? ': ' + e.x : ''}`;
   if (k.startsWith('ldiv.') && e.x) return `${e.x[0]} ÷ ${e.x[1]}`;
   return k;
@@ -4835,6 +4987,7 @@ function renderStatsModal() {
     const domHintParts = [`✖️ ${s.mastery}%`];
     if (s.division.unlocked) domHintParts.push(`➗ ${s.division.mastery}%`);
     if (s.bigmul.unlocked) domHintParts.push(`🔢 ${s.bigmul.mastery}%`);
+    if (s.mul2.unlocked) domHintParts.push(`🧮 ${s.mul2.mastery}%`);
     if (s.geo.unlocked) domHintParts.push(`📏 ${s.geo.mastery}%`);
     if (s.fractions.unlocked) domHintParts.push(`🍕 ${s.fractions.mastery}%`);
     if (s.word.unlocked) domHintParts.push(`📖 ${s.word.mastery}%`);
@@ -4957,6 +5110,29 @@ function renderStatsModal() {
       row3.appendChild(learn3);
       row3.appendChild(prac3);
       domGroup.appendChild(row3);
+    }
+
+    domGroup.appendChild(el('h3', 'stats-h3', '🧮 2-digit × 2-digit'));
+    if (!s.mul2.unlocked) {
+      domGroup.appendChild(el('p', 'stats-line', s.bigmul.unlocked
+        ? `Locked — unlocks when 7 of the last 8 two-digit × one-digit answers are right (now ${Stats.bigmulRecentRight()}).`
+        : 'Locked — comes after 2-digit × 1-digit.'));
+    } else {
+      const stTxt = s.mul2.state === 'fluent' ? 'fluent 🌟' : s.mul2.state === 'accurate' ? 'accurate' : 'learning';
+      domGroup.appendChild(el('p', 'stats-line', `${s.mul2.attempts} attempts · ${s.mul2.accuracy}% accurate · ${s.mul2.mastery}% mastery · ${stTxt}`));
+      domGroup.appendChild(masteryMeter(s.mul2.mastery));
+      domGroup.appendChild(el('p', 'stats-line', M2_KINDS.map(k => {
+        const f = Stats.getSkill('mul2.' + k);
+        const n = f ? (f.right || 0) + (f.wrong || 0) : 0;
+        return `${mul2KindLabel(k)} ${n ? Math.round(100 * (f.right || 0) / n) + '%' : '—'}`;
+      }).join(' · ')));
+      const rowM = el('div', 'div-actions');
+      const learnM = el('button', 'btn btn-ghost', '📖 Lesson');
+      learnM.onclick = () => { state.showLesson = 'mul2'; render(); };
+      const pracM = el('button', 'btn btn-primary', '✏️ Practice 2-digit × 2-digit');
+      pracM.onclick = startMul2Practice;
+      rowM.appendChild(learnM); rowM.appendChild(pracM);
+      domGroup.appendChild(rowM);
     }
 
     domGroup.appendChild(el('h3', 'stats-h3', '📏 Area & perimeter'));
@@ -5228,6 +5404,7 @@ function openPrintView() {
   ${dom('Multiplication facts (×)', { attempts: s.totalAttempts, mastery: s.mastery }, s.totalAccuracy)}
   ${dom('Division (÷)', s.division, s.division.unlocked ? s.division.accuracy : null)}
   ${dom('2-digit multiplication', s.bigmul, s.bigmul.unlocked ? s.bigmul.accuracy : null)}
+  ${dom('2-digit × 2-digit', s.mul2, s.mul2.unlocked ? s.mul2.accuracy : null)}
   ${dom('Area & perimeter', s.geo, s.geo.unlocked ? s.geo.accuracy : null)}
   ${dom('Fractions', s.fractions, s.fractions.unlocked ? s.fractions.accuracy : null)}
   ${dom('Word problems', s.word, s.word.unlocked ? s.word.accuracy : null)}
@@ -5282,6 +5459,14 @@ async function generatePlan(container, btn) {
         : 'locked',
       twoDigitMultiplication: s.bigmul.unlocked
         ? { attempts: s.bigmul.attempts, accuracyPct: s.bigmul.accuracy, masteryPct: s.bigmul.mastery }
+        : 'locked',
+      twoByTwoDigitMultiplication: s.mul2.unlocked
+        ? { attempts: s.mul2.attempts, accuracyPct: s.mul2.accuracy, masteryPct: s.mul2.mastery,
+            byKind: M2_KINDS.reduce((o, k) => {
+              const f = Stats.getSkill('mul2.' + k), n = f ? (f.right || 0) + (f.wrong || 0) : 0;
+              o[mul2KindLabel(k)] = n ? Math.round(100 * (f.right || 0) / n) + '%' : 'not seen';
+              return o;
+            }, {}) }
         : 'locked',
       areaAndPerimeter: s.geo.unlocked
         ? { attempts: s.geo.attempts, accuracyPct: s.geo.accuracy, masteryPct: s.geo.mastery,

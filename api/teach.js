@@ -19,6 +19,7 @@ function isNum(x) { return typeof x === 'number' && Number.isFinite(x); }
 function validProblem(p) {
   if (!p || typeof p.type !== 'string') return false;
   if (['mul', 'add', 'sub', 'div'].includes(p.type)) return isNum(p.a) && isNum(p.b);
+  if (p.type === 'mul2') return isNum(p.a) && isNum(p.b) && p.a >= 10 && p.a < 100 && p.b >= 10 && p.b < 100;
   if (p.type === 'fnam') return isNum(p.shaded) && isNum(p.den);
   if (p.type === 'feq') return isNum(p.n1) && isNum(p.d1) && isNum(p.d2) && isNum(p.ans);
   if (p.type === 'fcmp') return isNum(p.n1) && isNum(p.d1) && isNum(p.n2) && isNum(p.d2) && typeof p.ans === 'string';
@@ -39,6 +40,12 @@ function validProblem(p) {
 }
 function describe(p) {
   const a = p.a, b = p.b;
+  if (p.type === 'mul2') {
+    const at = a - a % 10, bt = b - b % 10;
+    return `${a} × ${b} (the answer is ${a * b}), best done with the area model: split ${a} into ${at} + ${a % 10} and ${b} into ${bt} + ${b % 10}, ` +
+      `multiply every part by every part (four products) and add them. Children often multiply only tens × tens and ones × ones, ` +
+      'or forget that the tens digit is worth ten, so make the four boxes vivid';
+  }
   if (p.type === 'mul') return `${a} × ${b} (the answer is ${a * b})`;
   if (p.type === 'add') return `${a} + ${b} (the answer is ${a + b})`;
   if (p.type === 'sub') return `${a} − ${b} (the answer is ${a - b})`;

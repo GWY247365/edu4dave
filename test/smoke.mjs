@@ -696,6 +696,83 @@ check('the area & perimeter lesson opens with its figures and offers practice',
   await page.evaluate(() => { const m = document.querySelector('.modal'); return !!m && m.querySelectorAll('.geo-fig svg').length === 2 && /Try some/.test(m.textContent); }));
 await page.evaluate(() => { state.showLesson = null; localStorage.clear(); });
 
+console.log('18. 2-digit × 2-digit: area model, missing cross products, unlock, leaner expert mix');
+await page.evaluate(() => { localStorage.clear(); });
+await page.goto(base);
+await page.waitForSelector('.ready-start, .qcard');
+const m2 = await page.evaluate(() => {
+  localStorage.clear(); Stats.reset();
+  for (let r = 0; r < 8; r++) for (let a = 2; a <= 12; a++) for (let b = a; b <= 12; b++) Stats.recordMul(a, b, true, 2000);
+  Stats.checkUnlocks();
+  const seq = [true, false, true, true, true, true, true].map(ok => { Stats.recordSkill('bigmul', ok, 9000); return Stats.checkUnlocks(); });
+  const earlyUnlock = seq.some(Boolean);
+  Stats.recordSkill('bigmul', true, 9000);
+  const newly = Stats.checkUnlocks();
+  const bad = [];
+  let wrongs = 0;
+  for (let i = 0; i < 1500; i++) {
+    const q = genMul2();
+    if (q.ans !== q.a * q.b || q.a % 10 === 0) bad.push(`${q.a} × ${q.b} = ${q.ans}`);
+    for (const st of q.steps) for (const m of st.matchAll(/(\d+) × (\d+) = (\d+)(?![\d ]*×)/g)) if (+m[1] * +m[2] !== +m[3]) bad.push('step: ' + st);
+    const last = q.steps[q.steps.length - 1];
+    if (last.split(' = ')[1] != q.ans || (q.mk === 'full' && last.split(' = ')[0].split(' + ').reduce((x, y) => x + +y, 0) !== q.ans)) bad.push('last: ' + last);
+    for (const w of q.wrongs) { wrongs++; if (diagnose(q, String(w.v)).why !== w.why) bad.push(`diagnosis ${q.mk}/${w.cls}`); }
+  }
+  const q = { ...genMul2('full'), a: 34, b: 26, ans: 884 };
+  const fresh = genMul2('full');
+  const cross = fresh.wrongs.find(w => w.cls === 'cross');
+  Stats.importMerge({ unlocked: { word: true, longdiv: true, multi: true, geo: true } });
+  const quizzes = Array.from({ length: 40 }, () => newQuiz());
+  return { earlyUnlock, newly, bad: bad.slice(0, 3), badCount: bad.length, wrongs,
+           crossListed: !!cross && cross.v === (fresh.a - fresh.a % 10) * (fresh.b - fresh.b % 10) + (fresh.a % 10) * (fresh.b % 10),
+           lens: [...new Set(quizzes.map(z => z.length))].join(','),
+           addSub: Math.max(...quizzes.map(z => z.filter(x => x.type === 'add' || x.type === 'sub').length)),
+           mul2Min: Math.min(...quizzes.map(z => z.filter(x => x.type === 'mul2').length)) };
+});
+check('unlocks only at 7 of the last 8 two-digit × one-digit right', !m2.earlyUnlock && m2.newly === 'mul2', JSON.stringify({ early: m2.earlyUnlock, newly: m2.newly }));
+check('1500 problems: every partial product is true and they add up to the answer', m2.badCount === 0, m2.bad.join('; '));
+check('tens×tens + ones×ones is listed as the missing-cross-products error', m2.crossListed);
+check('every listed wrong answer is diagnosed with its own reason', m2.badCount === 0 && m2.wrongs > 3000, `${m2.wrongs} checked`);
+check('expert with learning domains: still 10 questions, one + and one −, 2-digit × 2-digit in every quiz',
+  m2.lens === '10' && m2.addSub === 2 && m2.mul2Min >= 1, JSON.stringify(m2));
+
+await page.evaluate(() => {
+  localStorage.clear(); Stats.reset();
+  startMul2Practice(); state.immediate = false;
+  state.quiz[0] = { ...genMul2('full'), a: 34, b: 26, ans: 884, id: 0, given: '', scaffold: null,
+    steps: ['Split: 34 = 30 + 4 and 26 = 20 + 6', '30 × 20 = 600,  30 × 6 = 180', '4 × 20 = 80,  4 × 6 = 24', '600 + 180 + 80 + 24 = 884'],
+    wrongs: [{ v: 624, cls: 'cross', why: 'You did 30 × 20 and 4 × 6, but missed 30 × 6 and 4 × 20. Every part of 34 multiplies every part of 26: four products.' }] };
+  state.quiz[1] = { ...genMul2('full'), id: 1, given: '', scaffold: { kind: 'rows' } };
+  render();
+});
+const m2Scaf = await page.evaluate(() => { const q = state.quiz[1]; return document.querySelectorAll('.qcard')[1].textContent.includes(`${q.a} × ${q.b - q.b % 10} + ${q.a} × ${q.b % 10} = ${q.a * (q.b - q.b % 10)} + ${q.a * (q.b % 10)} =`); });
+check('a learner sees the two rows worked out and finishes the sum', m2Scaf);
+const nM2 = await page.evaluate(() => state.quiz.length);
+for (let i = 0; i < nM2; i++) {
+  const q = await page.evaluate(i => state.quiz[i], i);
+  await (await (await page.$$('.qcard'))[i].$('input')).fill(i === 0 ? '624' : String(q.ans));
+}
+await page.click('button:has-text("Check answers")');
+await page.waitForTimeout(400);
+const m2Run = await page.evaluate(() => {
+  const raw = Stats.exportRaw(), sk = raw.skills.mul2 || {};
+  return { wrong: state.quiz.filter(q => !answerCorrect(q)).length, n: state.quiz.filter(q => q.type === 'mul2').length,
+    right: sk.right || 0, recorded: (sk.right || 0) + (sk.wrong || 0), err: raw.errlog.slice(-1)[0] || {},
+    row: raw.hist.slice(-1)[0].q[0] || [], diag: document.querySelector('.qcard .diag').textContent,
+    teach: JSON.stringify(teachPayload(state.quiz[0])),
+    pat: (Stats.recordError({ d: Date.now() + 5, k: 'mul2.full', x: [23, 45], g: '815', ans: '1035', cross: true }),
+          (Stats.errorPatterns().find(p => p.key === 'mul2.full') || {}).kind) };
+});
+check('2-digit × 2-digit practice grades through the real inputs', m2Run.wrong === 1 && m2Run.recorded === m2Run.n && m2Run.right === m2Run.n - 1, `${m2Run.right}/${m2Run.recorded} of ${m2Run.n}`);
+check('the missed cross products are logged, named on the card, and become a pattern',
+  m2Run.err.k === 'mul2.full' && m2Run.err.cross === true && /missed 30 × 6 and 4 × 20/.test(m2Run.diag) && /600 \+ 180 \+ 80 \+ 24 = 884/.test(m2Run.diag) && m2Run.pat === 'misconception',
+  JSON.stringify(m2Run.err));
+check('the daily log row and "Teach me this" carry the problem', m2Run.row[0] === '34 × 26' && m2Run.row[1] === '624' && m2Run.teach === '{"type":"mul2","a":34,"b":26}', JSON.stringify(m2Run.row));
+await page.evaluate(() => { state.showLesson = 'mul2'; render(); });
+await page.waitForTimeout(200);
+check('the lesson shows the four-box area model', await page.evaluate(() => document.querySelectorAll('.modal .m2-cell').length === 4));
+await page.evaluate(() => { state.showLesson = null; localStorage.clear(); });
+
 console.log('13. a release is announced when the app is resumed, not only on reload');
 await page.goto(base);
 await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 20000 });

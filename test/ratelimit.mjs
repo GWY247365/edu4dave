@@ -109,5 +109,13 @@ check('an oversized problem is rejected', r.status === 400);
 r = await call(teach, { problem: { type: 'geo', text: 'a shape', ans: 1 } });
 check('a problem without its working is rejected', r.status === 400);
 
+console.log('9) 2-digit × 2-digit is accepted by Teach me this');
+kv.clear();
+r = await call(teach, { problem: { type: 'mul2', a: 34, b: 26 } });
+check('2-digit × 2-digit gets a lesson', r.status === 200 && r.out.lesson === 'a lesson');
+check('prompt carries the answer and the area model', /34 × 26 \(the answer is 884\)/.test(lastModelPrompt) && /30 \+ 4/.test(lastModelPrompt));
+r = await call(teach, { problem: { type: 'mul2', a: 340, b: 26 } });
+check('numbers outside 2-digit are rejected', r.status === 400);
+
 console.log(fails ? `\n${fails} FAILURE(S)` : '\nall rate-limit tests passed');
 process.exit(fails ? 1 : 0);
