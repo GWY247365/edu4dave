@@ -773,6 +773,81 @@ await page.waitForTimeout(200);
 check('the lesson shows the four-box area model', await page.evaluate(() => document.querySelectorAll('.modal .m2-cell').length === 4));
 await page.evaluate(() => { state.showLesson = null; localStorage.clear(); });
 
+console.log('19. fractions level 2: adding like fractions and the number line');
+await page.evaluate(() => { localStorage.clear(); });
+await page.goto(base);
+await page.waitForSelector('.ready-start, .qcard');
+const fr = await page.evaluate(() => {
+  localStorage.clear(); Stats.reset();
+  for (let r = 0; r < 8; r++) for (let a = 2; a <= 12; a++) for (let b = a; b <= 12; b++) Stats.recordMul(a, b, true, 2000);
+  Stats.checkUnlocks();
+  const types = () => [...new Set(Array.from({ length: 300 }, () => genFraction().type))].sort().join(',');
+  const before = types();
+  for (let i = 0; i < 6; i++) Stats.recordSkill('frac.fnam', true, 9000);
+  const at1 = Stats.checkUnlocks();
+  for (let i = 0; i < 6; i++) Stats.recordSkill('frac.feq', true, 9000);
+  const at2 = Stats.checkUnlocks();
+  const after = types();
+  const bad = [];
+  const g = (q, n, d) => ({ ...q, givenNum: String(n), givenDen: String(d) });
+  for (let i = 0; i < 1500; i++) {
+    const a = genFracAdd();
+    if (a.ansNum !== (a.op === '+' ? a.n1 + a.n2 : a.n1 - a.n2) || !(a.ansNum > 0 && a.ansNum < a.d)) bad.push(`fadd ${a.n1}${a.op}${a.n2}/${a.d}`);
+    if (!answerCorrect(g(a, a.ansNum, a.d)) || !answerCorrect(g(a, 2 * a.ansNum, 2 * a.d))) bad.push('equivalent answer refused');
+    const addden = a.op === '+' ? g(a, a.n1 + a.n2, 2 * a.d) : g(a, a.n1 - a.n2, 0);
+    if (answerCorrect(addden) || fracOpMiss(addden) !== 'addden') bad.push(`bottoms added not caught: ${a.n1}${a.op}${a.n2}/${a.d}`);
+    const l = genFracLine();
+    if (!(l.k > 0 && l.k < l.d * l.max && l.k !== l.d)) bad.push(`fline ${l.k}/${l.d}`);
+    if (numberLineEl(l.d, l.max, l.k).querySelectorAll('.nl-tick,.nl-major').length !== l.d * l.max + 1) bad.push('tick count');
+    if (!answerCorrect(g(l, l.k, l.d)) || answerCorrect(g(l, l.k, l.d + 1)) || fracOpMiss(g(l, l.k, l.d + 1)) !== 'ticks') bad.push(`ticks not caught: ${l.k}/${l.d}`);
+  }
+  return { before, at1, at2, after, bad: bad.slice(0, 3), badCount: bad.length,
+           practice: fractionQuiz().filter(q => q.type === 'fadd' || q.type === 'fline').length };
+});
+check('adding and the number line open once 2 of the 3 basics are solid', fr.before === 'fcmp,feq,fnam' && !fr.at1 && fr.at2 === 'fracops' && fr.after === 'fadd,fcmp,feq,fline,fnam', JSON.stringify(fr));
+check('1500 of each: sums in range, equivalent answers accepted, added bottoms and counted ticks caught', fr.badCount === 0, fr.bad.join('; '));
+check('fraction practice covers both new kinds', fr.practice >= 2, `${fr.practice}`);
+
+await page.evaluate(() => {
+  localStorage.clear(); Stats.reset(); Stats.importMerge({ unlocked: { fractions: true, fracops: true } });
+  startFractionPractice(); state.immediate = false;
+  state.quiz[0] = { type: 'fadd', op: '+', n1: 3, n2: 2, d: 8, ansNum: 5, ansDen: 8, label: 'Fractions · add', isReview: false, id: 0, given: '' };
+  state.quiz[1] = { type: 'fline', d: 4, max: 1, k: 3, ansNum: 3, ansDen: 4, label: 'Fractions · number line', isReview: false, id: 1, given: '' };
+  state.quiz[2] = { type: 'fline', d: 3, max: 2, k: 4, ansNum: 4, ansDen: 3, label: 'Fractions · number line', isReview: false, id: 2, given: '' };
+  render();
+});
+const frIn = { 0: ['5', '16'], 1: ['3', '5'], 2: ['8', '6'] };
+const nFr = await page.evaluate(() => state.quiz.length);
+for (let i = 0; i < nFr; i++) {
+  const q = await page.evaluate(i => state.quiz[i], i);
+  const card = (await page.$$('.qcard'))[i];
+  if (['fadd', 'fline', 'fnam'].includes(q.type)) {
+    const [a, b] = await card.$$('input.frac-in');
+    const v = frIn[i] || [String(q.ansNum), String(q.ansDen)];
+    await a.fill(v[0]); await b.fill(v[1]);
+  } else if (q.type === 'fcmp') await (await card.$(`.fcmp-btn:text-is("${q.ans}")`)).click();
+  else await (await card.$('input')).fill(String(q.ans));
+}
+await page.click('button:has-text("Check answers")');
+await page.waitForTimeout(400);
+const frRun = await page.evaluate(() => {
+  const raw = Stats.exportRaw();
+  return { wrong: state.quiz.map((q, i) => answerCorrect(q) ? null : i).filter(x => x !== null).join(','),
+    errs: raw.errlog.slice(-2).map(e => `${e.k}:${e.g}:${e.addden ? 'addden' : e.ticks ? 'ticks' : '-'}`).join(' '),
+    rows: raw.hist.slice(-1)[0].q.slice(0, 3).map(r => r.slice(0, 4).join('|')),
+    diag: [...document.querySelectorAll('.qcard')].slice(0, 2).map(c => (c.querySelector('.diag') || {}).textContent || ''),
+    teach: JSON.stringify([teachPayload(state.quiz[0]), teachPayload(state.quiz[1])]) };
+});
+check('fraction row inputs grade: added bottoms and counted ticks wrong, 8/6 for 4/3 right', frRun.wrong === '0,1', frRun.wrong);
+check('both misconceptions are logged', frRun.errs === 'fadd:5/16:addden fline:3/5:ticks', frRun.errs);
+check('the cards explain them', /added the bottom numbers too/.test(frRun.diag[0]) && /still eighths/.test(frRun.diag[0]) && /counted the tick marks/.test(frRun.diag[1]));
+check('the daily log shows what was typed', frRun.rows[0] === '3/8 + 2/8|5/16|5/8|0' && frRun.rows[2] === 'number line 0–2, dot at 4/3|8/6|4/3|1', JSON.stringify(frRun.rows));
+check('"Teach me this" sends both kinds', frRun.teach === '[{"type":"fadd","n1":3,"n2":2,"d":8,"op":"+"},{"type":"fline","k":3,"d":4,"max":1}]', frRun.teach);
+await page.evaluate(() => { state.showLesson = 'fracops'; render(); });
+await page.waitForTimeout(200);
+check('the lesson shows the bars and two number lines', await page.evaluate(() => document.querySelectorAll('.modal .nl-fig svg').length === 2 && document.querySelectorAll('.modal .frac-vis').length === 2));
+await page.evaluate(() => { state.showLesson = null; localStorage.clear(); });
+
 console.log('13. a release is announced when the app is resumed, not only on reload');
 await page.goto(base);
 await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 20000 });

@@ -24,6 +24,9 @@ function validProblem(p) {
   if (p.type === 'feq') return isNum(p.n1) && isNum(p.d1) && isNum(p.d2) && isNum(p.ans);
   if (p.type === 'fcmp') return isNum(p.n1) && isNum(p.d1) && isNum(p.n2) && isNum(p.d2) && typeof p.ans === 'string';
   // Must be a real division, or the model would be told a wrong answer.
+  if (p.type === 'fadd') return isNum(p.n1) && isNum(p.n2) && isNum(p.d) && p.d > 0 && p.d <= 12 && (p.op === '+' || p.op === '-') &&
+                                (p.op === '+' ? p.n1 + p.n2 <= p.d : p.n1 > p.n2);
+  if (p.type === 'fline') return isNum(p.k) && isNum(p.d) && isNum(p.max) && p.d > 0 && p.d <= 12 && (p.max === 1 || p.max === 2) && p.k > 0 && p.k < p.d * p.max;
   if (p.type === 'ldiv') return isNum(p.a) && isNum(p.b) && isNum(p.q) && isNum(p.r) && p.b > 0 && p.a < 10000 &&
                                 p.r >= 0 && p.r < p.b && p.b * p.q + p.r === p.a;
   // Word problems carry their own story; bounded so the endpoint cannot be
@@ -52,6 +55,15 @@ function describe(p) {
   if (p.type === 'div') return `${a} ÷ ${b} (the answer is ${a / b}); it helps to remember ${b} × ${a / b} = ${a}`;
   if (p.type === 'fnam') return `naming the fraction shown by a bar split into ${p.den} equal parts with ${p.shaded} shaded — the answer is the fraction ${p.shaded}/${p.den}`;
   if (p.type === 'feq') return `finding the missing top number so the fractions are equal: ${p.n1}/${p.d1} = ?/${p.d2} — the answer is ${p.ans}, because you multiply top and bottom by ${p.d2 / p.d1}`;
+  if (p.type === 'fadd') {
+    const r = p.op === '+' ? p.n1 + p.n2 : p.n1 - p.n2;
+    return `${p.n1}/${p.d} ${p.op === '+' ? '+' : '−'} ${p.n2}/${p.d} (the answer is ${r}/${p.d}). The pieces are the same size, so only the top numbers ` +
+      `are ${p.op === '+' ? 'added' : 'subtracted'} and the bottom number stays ${p.d}. Children often add the bottom numbers too, so show why the pieces do not get smaller`;
+  }
+  if (p.type === 'fline') {
+    return `finding the fraction at a dot on a number line from 0 to ${p.max}, with each whole split into ${p.d} equal spaces; the dot is ${p.k} spaces from 0, so the answer is ${p.k}/${p.d}. ` +
+      `Children often count the tick marks (${p.d + 1} from 0 to 1) instead of the spaces (${p.d}), so explain why the spaces are the pieces`;
+  }
   if (p.type === 'ldiv') {
     return `${p.a} ÷ ${p.b} with a remainder — the answer is ${p.q} remainder ${p.r}, because ${p.b} × ${p.q} = ${p.b * p.q} and ` +
       `${p.a} − ${p.b * p.q} = ${p.r}. The remainder is always smaller than ${p.b}; for bigger numbers use divide, multiply, subtract, bring down, ` +

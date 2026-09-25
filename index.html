@@ -362,6 +362,14 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .wbar{height:28px;background:var(--brand);color:#fff;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}
 .wbar.extra{background:var(--warn-deep,#d97706)}
 .wstory-wrap{position:relative}
+.nl-fig{margin:4px 0 6px;overflow-x:auto}
+.nl-fig svg{max-width:100%;height:auto}
+.nl-axis{stroke:var(--ink-2);stroke-width:2}
+.nl-major{stroke:var(--ink-2);stroke-width:2}
+.nl-tick{stroke:var(--ink-3);stroke-width:1.5}
+.nl-lbl{font:700 14px 'Inter',system-ui,sans-serif;fill:var(--ink)}
+.nl-dot{fill:var(--brand);stroke:#fff;stroke-width:2}
+.nl-q{font:800 15px 'Inter',system-ui,sans-serif;fill:var(--brand-deep)}
 .m2-grid{display:grid;grid-template-columns:repeat(3,64px);gap:4px;margin:6px 0 8px;font-variant-numeric:tabular-nums}
 .m2-head{font-weight:700;color:var(--ink-3);text-align:center;padding:6px 0}
 .m2-cell{background:var(--brand-soft-2);border:1px solid var(--brand);border-radius:6px;text-align:center;padding:10px 0;font-weight:700;color:var(--ink)}
@@ -558,7 +566,7 @@ const Stats = (() => {
         snaps: d.snaps || [],
         buckets: d.buckets || {},
         streak: d.streak || { current: 0, best: 0, lastDay: null },
-        unlocked: Object.assign({ division: false, bigmul: false, fractions: false, word: false, longdiv: false, multi: false, geo: false, mul2: false }, d.unlocked || {}),
+        unlocked: Object.assign({ division: false, bigmul: false, fractions: false, word: false, longdiv: false, multi: false, geo: false, mul2: false, fracops: false }, d.unlocked || {}),
         seen: d.seen || {},
         plans: d.plans || [],
         errlog: d.errlog || [],
@@ -567,7 +575,7 @@ const Stats = (() => {
       };
     } catch { return blank(); }
   }
-  function blank() { return { facts: {}, divFacts: {}, skills: {}, hist: [], snaps: [], buckets: {}, streak: { current: 0, best: 0, lastDay: null }, unlocked: { division: false, bigmul: false, fractions: false, word: false, longdiv: false, multi: false, geo: false, mul2: false }, seen: {}, plans: [], errlog: [], daily: { day: null, warmup: false, quiz: false }, pin: null }; }
+  function blank() { return { facts: {}, divFacts: {}, skills: {}, hist: [], snaps: [], buckets: {}, streak: { current: 0, best: 0, lastDay: null }, unlocked: { division: false, bigmul: false, fractions: false, word: false, longdiv: false, multi: false, geo: false, mul2: false, fracops: false }, seen: {}, plans: [], errlog: [], daily: { day: null, warmup: false, quiz: false }, pin: null }; }
   function save(d) {
     try { localStorage.setItem(STATS_KEY, JSON.stringify(d)); } catch {}
   }
@@ -786,6 +794,10 @@ const Stats = (() => {
   function wordSolidCount() {
     return ['wjoin', 'wcompare', 'wgroups', 'wshare'].filter(k => isMasteredState(skillState('word.' + k))).length;
   }
+  // Basic fraction sub-skills (naming, equivalence, comparing) that are solid.
+  function fracBasicSolid() {
+    return ['fnam', 'feq', 'fcmp'].filter(k => isMasteredState(skillState('frac.' + k))).length;
+  }
   function bigmulRecentRight() {
     const r = (data.skills.bigmul && data.skills.bigmul.recent) || '';
     return r.length < 8 ? Math.min(r.split('1').length - 1, MUL2_UNLOCK_AT - 1) : r.split('1').length - 1;
@@ -818,7 +830,7 @@ const Stats = (() => {
     if (q.type === 'mul' && q.big) return skillState('bigmul');
     if (q.type === 'mul') return factState(getFact(q.a, q.b), now);
     if (q.type === 'div' && q.fam) return factState(getDivFact(q.fam[0], q.fam[1]), now, FAST_BY_SKILL.div);
-    if (q.type === 'fnam' || q.type === 'feq' || q.type === 'fcmp') return skillState('fractions');
+    if (isFracQ(q)) return skillState('fractions');
     if (q.type === 'word') return skillState((q.multi ? 'multi.' : 'word.') + q.wkind);
     if (q.type === 'ldiv') return skillState('ldiv.' + q.ldk);
     if (q.type === 'geo') return skillState('geo.' + q.gk);
@@ -844,6 +856,11 @@ const Stats = (() => {
     }
     if (!data.unlocked.mul2 && data.unlocked.bigmul && bigmulRecentRight() >= MUL2_UNLOCK_AT) {
       data.unlocked.mul2 = true; newly = newly || 'mul2'; save(data);
+    }
+    // Fractions level 2 (adding, subtracting, the number line) opens inside
+    // the fractions domain once two of its three basics are solid.
+    if (!data.unlocked.fracops && data.unlocked.fractions && fracBasicSolid() >= 2) {
+      data.unlocked.fracops = true; newly = newly || 'fracops'; save(data);
     }
     if (!data.unlocked.geo && fluent >= GEO_UNLOCK_AT) {
       data.unlocked.geo = true; newly = newly || 'geo'; save(data);
@@ -889,6 +906,7 @@ const Stats = (() => {
     // After word problems the remaining domains open independently; show whichever is closest.
     const after = [];
     if (!data.unlocked.longdiv) after.push({ name: 'Long division', emoji: '🧩', have: divMasteredCount(), need: LDIV_UNLOCK_AT, unit: 'division facts' });
+    if (!data.unlocked.fracops) after.push({ name: 'Adding fractions & the number line', emoji: '🍕', have: fracBasicSolid(), need: 2, unit: 'basic fraction skills' });
     if (!data.unlocked.mul2) after.push({ name: '2-digit × 2-digit', emoji: '🧮', have: bigmulRecentRight(), need: MUL2_UNLOCK_AT,
       text: `${bigmulRecentRight()} of the last 8 two-digit × one-digit answers right, ${MUL2_UNLOCK_AT} needed` });
     if (!data.unlocked.multi) after.push({ name: 'Two-step problems', emoji: '🪜', have: wordSolidCount(), need: MULTI_UNLOCK_AT, unit: 'word-problem kinds' });
@@ -1170,6 +1188,14 @@ const Stats = (() => {
                      'word.wgroups': 'Equal groups', 'word.wshare': 'Sharing' }[k] || 'Word problems';
         if (schema >= 2) { kind = 'misconception'; label = `${nm} word problems: picks the operation the keywords suggest (${schema}×) — reading the story, not the words, is the fix`; }
         else label = `${nm} word problems: missed ${list.length}×`;
+      } else if (k === 'fadd') {
+        const n = list.filter(e => e.addden).length;
+        if (n >= 2) { kind = 'misconception'; label = `Adding fractions: adds the bottom numbers too (${n}×) — same-size pieces keep their bottom number`; }
+        else label = `Adding & subtracting fractions: missed ${list.length}×`;
+      } else if (k === 'fline') {
+        const n = list.filter(e => e.ticks).length;
+        if (n >= 2) { kind = 'misconception'; label = `Number line: counts the tick marks, not the spaces (${n}×) — the spaces from 0 to 1 are the pieces`; }
+        else label = `Fractions on the number line: missed ${list.length}×`;
       } else if (k === 'feq') {
         label = `Equivalent fractions: missed ${list.length}×`;
       } else if (k === 'bigmul' || k.indexOf('add:') === 0 || k.indexOf('sub:') === 0) {
@@ -1423,7 +1449,7 @@ const Stats = (() => {
     }
     return Object.values(byKey).sort((x, y) => (x[tsField] || 0) - (y[tsField] || 0));
   }
-  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery, mulSeenCount, recentAccuracy, nextUnlock, divMasteredCount, wordSolidCount, bigmulRecentRight, skillP, isSlowFact, pickDueFacts, getHist, getErrlog, pickMasteredFact, dueBacklog, reviewQuota, getSnaps, repairSnaps, engineCheck, savePlan, getPlans, recordError, errorPatterns, getDaily, markDaily };
+  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery, mulSeenCount, recentAccuracy, nextUnlock, divMasteredCount, wordSolidCount, bigmulRecentRight, fracBasicSolid, skillP, isSlowFact, pickDueFacts, getHist, getErrlog, pickMasteredFact, dueBacklog, reviewQuota, getSnaps, repairSnaps, engineCheck, savePlan, getPlans, recordError, errorPatterns, getDaily, markDaily };
 })();
 
 // Merge helpers for cross-device sync (keep the richer record, union history)
@@ -1838,6 +1864,7 @@ function mulQuestion(a, b) {
 }
 
 // ---------- Fractions (CC grade 3: denominators 2,3,4,6,8) ----------
+function isFracQ(q) { return ['fnam', 'feq', 'fcmp', 'fadd', 'fline'].includes(q.type); }
 const FRAC_DENS = [2, 3, 4, 6, 8];
 const fracReview = () => Stats.skillState('fractions') !== 'fluent';
 function genFracName() {
@@ -1872,17 +1899,81 @@ function genFracCompare() {
 // Pick which fraction sub-skill to test, weighted by weakness (spaced-
 // repetition weight; unseen sub-skills weigh 2.5 so coverage is guaranteed).
 function pickFracType() {
-  const types = ['fnam', 'feq', 'fcmp'];
+  const types = Stats.isUnlocked('fracops') ? ['fnam', 'feq', 'fcmp', 'fadd', 'fline'] : ['fnam', 'feq', 'fcmp'];
   const ws = types.map(t => Stats.factWeight(Stats.getSkill('frac.' + t)));
   let r = Math.random() * ws.reduce((a, b) => a + b, 0);
   for (let i = 0; i < types.length; i++) { r -= ws[i]; if (r <= 0) return types[i]; }
-  return types[2];
+  return types[types.length - 1];
 }
 function genFraction() {
   const t = pickFracType();
-  return t === 'fnam' ? genFracName() : t === 'feq' ? genFracEquiv() : genFracCompare();
+  return t === 'fnam' ? genFracName() : t === 'feq' ? genFracEquiv() : t === 'fcmp' ? genFracCompare()
+       : t === 'fadd' ? genFracAdd() : genFracLine();
+}
+// Level 2 (CCSS 4.NF.B.3a, 3.NF.A.2). Adding like fractions: the classic error
+// adds the bottoms too (3/8 + 2/8 = 5/16). Any equivalent answer is accepted.
+function genFracAdd() {
+  const d = [3, 4, 5, 6, 8, 10, 12][rint(0, 6)];
+  if (Math.random() < 0.5) {
+    const n1 = rint(1, d - 2), n2 = rint(1, d - 1 - n1);
+    return { type: 'fadd', op: '+', n1, n2, d, ansNum: n1 + n2, ansDen: d, label: 'Fractions · add', isReview: fracReview() };
+  }
+  const n1 = rint(2, d - 1), n2 = rint(1, n1 - 1);
+  return { type: 'fadd', op: '−', n1, n2, d, ansNum: n1 - n2, ansDen: d, label: 'Fractions · subtract', isReview: fracReview() };
+}
+// The number line: which fraction sits at the dot. The classic error counts
+// the tick marks instead of the spaces between them. Past 1 on a 0-2 line
+// the answer is more than a whole (5/4).
+function genFracLine() {
+  const d = [2, 3, 4, 5, 6, 8][rint(0, 5)];
+  const max = Math.random() < 0.3 ? 2 : 1;
+  let k;
+  do { k = rint(1, d * max - 1); } while (k === d);
+  return { type: 'fline', d, max, k, ansNum: k, ansDen: d, label: 'Fractions · number line', isReview: fracReview() };
+}
+// Number-line figure: 0..max, one tick per 1/d, a dot at k/d.
+function numberLineEl(d, max, k, showAns) {
+  const W = max === 1 ? 300 : 380, L = 24, R = W - 24, Y = 44, step = (R - L) / (d * max);
+  let body = `<line x1="${L}" y1="${Y}" x2="${R}" y2="${Y}" class="nl-axis"/>`;
+  for (let i = 0; i <= d * max; i++) {
+    const x = L + i * step, whole = i % d === 0;
+    body += `<line x1="${x}" y1="${Y - (whole ? 10 : 6)}" x2="${x}" y2="${Y + (whole ? 10 : 6)}" class="${whole ? 'nl-major' : 'nl-tick'}"/>`;
+    if (whole) body += `<text x="${x}" y="${Y + 28}" text-anchor="middle" class="nl-lbl">${i / d}</text>`;
+  }
+  const x = L + k * step;
+  body += `<circle cx="${x}" cy="${Y}" r="6" class="nl-dot"/>`;
+  body += `<text x="${x}" y="${Y - 16}" text-anchor="middle" class="nl-q">${showAns ? k + '/' + d : '?'}</text>`;
+  const fig = el('div', 'nl-fig');
+  fig.innerHTML = `<svg viewBox="0 0 ${W} 84" width="${W}" height="84" role="img" aria-label="A number line from 0 to ${max}, split into ${d * max} equal spaces, with a dot">${body}</svg>`;
+  return fig;
+}
+// Given num/den as numbers; the answer matches if it is the same value.
+function fracGiven(q) {
+  const gn = String(q.givenNum == null ? '' : q.givenNum).trim(), gd = String(q.givenDen == null ? '' : q.givenDen).trim();
+  return { blank: gn === '' && gd === '', n: gn === '' ? NaN : Number(gn), d: gd === '' ? NaN : Number(gd) };
+}
+function fracSame(q) { const g = fracGiven(q); return g.d > 0 && Number.isInteger(g.n) && g.n * q.ansDen === q.ansNum * g.d; }
+function fracOpMiss(q) {
+  const g = fracGiven(q);
+  if (g.blank) return 'blank';
+  if (q.type === 'fadd') {
+    const other = q.op === '+' ? q.n1 - q.n2 : q.n1 + q.n2;
+    if (q.op === '+' && g.n === q.n1 + q.n2 && g.d === 2 * q.d) return 'addden';
+    if (q.op === '−' && g.n === q.n1 - q.n2 && g.d === 0) return 'addden';
+    if (g.d === q.d && g.n === other) return 'wrongop';
+    if (g.n === q.ansNum && !(g.d > 0)) return 'noden';
+    if (g.d === q.d && Math.abs(g.n - q.ansNum) === 1) return 'slip';
+    return 'other';
+  }
+  if (g.d === q.d + 1 || g.d === q.d * q.max + 1) return 'ticks';
+  if (q.max === 2 && g.n === q.k && g.d === 2 * q.d) return 'wholeline';
+  if (g.d === q.d && g.n === q.d * q.max - q.k) return 'fromright';
+  if (g.d === q.d && g.n === q.k + 1) return 'countzero';
+  return 'other';
 }
 function fracTip(q) {
+  if (q.type === 'fadd') return 'Same-size pieces: add or take away the tops, keep the bottom.';
+  if (q.type === 'fline') return 'Count the spaces between the marks from 0 to 1: that is the bottom number.';
   if (q.type === 'fnam') return 'Top = shaded parts. Bottom = total equal parts.';
   if (q.type === 'feq') return `Multiply top and bottom by the same number (×${q.d2 / q.d1}).`;
   return 'Same top? More pieces means each is smaller. Same bottom? Bigger top wins.';
@@ -2666,7 +2757,8 @@ function fractionQuiz() {
   // One of each sub-skill guaranteed (coverage), then five more weighted
   // toward whichever sub-skill is weakest right now.
   qs.push(genFracName()); qs.push(genFracEquiv()); qs.push(genFracCompare());
-  for (let i = 0; i < 5; i++) qs.push(genFraction());
+  if (Stats.isUnlocked('fracops')) { qs.push(genFracAdd()); qs.push(genFracLine()); }
+  while (qs.length < 8) qs.push(genFraction());
   qs.push(genAdd(Stats.pickBucket('add')));
   qs.push(genSub(Stats.pickBucket('sub')));
   return shuffleQuiz(qs);
@@ -2737,6 +2829,35 @@ function focusQuiz(compact) {
 
 /* ---------- Diagnostic engine ---------- */
 function diagFraction(q) {
+  if (q.type === 'fadd') {
+    const g = fracGiven(q), sum = `${q.n1}/${q.d} ${q.op} ${q.n2}/${q.d}`;
+    const name = { 2: 'halves', 3: 'thirds', 4: 'quarters', 5: 'fifths', 6: 'sixths', 8: 'eighths', 10: 'tenths', 12: 'twelfths' }[q.d] || `${q.d}ths`;
+    const work = `${sum}: ${q.n1} ${name} ${q.op === '+' ? 'plus' : 'take away'} ${q.n2} ${name} = ${q.ansNum} ${name}\nAnswer: ${q.ansNum}/${q.d}`;
+    const tip = `The bottom number names the size of the pieces (${name}). Adding or taking away pieces never changes their size.`;
+    switch (fracOpMiss(q)) {
+      case 'blank': return { why: 'You left this blank.', work, tip };
+      case 'addden': return { why: q.op === '+'
+          ? `You added the bottom numbers too. ${q.d} + ${q.d} = ${2 * q.d} would mean smaller pieces, but the pieces are still ${name}: only the top changes.`
+          : `You took away the bottom numbers too. The pieces are still ${name}, so the bottom stays ${q.d}: only the top changes.`, work, tip };
+      case 'wrongop': return { why: `Check the sign: this is ${q.op === '+' ? 'adding' : 'taking away'}.`, work, tip };
+      case 'noden': return { why: `The top is right (${q.ansNum}). The bottom is still ${q.d}: the pieces are still ${name}.`, work, tip };
+      case 'slip': return { why: `The bottom is right. Recount the top: ${q.n1} ${q.op} ${q.n2} = ${q.ansNum}.`, work, tip };
+      default: return { why: `Same-size pieces: count the tops, keep the bottom.`, work, tip };
+    }
+  }
+  if (q.type === 'fline') {
+    const g = fracGiven(q), spaces = q.d * q.max;
+    const work = `From 0 to 1 there are ${q.d} equal spaces, so each space is 1/${q.d}.\nThe dot is ${q.k} spaces from 0.\nAnswer: ${q.k}/${q.d}`;
+    const tip = 'Count the SPACES between the marks, not the marks. The bottom number is how many spaces make one whole.';
+    switch (fracOpMiss(q)) {
+      case 'blank': return { why: 'You left this blank.', work, tip };
+      case 'ticks': return { why: `You counted the tick marks. There are ${q.d + 1} marks from 0 to 1 but only ${q.d} spaces, and the spaces are the pieces.`, work, tip };
+      case 'wholeline': return { why: `The whole is from 0 to 1, not the whole line. 0 to 1 has ${q.d} spaces, so the pieces are 1/${q.d}.`, work, tip: 'One whole is from 0 to 1. Past 1, the top number is bigger than the bottom.' };
+      case 'fromright': return { why: `You counted from the right-hand end. Fractions on a number line count from 0.`, work, tip };
+      case 'countzero': return { why: `Off by one: the mark at 0 is the start, not the first step. Count jumps, not marks.`, work, tip };
+      default: return { why: `Count the spaces from 0 to the dot, and the spaces from 0 to 1.`, work, tip };
+    }
+  }
   if (q.type === 'fnam') {
     const gn = Number(q.givenNum), gd = Number(q.givenDen);
     const work = `${q.shaded} of ${q.den} equal parts are shaded → <b>${q.shaded}/${q.den}</b>.`;
@@ -2792,7 +2913,7 @@ function diagnose(q, given) {
   if (q.type === 'ldiv') return diagLongDiv(q);
   if (q.type === 'mul2') return diagMul2(q, String(given == null ? '' : given).trim() === '' ? NaN : Number(given));
   if (q.type === 'geo') return diagGeo(q, String(given == null ? '' : given).trim() === '' ? NaN : Number(given));
-  if (q.type === 'fnam' || q.type === 'feq' || q.type === 'fcmp') return diagFraction(q);
+  if (isFracQ(q)) return diagFraction(q);
   if (q.type === 'word') {
     const g = String(given == null ? '' : given).trim() === '' ? NaN : Number(given);
     return q.multi ? diagMulti(q, g) : diagWord(q, g);
@@ -3170,7 +3291,7 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v68';
+const APP_VERSION = 'v69';
 const APP_UPDATED = '2026-09-25';
 // In-progress quiz survives refreshes/crashes/SW updates: every answer
 // keystroke snapshots the session to localStorage; a fresh page load resumes
@@ -3297,6 +3418,8 @@ function qSig(q) {
   if (q.type === 'fnam') return `fnam:${q.den}:${q.shaded}`;
   if (q.type === 'feq') return `feq:${q.n1}/${q.d1}=${q.d2}`;
   if (q.type === 'fcmp') return `fcmp:${q.n1}/${q.d1}v${q.n2}/${q.d2}`;
+  if (q.type === 'fadd') return `fadd:${q.n1}${q.op}${q.n2}/${q.d}`;
+  if (q.type === 'fline') return `fline:${q.k}/${q.d}:${q.max}`;
   return `${q.type}:${q.a},${q.b}`;
 }
 function startNew() {
@@ -3413,6 +3536,12 @@ function errEntry(q) {
     return { d, k: 'fcmp', g: String(q.given || ''), ans: q.ans, sc,
              bigden: q.n1 === q.n2 && ((q.given === '>' && q.d1 > q.d2) || (q.given === '<' && q.d2 > q.d1)) };
   }
+  if (q.type === 'fadd' || q.type === 'fline') {
+    const miss = fracOpMiss(q);
+    return { d, k: q.type, x: q.type === 'fadd' ? [q.n1, q.op, q.n2, q.d] : [q.k, q.d, q.max],
+             g: `${q.givenNum || ''}/${q.givenDen || ''}`, ans: answerText(q), sc,
+             addden: miss === 'addden', ticks: miss === 'ticks' || miss === 'wholeline' };
+  }
   if (q.type === 'feq') return { d, k: 'feq', g: String(q.given || ''), ans: String(q.ans), sc };
   if (q.type === 'ldiv') {
     const g = ldivGiven(q), miss = ldivMiss(q);
@@ -3474,7 +3603,7 @@ function submit(fromTimeout) {
     if (q.type === 'mul' && q.big) Stats.recordSkill('bigmul', isRight, ms, sc);
     else if (q.type === 'mul' && q.a <= 12 && q.b <= 12) Stats.recordMul(q.a, q.b, isRight, ms, sc);
     else if (q.type === 'div' && q.fam) Stats.recordDiv(q.fam[0], q.fam[1], isRight, ms, sc);
-    else if (q.type === 'fnam' || q.type === 'feq' || q.type === 'fcmp') {
+    else if (isFracQ(q)) {
       Stats.recordSkill('fractions', isRight, ms, sc);          // aggregate (drives unlock/summary)
       Stats.recordSkill('frac.' + q.type, isRight, ms, sc);     // sub-skill (drives adaptive selection)
     }
@@ -3710,13 +3839,14 @@ function ldivGiven(q) {
 }
 function answerCorrect(q) {
   if (q.type === 'ldiv') { const g = ldivGiven(q); return g.q === q.ans && g.r === q.rem; }
+  if (q.type === 'fadd' || q.type === 'fline') return fracSame(q);
   if (q.type === 'fnam') return Number(q.givenNum) === q.ansNum && Number(q.givenDen) === q.ansDen;
   if (q.type === 'fcmp') return q.given === q.ans;
   return Number(q.given) === q.ans;
 }
 function answerText(q) {
   if (q.type === 'ldiv') return `${q.ans} R ${q.rem}`;
-  if (q.type === 'fnam') return q.ansNum + '/' + q.ansDen;
+  if (q.type === 'fnam' || q.type === 'fadd' || q.type === 'fline') return q.ansNum + '/' + q.ansDen;
   return String(q.ans);
 }
 function wordKindLabel(k) {
@@ -3730,6 +3860,8 @@ function exprText(q) {
   if (q.type === 'feq') return `${q.n1}/${q.d1} = ?/${q.d2}`;
   if (q.type === 'fcmp') return `${q.n1}/${q.d1} ? ${q.n2}/${q.d2}`;
   if (q.type === 'fnam') return 'this fraction';
+  if (q.type === 'fadd') return `${q.n1}/${q.d} ${q.op} ${q.n2}/${q.d}`;
+  if (q.type === 'fline') return 'the dot';
   if (q.type === 'ldiv') return `${q.a} ÷ ${q.b}`;
   if (q.type === 'mul2') return `${q.a} × ${q.b}`;
   if (q.type === 'word') return q.op || '';
@@ -3737,7 +3869,7 @@ function exprText(q) {
 }
 function answered(q) {
   if (q.type === 'ldiv') return String(q.givenQ || '') !== '' || String(q.givenR || '') !== '';
-  if (q.type === 'fnam') return (q.givenNum || '') !== '' || (q.givenDen || '') !== '';
+  if (q.type === 'fnam' || q.type === 'fadd' || q.type === 'fline') return (q.givenNum || '') !== '' || (q.givenDen || '') !== '';
   return (q.given || '') !== '';
 }
 
@@ -3848,7 +3980,7 @@ function renderQuestion(q, idx) {
     return card;
   }
 
-  if (q.type === 'fnam' || q.type === 'feq' || q.type === 'fcmp') {
+  if (isFracQ(q)) {
     card.appendChild(renderFractionRow(q, idx, right, wrong));
     if (!state.submitted && q.isReview) {
       const tip = el('div', 'pretip');
@@ -4040,6 +4172,37 @@ function fracInput(q, idx, field, ph) {
 }
 function renderFractionRow(q, idx, right, wrong) {
   const row = el('div', 'qrow frac-row');
+  const numDen = () => {
+    const fin = el('div', 'frac-answer');
+    const numI = fracInput(q, idx, 'givenNum', '▢');
+    const denI = fracInput(q, idx, 'givenDen', '▢');
+    numI.setAttribute('aria-label', `Question ${idx + 1}: top number`);
+    denI.setAttribute('aria-label', `Question ${idx + 1}: bottom number`);
+    if (state.submitted) { numI.classList.add(right ? 'ok' : 'bad'); denI.classList.add(right ? 'ok' : 'bad'); }
+    fin.appendChild(numI); fin.appendChild(el('div', 'frac-line wide')); fin.appendChild(denI);
+    return fin;
+  };
+  const ansPill = () => { const pill = el('div', 'correct-pill'); pill.appendChild(spanTxt('Answer', 'ar')); pill.appendChild(spanTxt(answerText(q), 'tabular')); return pill; };
+  if (q.type === 'fadd') {
+    const expr = el('div', 'expr frac-expr');
+    expr.appendChild(fracMini(q.n1, q.d));
+    expr.appendChild(spanTxt(q.op, 'op'));
+    expr.appendChild(fracMini(q.n2, q.d));
+    expr.appendChild(spanTxt('=', 'eq'));
+    row.appendChild(expr);
+    row.appendChild(numDen());
+    if (wrong) row.appendChild(ansPill());
+    return row;
+  }
+  if (q.type === 'fline') {
+    const left = el('div', 'frac-q');
+    left.appendChild(el('div', 'frac-prompt', 'What fraction is at the dot?'));
+    left.appendChild(numberLineEl(q.d, q.max, q.k, false));
+    row.appendChild(left);
+    row.appendChild(numDen());
+    if (wrong) row.appendChild(ansPill());
+    return row;
+  }
   if (q.type === 'fnam') {
     const left = el('div', 'frac-q');
     left.appendChild(el('div', 'frac-prompt', 'What fraction is shaded?'));
@@ -4111,6 +4274,8 @@ function teachPayload(q) {
   if (q.type === 'fnam') return { type: 'fnam', shaded: q.shaded, den: q.den };
   if (q.type === 'feq') return { type: 'feq', n1: q.n1, d1: q.d1, d2: q.d2, ans: q.ans };
   if (q.type === 'fcmp') return { type: 'fcmp', n1: q.n1, d1: q.d1, n2: q.n2, d2: q.d2, ans: q.ans };
+  if (q.type === 'fadd') return { type: 'fadd', n1: q.n1, n2: q.n2, d: q.d, op: q.op === '+' ? '+' : '-' };
+  if (q.type === 'fline') return { type: 'fline', k: q.k, d: q.d, max: q.max };
   return { type: q.type, a: q.a, b: q.b };
 }
 
@@ -4461,6 +4626,32 @@ function renderLessonModal(domain) {
     const go = el('button', 'btn btn-primary lesson-go', '✏️ Try some');
     go.onclick = startLongDivPractice;
     m.appendChild(go);
+  } else if (domain === 'fracops') {
+    const fresh = !Stats.hasSeen('fracopsLesson');
+    m.appendChild(el('div', 'ico-big', '🍕'));
+    m.appendChild(el('h2', null, fresh ? '🎉 New in fractions: adding & the number line' : 'Adding fractions & the number line'));
+    m.appendChild(el('p', null, 'You can name and compare fractions. Now put pieces together, and find fractions on a line.'));
+
+    m.appendChild(el('h3', 'lesson-h', '1) Same-size pieces: add the tops'));
+    m.appendChild(barEl(8, 3));
+    m.appendChild(el('p', 'lesson-p', '3 eighths and 2 more eighths make 5 eighths: 3/8 + 2/8 = 5/8.'));
+    m.appendChild(barEl(8, 5));
+    m.appendChild(el('p', 'lesson-p', 'The bottom stays 8, because the pieces are still eighths. 3/8 + 2/8 is NOT 5/16: sixteenths would be smaller pieces. Taking away works the same way: 7/8 − 3/8 = 4/8.'));
+
+    m.appendChild(el('h3', 'lesson-h', '2) Fractions live on the number line'));
+    m.appendChild(numberLineEl(4, 1, 3, true));
+    m.appendChild(el('p', 'lesson-p', 'From 0 to 1 there are 4 equal spaces, so each jump is 1/4. The dot is 3 jumps from 0: 3/4.'));
+
+    m.appendChild(el('h3', 'lesson-h', '3) Count spaces, not marks'));
+    m.appendChild(el('p', 'lesson-p', 'There are 5 marks from 0 to 1 but only 4 spaces. The spaces are the pieces, so the bottom number is 4, not 5.'));
+
+    m.appendChild(el('h3', 'lesson-h', '4) Past 1'));
+    m.appendChild(numberLineEl(4, 2, 5, true));
+    m.appendChild(el('p', 'lesson-p', 'The whole is still 0 to 1. Keep jumping in quarters: the dot is 5 quarters from 0, so 5/4, more than one whole.'));
+
+    const go = el('button', 'btn btn-primary lesson-go', '✏️ Try some');
+    go.onclick = startFractionPractice;
+    m.appendChild(go);
   } else if (domain === 'mul2') {
     const fresh = !Stats.hasSeen('mul2Lesson');
     m.appendChild(el('div', 'ico-big', '🧮'));
@@ -4707,7 +4898,8 @@ function renderMineModal() {
     const stEmoji = { new: '⚪', learning: '🌱', accurate: '⭐', fluent: '🚀' };
     if (r.name === 'Fractions') {
       const chips = el('div', 'mine-chips');
-      [['frac.fnam', 'Naming'], ['frac.feq', 'Equal'], ['frac.fcmp', 'Compare']].forEach(([k, label]) => {
+      [['frac.fnam', 'Naming'], ['frac.feq', 'Equal'], ['frac.fcmp', 'Compare']]
+        .concat(Stats.isUnlocked('fracops') ? [['frac.fadd', 'Add'], ['frac.fline', 'Number line']] : []).forEach(([k, label]) => {
         chips.appendChild(el('span', 'mine-chip', `${stEmoji[Stats.skillState(k)] || '⚪'} ${label}`));
       });
       card.appendChild(chips);
@@ -4820,6 +5012,8 @@ function qLabel(q) {
   if (q.type === 'fnam') return `name ${q.shaded} of ${q.den} shaded`;
   if (q.type === 'feq') return `${q.n1}/${q.d1} = ?/${q.d2}`;
   if (q.type === 'fcmp') return `${q.n1}/${q.d1} ? ${q.n2}/${q.d2}`;
+  if (q.type === 'fadd') return `${q.n1}/${q.d} ${q.op} ${q.n2}/${q.d}`;
+  if (q.type === 'fline') return `number line 0–${q.max}, dot at ${q.k}/${q.d}`;
   if (q.type === 'word') return q.multi ? `🪜 ${multiKindLabel(q.wkind)}` : `📖 ${wordKindLabel(q.wkind)}`;
   if (q.type === 'ldiv') return `${q.a} ÷ ${q.b} (with R)`;
   if (q.type === 'geo') return `📏 ${geoKindLabel(q.gk)}: ${geoDims(q)}`;
@@ -4828,7 +5022,7 @@ function qLabel(q) {
 }
 function sessionQuestions(quiz) {
   return quiz.map(q => {
-    const given = (q.type === 'fnam' ? `${q.givenNum || ''}/${q.givenDen || ''}`
+    const given = (['fnam', 'fadd', 'fline'].includes(q.type) ? `${q.givenNum || ''}/${q.givenDen || ''}`
       : q.type === 'ldiv' ? (answered(q) ? `${q.givenQ || ''} R ${q.givenR || 0}` : '')
       : String(q.given == null ? '' : q.given)).trim().slice(0, 16);
     const ok = answerCorrect(q) ? 1 : 0;
@@ -4849,6 +5043,8 @@ function errLabel(e) {
   if (k === 'fnam') return 'naming a fraction';
   if (k === 'feq') return 'equal fractions';
   if (k === 'fcmp') return 'comparing fractions';
+  if (k === 'fadd' && e.x) return `${e.x[0]}/${e.x[3]} ${e.x[1]} ${e.x[2]}/${e.x[3]}`;
+  if (k === 'fline' && e.x) return `number line, dot at ${e.x[0]}/${e.x[1]}`;
   if (k.startsWith('word.')) return `📖 ${wordKindLabel(k.slice(5))}`;
   if (k.startsWith('multi.')) return `🪜 ${multiKindLabel(k.slice(6))}`;
   if (k.startsWith('mul2.') && e.x) return `${e.x[0]} × ${e.x[1]}`;
@@ -5102,12 +5298,23 @@ function renderStatsModal() {
       const stTxt = s.fractions.state === 'fluent' ? 'fluent 🌟' : s.fractions.state === 'accurate' ? 'accurate' : 'learning';
       domGroup.appendChild(el('p', 'stats-line', `${s.fractions.attempts} attempts · ${s.fractions.accuracy}% accurate · ${s.fractions.mastery}% mastery · ${stTxt}`));
       domGroup.appendChild(masteryMeter(s.fractions.mastery));
+      domGroup.appendChild(el('p', 'stats-line', [['fnam', 'Naming'], ['feq', 'Equal'], ['fcmp', 'Compare'], ['fadd', 'Add & subtract'], ['fline', 'Number line']].map(([k, nm]) => {
+        const f = Stats.getSkill('frac.' + k);
+        const n = f ? (f.right || 0) + (f.wrong || 0) : 0;
+        const locked = (k === 'fadd' || k === 'fline') && !Stats.isUnlocked('fracops');
+        return `${nm} ${n ? Math.round(100 * (f.right || 0) / n) + '%' : locked ? `opens at 2 of 3 basics solid (now ${Stats.fracBasicSolid()})` : '—'}`;
+      }).join(' · ')));
       const row3 = el('div', 'div-actions');
       const learn3 = el('button', 'btn btn-ghost', '📖 Lesson');
       learn3.onclick = () => { state.showLesson = 'fractions'; render(); };
       const prac3 = el('button', 'btn btn-primary', '✏️ Practice fractions');
       prac3.onclick = startFractionPractice;
       row3.appendChild(learn3);
+      if (Stats.isUnlocked('fracops')) {
+        const learnOps = el('button', 'btn btn-ghost', '📖 Adding & number line');
+        learnOps.onclick = () => { state.showLesson = 'fracops'; render(); };
+        row3.appendChild(learnOps);
+      }
       row3.appendChild(prac3);
       domGroup.appendChild(row3);
     }
@@ -5502,7 +5709,9 @@ async function generatePlan(container, btn) {
         : 'locked',
       fractions: s.fractions.unlocked
         ? { attempts: s.fractions.attempts, accuracyPct: s.fractions.accuracy, masteryPct: s.fractions.mastery,
-            subSkills: { naming: Stats.skillState('frac.fnam'), equivalence: Stats.skillState('frac.feq'), comparison: Stats.skillState('frac.fcmp') } }
+            subSkills: { naming: Stats.skillState('frac.fnam'), equivalence: Stats.skillState('frac.feq'), comparison: Stats.skillState('frac.fcmp'),
+                         addSubtract: Stats.isUnlocked('fracops') ? Stats.skillState('frac.fadd') : 'locked',
+                         numberLine: Stats.isUnlocked('fracops') ? Stats.skillState('frac.fline') : 'locked' } }
         : 'locked',
       // Systematic error patterns from the raw wrong-answer log — the most
       // actionable input for a targeted plan.

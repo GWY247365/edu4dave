@@ -117,5 +117,16 @@ check('prompt carries the answer and the area model', /34 × 26 \(the answer is 
 r = await call(teach, { problem: { type: 'mul2', a: 340, b: 26 } });
 check('numbers outside 2-digit are rejected', r.status === 400);
 
+console.log('10) adding fractions and the number line are accepted by Teach me this');
+kv.clear();
+r = await call(teach, { problem: { type: 'fadd', n1: 3, n2: 2, d: 8, op: '+' } });
+check('adding fractions gets a lesson', r.status === 200 && /answer is 5\/8/.test(lastModelPrompt) && /add the bottom numbers too/.test(lastModelPrompt));
+r = await call(teach, { problem: { type: 'fline', k: 3, d: 4, max: 1 } });
+check('number line gets a lesson', r.status === 200 && /answer is 3\/4/.test(lastModelPrompt) && /tick marks/.test(lastModelPrompt));
+r = await call(teach, { problem: { type: 'fadd', n1: 7, n2: 3, d: 8, op: '+' } });
+check('a sum past one whole is rejected', r.status === 400);
+r = await call(teach, { problem: { type: 'fline', k: 9, d: 4, max: 2 } });
+check('a dot off the line is rejected', r.status === 400);
+
 console.log(fails ? `\n${fails} FAILURE(S)` : '\nall rate-limit tests passed');
 process.exit(fails ? 1 : 0);
