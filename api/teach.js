@@ -27,8 +27,11 @@ function validProblem(p) {
                                 p.r >= 0 && p.r < p.b && p.b * p.q + p.r === p.a;
   // Word problems carry their own story; bounded so the endpoint cannot be
   // used as a general-purpose prompt.
+  // Two-step problems add their steps, bounded the same way.
   if (p.type === 'word') return typeof p.text === 'string' && p.text.length > 0 && p.text.length <= 400 &&
-                                typeof p.op === 'string' && p.op.length <= 40 && isNum(p.ans);
+                                typeof p.op === 'string' && p.op.length <= 40 && isNum(p.ans) &&
+                                (p.steps === undefined || (Array.isArray(p.steps) && p.steps.length >= 1 && p.steps.length <= 3 &&
+                                  p.steps.every(t => typeof t === 'string' && t.length > 0 && t.length <= 120)));
   return false;
 }
 function describe(p) {
@@ -43,6 +46,12 @@ function describe(p) {
     return `${p.a} ÷ ${p.b} with a remainder — the answer is ${p.q} remainder ${p.r}, because ${p.b} × ${p.q} = ${p.b * p.q} and ` +
       `${p.a} − ${p.b * p.q} = ${p.r}. The remainder is always smaller than ${p.b}; for bigger numbers use divide, multiply, subtract, bring down, ` +
       'and write a 0 in the answer whenever the divisor does not fit';
+  }
+  if (p.type === 'word' && p.steps) {
+    const story = p.text.replace(/\s+/g, ' ').trim();
+    return `a two-step word problem: "${story}" — the steps are: ${p.steps.map((t, i) => `(${i + 1}) ${t}`).join(' ')}; the answer is ${p.ans}. ` +
+      'The real skill is noticing the hidden number that must be found first, then checking that the final answer is what the question asks for — ' +
+      'children often stop after the first step. If there is a remainder, explain how the question decides what to do with it';
   }
   if (p.type === 'word') {
     const story = p.text.replace(/\s+/g, ' ').trim();

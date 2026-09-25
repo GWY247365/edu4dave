@@ -502,6 +502,111 @@ check('the long-division lesson opens and offers practice',
   await page.evaluate(() => { const m = document.querySelector('.modal'); return !!m && /Try some/.test(m.textContent); }));
 await page.evaluate(() => { state.showLesson = null; localStorage.clear(); });
 
+console.log('16. two-step word problems: steps, tempting wrong answers, unlock, real inputs');
+await page.evaluate(() => { localStorage.clear(); });
+await page.goto(base);
+await page.waitForSelector('.ready-start, .qcard');
+const ms = await page.evaluate(() => {
+  localStorage.clear(); Stats.reset();
+  for (let r = 0; r < 8; r++) for (let a = 2; a <= 12; a++) for (let b = a; b <= 12; b++) Stats.recordMul(a, b, true, 2000);
+  Stats.checkUnlocks();
+  const kindsBefore = mKinds().length;                 // leftovers wait for long division
+  const before = { word: Stats.isUnlocked('word'), multi: Stats.isUnlocked('multi') };
+  for (const k of ['wjoin', 'wcompare']) for (let i = 0; i < 6; i++) { Stats.recordSkill('word', true, 9000); Stats.recordSkill('word.' + k, true, 9000); }
+  const at2 = Stats.checkUnlocks();
+  for (let i = 0; i < 6; i++) { Stats.recordSkill('word', true, 9000); Stats.recordSkill('word.wgroups', true, 9000); }
+  const at3 = Stats.checkUnlocks();
+  Stats.importMerge({ unlocked: { longdiv: true } });
+  const ev = (x, o, y) => o === '+' ? x + y : o === '−' ? x - y : x * y;
+  const bad = [], kinds = new Set();
+  let wrongs = 0;
+  for (let i = 0; i < 1500; i++) {
+    const q = genMulti();
+    kinds.add(q.wkind);
+    if (/undefined|NaN/.test(q.text + q.steps.join() + q.plan)) bad.push('text: ' + q.text);
+    let last = null;
+    for (const st of q.steps) for (const m of st.matchAll(/(\d+) ([+−×]) (\d+) = (\d+)/g)) {
+      if (ev(+m[1], m[2], +m[3]) !== +m[4]) bad.push('step: ' + st);
+      last = +m[4];
+    }
+    if (q.wkind !== 'mrem' && last !== q.ans) bad.push(`last step ≠ answer: ${q.steps.join(' | ')}`);
+    if (q.wkind === 'mrem') {
+      const d = q.steps[0].match(/(\d+) ÷ (\d+) = (\d+) R (\d+)/);
+      if (!d || +d[2] * +d[3] + +d[4] !== +d[1] || +d[4] === 0 || +d[4] >= +d[2]) bad.push('division: ' + q.steps[0]);
+    }
+    if (q.wrongs.some(w => w.v === q.ans) || new Set(q.wrongs.map(w => w.v)).size !== q.wrongs.length) bad.push('wrong answers overlap: ' + q.text);
+    for (const w of q.wrongs) { wrongs++; if (diagnose(q, String(w.v)).why !== w.why) bad.push(`diagnosis ${q.wvar}/${w.cls}`); }
+    if (!answerCorrect({ ...q, given: String(q.ans) })) bad.push('grading: ' + q.text);
+  }
+  const inQuiz = Math.min(...Array.from({ length: 30 }, () => newQuiz().filter(q => q.multi).length));
+  return { kindsBefore, before, at2, at3, bad: bad.slice(0, 3), badCount: bad.length, kinds: [...kinds].sort().join(','), wrongs, inQuiz,
+           next: (Stats.nextUnlock() || {}).name || null };
+});
+check('locked until 3 of the 4 one-step kinds are solid', ms.before.word && !ms.before.multi && ms.at2 !== 'multi' && ms.at3 === 'multi', JSON.stringify(ms));
+check('leftover problems wait for long division', ms.kindsBefore === 3 && ms.kinds === 'mchange,mcompare,mgroups,mrem', `${ms.kindsBefore} → ${ms.kinds}`);
+check('1500 problems: every step is true, the last step is the answer, divisions have a real remainder', ms.badCount === 0, ms.bad.join('; '));
+check('every tempting wrong answer gets its own reason', ms.badCount === 0 && ms.wrongs > 2500, `${ms.wrongs} checked`);
+check('once unlocked, every daily quiz has a two-step problem', ms.inQuiz >= 1, `min per quiz=${ms.inQuiz}`);
+
+// the child answers through the real inputs and stops after step 1 on the first
+const pinMulti = () => page.evaluate(() => {
+  localStorage.removeItem('mathquiz.session.v1');
+  startMultiPractice();
+  const q = genMulti('mcompare');
+  Object.assign(q, { wvar: 'cmp-more', ans: 72, op: '30 + (30 + 12)',
+    text: 'Leo has 30 marbles. Mia has 12 more marbles than Leo. How many marbles do they have altogether?',
+    steps: ['30 + 12 = 42 marbles for Mia', '30 + 42 = 72 marbles altogether'],
+    plan: 'First find how many Mia has, then put both amounts together.',
+    wrongs: [{ v: 42, cls: 'early', why: '42 is how many Mia has. The question asks for both of them together, so there is one more step.' }],
+    scaffold: { kind: 'plan' }, isReview: false });
+  state.quiz[0] = { ...q, id: 0, given: '' };
+  render();
+});
+await pinMulti();
+check('a learner sees the two steps named before answering', /Two steps: First find how many Mia has/.test(await page.$eval('.qcard .pretip', e => e.textContent)));
+const firstBox = await (await page.$$('.qcard'))[0].$('input');
+await firstBox.fill('42'); await firstBox.press('Enter');
+await page.waitForTimeout(200);
+const fix = await page.$eval('.fixpill', e => e.textContent);
+check('practice mode: stopping early is named, then both steps are shown', /one more step/.test(fix) && /Step 1: 30 \+ 12 = 42/.test(fix) && /Step 2: 30 \+ 42 = 72/.test(fix), fix.slice(0, 80));
+await pinMulti();
+await page.evaluate(() => { state.immediate = false; render(); });
+const nMulti = await page.evaluate(() => state.quiz.length);
+for (let i = 0; i < nMulti; i++) {
+  const q = await page.evaluate(i => state.quiz[i], i);
+  await (await (await page.$$('.qcard'))[i].$('input')).fill(i === 0 ? '42' : String(q.ans));
+}
+await page.click('button:has-text("Check answers")');
+await page.waitForTimeout(400);
+const msRun = await page.evaluate(() => {
+  const raw = Stats.exportRaw(), sk = raw.skills.multi || {};
+  return {
+    wrong: state.quiz.filter(q => !answerCorrect(q)).length,
+    multiCount: state.quiz.filter(q => q.multi).length,
+    right: sk.right || 0, recorded: (sk.right || 0) + (sk.wrong || 0),
+    err: raw.errlog.slice(-1)[0] || {},
+    logRow: raw.hist.slice(-1)[0].q[0] || [],
+    diag: document.querySelector('.qcard .diag').textContent,
+    teach: teachPayload(state.quiz[0]),
+  };
+});
+check('two-step practice grades through the real inputs', msRun.wrong === 1 && msRun.recorded === msRun.multiCount && msRun.right === msRun.multiCount - 1,
+  `${msRun.right}/${msRun.recorded} of ${msRun.multiCount}`);
+check('stopping early is logged as such', msRun.err.k === 'multi.mcompare' && msRun.err.early === true && msRun.err.g === '42', JSON.stringify(msRun.err));
+check('the card names the mistake and shows both steps', /one more step/.test(msRun.diag) && /Step 2: 30 \+ 42 = 72/.test(msRun.diag));
+check('the daily log shows the question and the story', msRun.logRow[0] === '🪜 Compare, then total' && msRun.logRow[1] === '42' && /Leo has 30/.test(msRun.logRow[4] || ''), JSON.stringify(msRun.logRow));
+check('"Teach me this" sends the story and both steps', msRun.teach.steps && msRun.teach.steps.length === 2 && msRun.teach.ans === 72);
+const msPat = await page.evaluate(() => {
+  Stats.recordError({ d: Date.now() + 5, k: 'multi.mcompare', g: '50', ans: '80', early: true });
+  return Stats.errorPatterns().filter(p => p.key === 'multi.mcompare').map(p => p.kind + ': ' + p.label)[0] || '';
+});
+check('repeated early stops become a named pattern for the parent', /^misconception: .*stops after the first step/.test(msPat), msPat);
+await page.evaluate(() => { state.showLesson = 'multi'; render(); });
+await page.waitForTimeout(200);
+check('the two-step lesson opens, with the leftovers section once long division is open',
+  await page.evaluate(() => { const m = document.querySelector('.modal'); return !!m && /Try some/.test(m.textContent) && /the question decides/i.test(m.textContent); }));
+await page.evaluate(() => { state.showLesson = null; localStorage.clear(); });
+
 console.log('13. a release is announced when the app is resumed, not only on reload');
 await page.goto(base);
 await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 20000 });

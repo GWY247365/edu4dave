@@ -87,5 +87,16 @@ check('a remainder not smaller than the divisor is rejected', r.status === 400);
 r = await call(teach, { problem: { type: 'ldiv', a: 50, b: 6, q: 7, r: 5 } });
 check('numbers that do not add up are rejected', r.status === 400);
 
+console.log('7) two-step problems send their steps to Teach me this');
+kv.clear();
+r = await call(teach, { problem: { type: 'word', text: 'Leo has 30 marbles. Mia has 12 more than Leo. How many do they have altogether?',
+  op: '30 + (30 + 12)', ans: 72, steps: ['30 + 12 = 42 marbles for Mia', '30 + 42 = 72 marbles altogether'] } });
+check('two-step problem gets a lesson', r.status === 200 && r.out.lesson === 'a lesson');
+check('prompt carries both steps and the stop-early warning', /\(2\) 30 \+ 42 = 72/.test(lastModelPrompt) && /stop after the first step/.test(lastModelPrompt));
+r = await call(teach, { problem: { type: 'word', text: 'a story', op: '1 + 1', ans: 2, steps: ['1', '2', '3', '4'] } });
+check('more than three steps is rejected', r.status === 400);
+r = await call(teach, { problem: { type: 'word', text: 'a story', op: '1 + 1', ans: 2, steps: ['x'.repeat(121)] } });
+check('an oversized step is rejected', r.status === 400);
+
 console.log(fails ? `\n${fails} FAILURE(S)` : '\nall rate-limit tests passed');
 process.exit(fails ? 1 : 0);
