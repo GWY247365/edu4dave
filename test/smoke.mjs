@@ -607,6 +607,95 @@ check('the two-step lesson opens, with the leftovers section once long division 
   await page.evaluate(() => { const m = document.querySelector('.modal'); return !!m && /Try some/.test(m.textContent) && /the question decides/i.test(m.textContent); }));
 await page.evaluate(() => { state.showLesson = null; localStorage.clear(); });
 
+console.log('17. area & perimeter: figures, the area/perimeter mix-up, unlock, real inputs');
+await page.evaluate(() => { localStorage.clear(); });
+await page.goto(base);
+await page.waitForSelector('.ready-start, .qcard');
+const geo = await page.evaluate(() => {
+  localStorage.clear(); Stats.reset();
+  for (let r = 0; r < 8; r++) for (let a = 2; a <= 12; a++) for (let b = a; b <= 12 && (a - 2) * 11 + b < 60; b++) Stats.recordMul(a, b, true, 2000);
+  const at = Stats.mulFluentCount();
+  Stats.checkUnlocks();
+  const unlockedAt = { fluent: at, geo: Stats.isUnlocked('geo') };
+  const kinds0 = gKinds().join(',');
+  for (const k of ['area', 'perim']) for (let i = 0; i < 6; i++) { Stats.recordSkill('geo', true, 9000); Stats.recordSkill('geo.' + k, true, 9000); }
+  const kinds1 = gKinds().join(',');
+  const bad = [];
+  let wrongs = 0, mixListed = 0;
+  for (let i = 0; i < 1500; i++) {
+    const q = genGeo(), s = q.shape;
+    const truth = q.gk === 'lshape' ? s.W * s.H - s.cw * s.ch : q.ask === 'area' ? s.w * s.h : q.ask === 'perim' ? 2 * (s.w + s.h) : (s.unknown === 'w' ? s.w : s.h);
+    if (truth !== q.ans) bad.push(`${q.gk} ${JSON.stringify(s)} → ${q.ans}`);
+    if (!q.steps.join(' ').includes(String(q.ans))) bad.push('steps miss the answer: ' + q.steps.join(' / '));
+    if (/undefined|NaN/.test(q.desc + q.steps.join() + geoFigure(q, true).innerHTML)) bad.push('text/figure: ' + q.desc);
+    if (q.wrongs.some(w => w.v === q.ans)) bad.push('a wrong answer equals the answer: ' + q.desc);
+    if ((q.gk === 'area' || q.gk === 'perim') && q.wrongs.some(w => /perim|area/.test(w.cls))) mixListed++;
+    for (const w of q.wrongs) { wrongs++; if (diagnose(q, String(w.v)).why !== w.why) bad.push(`diagnosis ${q.gk}/${w.cls}`); }
+    if (!answerCorrect({ ...q, given: String(q.ans) })) bad.push('grading: ' + q.desc);
+  }
+  const basics = Array.from({ length: 200 }, () => genGeo(Math.random() < 0.5 ? 'area' : 'perim'));
+  return { unlockedAt, kinds0, kinds1, bad: bad.slice(0, 3), badCount: bad.length, wrongs,
+           mixAll: basics.every(q => q.wrongs.some(w => /perim|area/.test(w.cls))),
+           inQuiz: Math.min(...Array.from({ length: 30 }, () => newQuiz().filter(q => q.type === 'geo').length)) };
+});
+check('unlocks at 45 fluent multiplication facts', geo.unlockedAt.geo && geo.unlockedAt.fluent >= 45, JSON.stringify(geo.unlockedAt));
+check('L-shapes and missing sides wait until area and perimeter are solid', geo.kinds0 === 'area,perim' && geo.kinds1 === 'area,perim,lshape,missing', `${geo.kinds0} → ${geo.kinds1}`);
+check('1500 problems: answers match the figure, steps reach the answer, figures draw', geo.badCount === 0, geo.bad.join('; '));
+check('every area problem lists its perimeter as a wrong answer, and the reverse', geo.mixAll);
+check('every listed wrong answer is diagnosed with its own reason', geo.badCount === 0 && geo.wrongs > 3000, `${geo.wrongs} checked`);
+check('once unlocked, every daily quiz has an area or perimeter problem', geo.inQuiz >= 1, `min per quiz=${geo.inQuiz}`);
+
+// the child gives the area of a perimeter problem, through the real input
+await page.evaluate(() => {
+  localStorage.clear(); Stats.reset();       // count only this session's answers
+  startGeoPractice(); state.immediate = false;
+  const q = genGeo('perim');
+  Object.assign(q, { shape: { w: 6, h: 4 }, unit: 'cm', ans: 20, desc: 'A rectangle is 6 cm long and 4 cm wide. What is its perimeter?',
+    steps: ['Opposite sides are equal: 6 + 4 + 6 + 4 = 20 cm'],
+    wrongs: [{ v: 24, cls: 'area', why: '24 is the area, the squares inside. Perimeter is the distance around: add all four sides.' }],
+    scaffold: { kind: 'grid' }, isReview: false });
+  state.quiz[0] = { ...q, id: 0, given: '' };
+  render();
+});
+const geoCard = await page.evaluate(() => {
+  const c = document.querySelector('.qcard');
+  return { lines: c.querySelectorAll('.geo-grid').length, labels: [...c.querySelectorAll('.geo-lbl')].map(t => t.textContent).join(','),
+           unit: (c.querySelector('.geo-unit') || {}).textContent };
+});
+check('the learner figure has its unit grid, side labels and the answer unit', geoCard.lines === 8 && geoCard.labels === '6 cm,4 cm' && geoCard.unit === 'cm', JSON.stringify(geoCard));
+const nGeo = await page.evaluate(() => state.quiz.length);
+for (let i = 0; i < nGeo; i++) {
+  const q = await page.evaluate(i => state.quiz[i], i);
+  await (await (await page.$$('.qcard'))[i].$('input')).fill(i === 0 ? '24' : String(q.ans));
+}
+await page.click('button:has-text("Check answers")');
+await page.waitForTimeout(400);
+const geoRun = await page.evaluate(() => {
+  const raw = Stats.exportRaw(), sk = raw.skills.geo || {};
+  return {
+    wrong: state.quiz.filter(q => !answerCorrect(q)).length, geoCount: state.quiz.filter(q => q.type === 'geo').length,
+    right: sk.right || 0, recorded: (sk.right || 0) + (sk.wrong || 0),
+    err: raw.errlog.slice(-1)[0] || {}, logRow: raw.hist.slice(-1)[0].q[0] || [],
+    diag: document.querySelector('.qcard .diag').textContent, teach: teachPayload(state.quiz[0]),
+  };
+});
+check('area & perimeter practice grades through the real inputs', geoRun.wrong === 1 && geoRun.recorded === geoRun.geoCount && geoRun.right === geoRun.geoCount - 1,
+  `${geoRun.right}/${geoRun.recorded} of ${geoRun.geoCount}`);
+check('the mix-up is logged as such', geoRun.err.k === 'geo.perim' && geoRun.err.mix === true && geoRun.err.g === '24', JSON.stringify(geoRun.err));
+check('the card names the mix-up and shows the working', /24 is the area/.test(geoRun.diag) && /6 \+ 4 \+ 6 \+ 4 = 20 cm/.test(geoRun.diag));
+check('the daily log shows the shape and the problem', geoRun.logRow[0] === '📏 Perimeter: 6 × 4' && geoRun.logRow[1] === '24' && /6 cm long/.test(geoRun.logRow[4] || ''), JSON.stringify(geoRun.logRow));
+check('"Teach me this" sends the problem in words, with the working', geoRun.teach.type === 'geo' && /6 cm long/.test(geoRun.teach.text) && geoRun.teach.steps.length === 1);
+const geoPat = await page.evaluate(() => {
+  Stats.recordError({ d: Date.now() + 5, k: 'geo.perim', g: '30', ans: '22', mix: true });
+  return Stats.errorPatterns().filter(p => p.key === 'geo.perim').map(p => p.kind + ': ' + p.label)[0] || '';
+});
+check('repeated mix-ups become a named pattern for the parent', /^misconception: .*mixes up area and perimeter/.test(geoPat), geoPat);
+await page.evaluate(() => { state.showLesson = 'geo'; render(); });
+await page.waitForTimeout(200);
+check('the area & perimeter lesson opens with its figures and offers practice',
+  await page.evaluate(() => { const m = document.querySelector('.modal'); return !!m && m.querySelectorAll('.geo-fig svg').length === 2 && /Try some/.test(m.textContent); }));
+await page.evaluate(() => { state.showLesson = null; localStorage.clear(); });
+
 console.log('13. a release is announced when the app is resumed, not only on reload');
 await page.goto(base);
 await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 20000 });

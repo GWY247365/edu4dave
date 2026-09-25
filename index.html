@@ -362,6 +362,13 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .wbar{height:28px;background:var(--brand);color:#fff;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}
 .wbar.extra{background:var(--warn-deep,#d97706)}
 .wstory-wrap{position:relative}
+.geo-fig{display:flex;justify-content:center;margin:4px 0 6px;overflow-x:auto}
+.geo-fig svg{max-width:100%;height:auto}
+.geo-shape{fill:var(--brand-soft-2);stroke:var(--brand-deep);stroke-width:2}
+.geo-grid{stroke:var(--brand);stroke-width:1;opacity:.45}
+.geo-lbl{font:600 13px 'Inter',system-ui,sans-serif;fill:var(--ink)}
+.geo-q{margin:4px 0 10px;font-size:16px;line-height:1.5;color:var(--ink);font-weight:600}
+.geo-unit{font-size:16px;font-weight:600;color:var(--ink-3)}
 .wsay{display:inline-flex;align-items:center;gap:4px;margin:-4px 0 10px;padding:6px 12px;border:1px solid var(--brand-soft-2);border-radius:999px;background:#fff;color:var(--brand-deep);font-size:13px;font-weight:700;cursor:pointer}
 .wsay.speaking{background:var(--brand);color:#fff;border-color:var(--brand)}
 .wstory{margin:6px 0 10px;font-size:16px;line-height:1.55;color:var(--ink);background:var(--brand-soft);border:1px solid var(--brand-soft-2);border-radius:12px;padding:12px 14px}
@@ -477,7 +484,7 @@ const Stats = (() => {
   const FAST_MS = 6000;      // fluency threshold for single mul facts
   // Multi-step questions take longer even when fluent — one global 6s bar
   // made 'fluent' unreachable for them and suppressed stability growth.
-  const FAST_BY_SKILL = { div: 8000, bigmul: 25000, fractions: 15000, longdiv: 25000, multi: 45000 };
+  const FAST_BY_SKILL = { div: 8000, bigmul: 25000, fractions: 15000, longdiv: 25000, multi: 45000, geo: 20000 };
   const STAB_FLUENT = 12;    // days of stability needed to count a fact as mastered
   const STAB_MAX = 400;      // cap on stability (days)
   // Bayesian Knowledge Tracing params → a calibrated P(known) per fact.
@@ -548,7 +555,7 @@ const Stats = (() => {
         snaps: d.snaps || [],
         buckets: d.buckets || {},
         streak: d.streak || { current: 0, best: 0, lastDay: null },
-        unlocked: Object.assign({ division: false, bigmul: false, fractions: false, word: false, longdiv: false, multi: false }, d.unlocked || {}),
+        unlocked: Object.assign({ division: false, bigmul: false, fractions: false, word: false, longdiv: false, multi: false, geo: false }, d.unlocked || {}),
         seen: d.seen || {},
         plans: d.plans || [],
         errlog: d.errlog || [],
@@ -557,7 +564,7 @@ const Stats = (() => {
       };
     } catch { return blank(); }
   }
-  function blank() { return { facts: {}, divFacts: {}, skills: {}, hist: [], snaps: [], buckets: {}, streak: { current: 0, best: 0, lastDay: null }, unlocked: { division: false, bigmul: false, fractions: false, word: false, longdiv: false, multi: false }, seen: {}, plans: [], errlog: [], daily: { day: null, warmup: false, quiz: false }, pin: null }; }
+  function blank() { return { facts: {}, divFacts: {}, skills: {}, hist: [], snaps: [], buckets: {}, streak: { current: 0, best: 0, lastDay: null }, unlocked: { division: false, bigmul: false, fractions: false, word: false, longdiv: false, multi: false, geo: false }, seen: {}, plans: [], errlog: [], daily: { day: null, warmup: false, quiz: false }, pin: null }; }
   function save(d) {
     try { localStorage.setItem(STATS_KEY, JSON.stringify(d)); } catch {}
   }
@@ -576,6 +583,7 @@ const Stats = (() => {
     if (name === 'bigmul') return FAST_BY_SKILL.bigmul;
     if (name === 'longdiv' || name.indexOf('ldiv.') === 0) return FAST_BY_SKILL.longdiv;
     if (name === 'multi' || name.indexOf('multi.') === 0) return FAST_BY_SKILL.multi;
+    if (name === 'geo' || name.indexOf('geo.') === 0) return FAST_BY_SKILL.geo;
     return name.indexOf('frac') === 0 ? FAST_BY_SKILL.fractions : FAST_MS;
   }
   function factState(f, now, fastMs) {
@@ -805,10 +813,12 @@ const Stats = (() => {
     if (q.type === 'fnam' || q.type === 'feq' || q.type === 'fcmp') return skillState('fractions');
     if (q.type === 'word') return skillState((q.multi ? 'multi.' : 'word.') + q.wkind);
     if (q.type === 'ldiv') return skillState('ldiv.' + q.ldk);
+    if (q.type === 'geo') return skillState('geo.' + q.gk);
     return 'new';
   }
   const DIV_UNLOCK_AT = 24;    // division unlocks once enough mul facts are fluent
   const BIGMUL_UNLOCK_AT = 40; // 2-digit multiplication unlocks with strong table fluency
+  const GEO_UNLOCK_AT = 45;    // area is multiplication in rows and columns
   const FRAC_UNLOCK_AT = 50;   // fractions unlock once tables are very solid
   const WORD_UNLOCK_AT = 55;   // word problems need the operations to be automatic first
   const LDIV_UNLOCK_AT = 40;   // remainders & long division: 40 of 66 division families solid
@@ -821,6 +831,9 @@ const Stats = (() => {
     }
     if (!data.unlocked.bigmul && fluent >= BIGMUL_UNLOCK_AT) {
       data.unlocked.bigmul = true; newly = newly || 'bigmul'; save(data);
+    }
+    if (!data.unlocked.geo && fluent >= GEO_UNLOCK_AT) {
+      data.unlocked.geo = true; newly = newly || 'geo'; save(data);
     }
     if (!data.unlocked.fractions && fluent >= FRAC_UNLOCK_AT) {
       data.unlocked.fractions = true; newly = newly || 'fractions'; save(data);
@@ -857,6 +870,7 @@ const Stats = (() => {
     const fluent = mulFluentCount();
     if (!data.unlocked.division) return { name: 'Division', emoji: '➗', have: fluent, need: DIV_UNLOCK_AT };
     if (!data.unlocked.bigmul) return { name: 'Bigger ×', emoji: '🔢', have: fluent, need: BIGMUL_UNLOCK_AT };
+    if (!data.unlocked.geo) return { name: 'Area & perimeter', emoji: '📏', have: fluent, need: GEO_UNLOCK_AT };
     if (!data.unlocked.fractions) return { name: 'Fractions', emoji: '🍕', have: fluent, need: FRAC_UNLOCK_AT };
     if (!data.unlocked.word) return { name: 'Word problems', emoji: '📖', have: fluent, need: WORD_UNLOCK_AT };
     // After word problems two domains open independently; show whichever is closer.
@@ -1113,6 +1127,13 @@ const Stats = (() => {
         else if (zs >= 2) { kind = 'misconception'; label = `${nm}: drops the zero inside the answer (${zs}×) — write 0 when the divisor doesn't fit`; }
         else if (nor >= 2) { kind = 'misconception'; label = `${nm}: forgets the remainder (${nor}×) — check what is left over`; }
         else label = `${nm}: missed ${list.length}×`;
+      } else if (k.indexOf('geo.') === 0) {
+        const mix = list.filter(e => e.mix).length, sides = list.filter(e => e.sides).length, bbox = list.filter(e => e.bbox).length;
+        const nm = { 'geo.area': 'Area', 'geo.perim': 'Perimeter', 'geo.lshape': 'L-shapes', 'geo.missing': 'Missing side' }[k] || 'Area & perimeter';
+        if (mix >= 2) { kind = 'misconception'; label = `${nm}: mixes up area and perimeter (${mix}×) — area covers the inside, perimeter goes around`; }
+        else if (sides >= 2) { kind = 'misconception'; label = `${nm}: counts only the labelled sides (${sides}×) — opposite sides are equal, a rectangle has four`; }
+        else if (bbox >= 2) { kind = 'misconception'; label = `${nm}: uses the whole big rectangle (${bbox}×) — the missing corner has to come out; split into rectangles`; }
+        else label = `${nm}: missed ${list.length}×`;
       } else if (k.indexOf('multi.') === 0) {
         const early = list.filter(e => e.early).length, one = list.filter(e => e.onesum).length, rem = list.filter(e => e.remx).length;
         const nm = { 'multi.mgroups': 'Groups, then more or less', 'multi.mcompare': 'Compare, then total',
@@ -1307,6 +1328,7 @@ const Stats = (() => {
       word: skillSummary('word'),
       longdiv: skillSummary('longdiv'),
       multi: skillSummary('multi'),
+      geo: skillSummary('geo'),
       hist: data.hist.slice(-10),
       streak: streakStatus(),
       buckets: bucketSummary(),
@@ -1586,13 +1608,14 @@ function focusNextOpen(fromInp) {
 // plan before the retype, instead of waiting for the whole quiz to be marked.
 function buildFixPill(q) {
   const pill = el('div', 'fixpill');
-  if (q.type === 'word' && q.multi) {
-    const m = multiMiss(q, Number(String(q.given).trim()));
+  if ((q.type === 'word' && q.multi) || q.type === 'geo') {
+    const g = Number(String(q.given).trim());
+    const m = q.type === 'geo' ? geoMiss(q, g) : multiMiss(q, g);
     if (m.why) pill.appendChild(el('div', 'fix-why', m.why));
-    else if (m.cls === 'slip') pill.appendChild(el('div', 'fix-why', 'Right idea — just check the arithmetic in each step.'));
+    else if (m.cls === 'slip') pill.appendChild(el('div', 'fix-why', 'Right idea — just check the arithmetic.'));
     else pill.appendChild(el('div', 'fix-reason', q.plan));
     const plan = el('div', 'fix-plan');
-    q.steps.forEach((t, i) => plan.appendChild(el('div', 'tabular', `Step ${i + 1}: ${t}`)));
+    stepsText(q).forEach(t => plan.appendChild(el('div', 'tabular', t)));
     pill.appendChild(plan);
     pill.appendChild(el('div', 'fix-do', 'Type ' + answerText(q) + ' to lock it in 💪'));
     return pill;
@@ -2144,6 +2167,179 @@ function multiQuiz() {
   return shuffleQuiz(qs);
 }
 
+/* ---------- Area & perimeter ---------- */
+// CCSS 3.MD.C.5-7 and 3.MD.D.8. The central misconception is confusing the
+// two measures, so every area problem lists its perimeter as a tempting wrong
+// answer and the other way round. The rest: adding only the two labelled
+// sides of a rectangle, taking the whole bounding box of an L-shape, and
+// undoing area with subtraction. Area uses facts the child already owns, so
+// the challenge is the concept, not the multiplication.
+const G_KINDS_ALL = ['area', 'perim', 'lshape', 'missing'];
+// L-shapes and missing sides build on both basics, so they wait until those are solid.
+function gKinds() {
+  const solid = k => ['accurate', 'fluent'].includes(Stats.skillState('geo.' + k));
+  return solid('area') && solid('perim') ? G_KINDS_ALL : G_KINDS_ALL.slice(0, 2);
+}
+function geoKindLabel(k) { return { area: 'Area', perim: 'Perimeter', lshape: 'L-shapes', missing: 'Missing side' }[k] || k; }
+function pickGeoKind() {
+  const ks = gKinds();
+  const ws = ks.map(k => Stats.factWeight(Stats.getSkill('geo.' + k)));
+  let r = Math.random() * ws.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < ks.length; i++) { r -= ws[i]; if (r <= 0) return ks[i]; }
+  return ks[ks.length - 1];
+}
+function genGeo(kind) {
+  kind = kind || pickGeoKind();
+  const st = Stats.getSkill('geo.' + kind);
+  const isReview = !!st && (st.wrong || 0) > 0 && Stats.factWeight(st) > 1.5;
+  const unit = Math.random() < 0.5 ? 'cm' : 'm', sq = `sq ${unit}`;
+  let q;
+  if (kind === 'area') {
+    let w = 7, h = 3;
+    for (let i = 0; i < 20; i++) {           // area ≠ perimeter, or the confusion can't be seen
+      const p = Stats.pickMasteredFact();
+      const a = Math.max(p.a, p.b), b = Math.min(p.a, p.b);
+      if (a * b !== 2 * (a + b) && a * b !== a + b) { w = a; h = b; break; }
+    }
+    const A = w * h, P = 2 * (w + h);
+    q = { ask: 'area', shape: { w, h }, unit: sq, ans: A,
+      text: 'What is the area of this rectangle?',
+      desc: `A rectangle is ${w} ${unit} long and ${h} ${unit} wide. What is its area?`,
+      steps: [`Area = length × width = ${w} × ${h} = ${A} ${sq}`],
+      plan: 'Area is the squares that cover the inside: length × width.',
+      wrongs: [
+        { v: P, cls: 'perim', why: `${P} is the perimeter, the distance around the edge. Area counts the squares inside: ${w} × ${h}.` },
+        { v: w + h, cls: 'addsides', why: `You added two sides. Area is ${h} rows of ${w} squares, so multiply: ${w} × ${h}.` },
+      ] };
+  } else if (kind === 'perim') {
+    let w, h;
+    do { w = rint(4, 15); h = rint(2, Math.min(12, w - 1)); } while (w * h === 2 * (w + h));
+    const A = w * h, P = 2 * (w + h);
+    q = { ask: 'perim', shape: { w, h }, unit, ans: P,
+      text: 'What is the perimeter of this rectangle?',
+      desc: `A rectangle is ${w} ${unit} long and ${h} ${unit} wide. What is its perimeter?`,
+      steps: [`Opposite sides are equal: ${w} + ${h} + ${w} + ${h} = ${P} ${unit}`],
+      plan: 'Perimeter is the distance all the way around: add all four sides.',
+      wrongs: [
+        { v: w + h, cls: 'twosides', why: `${w} + ${h} is only two of the four sides. The other two are the same lengths: ${w} and ${h} again.` },
+        { v: A, cls: 'area', why: `${A} is the area, the squares inside. Perimeter is the distance around: add all four sides.` },
+        { v: 2 * w + h, cls: 'twosides', why: `That is three sides. A rectangle has four: ${w} + ${h} + ${w} + ${h}.` },
+      ] };
+  } else if (kind === 'lshape') {
+    const W = rint(5, 10), H = rint(5, 10), cw = rint(2, W - 3), ch = rint(2, H - 3);
+    const lw = W - cw, rh = H - ch, a1 = lw * H, a2 = cw * rh, A = a1 + a2;
+    q = { ask: 'area', shape: { W, H, cw, ch }, unit: sq, ans: A,
+      text: 'What is the area of this shape?',
+      desc: `An L-shaped figure: a ${W} by ${H} ${unit} rectangle with a ${cw} by ${ch} ${unit} corner cut out. What is its area?`,
+      steps: [`Split it into two rectangles: ${lw} × ${H} = ${a1} and ${cw} × ${rh} = ${a2}`, `Area = ${a1} + ${a2} = ${A} ${sq}`],
+      plan: 'Split the shape into two rectangles, find each area, then add.',
+      wrongs: [
+        { v: W * H, cls: 'bbox', why: `${W} × ${H} = ${W * H} is the whole big rectangle, but a ${cw} × ${ch} corner is missing. Split the shape into two rectangles instead.` },
+        { v: a1, cls: 'onepart', why: `${a1} is only the left part. Add the right part too: ${cw} × ${rh} = ${a2}.` },
+        { v: a2, cls: 'onepart', why: `${a2} is only the right part. Add the left part too: ${lw} × ${H} = ${a1}.` },
+        { v: 2 * (W + H), cls: 'perim', why: `${2 * (W + H)} is the perimeter, the distance around. Area counts the squares inside.` },
+      ] };
+  } else if (Math.random() < 0.5) {           // missing side from the area
+    let known = 4, other = 6;
+    for (let i = 0; i < 20; i++) {             // no squares, no ×2: the division should be real
+      const p = Stats.pickMasteredFact();
+      if (p.a !== p.b && Math.min(p.a, p.b) >= 3) { known = p.a; other = p.b; break; }
+    }
+    const A = known * other;
+    q = { ask: 'side', from: 'area', shape: { w: other, h: known, unknown: 'w' }, unit, ans: other,
+      text: `The area of this rectangle is ${A} ${sq}. How long is the side marked with a question mark?`,
+      desc: `A rectangle has an area of ${A} ${sq}. One side is ${known} ${unit}. How long is the other side?`,
+      steps: [`Area = length × width, so ${known} × ? = ${A}`, `${A} ÷ ${known} = ${other} ${unit}`],
+      plan: 'Area is length × width. What times the side you know makes the area?',
+      wrongs: [
+        { v: A - known, cls: 'subtract', why: `You took ${known} away from ${A}. Area comes from multiplying, so undo it by dividing: ${A} ÷ ${known}.` },
+        { v: (A - 2 * known) / 2, cls: 'perimthink', why: `That would be right if ${A} were the perimeter. It is the area, so divide: ${A} ÷ ${known}.` },
+      ] };
+  } else {                                     // missing side from the perimeter
+    const w = rint(3, 14), h = rint(2, 12), P = 2 * (w + h);
+    q = { ask: 'side', from: 'perim', shape: { w, h, unknown: 'h' }, unit, ans: h,
+      text: `The perimeter of this rectangle is ${P} ${unit}. How long is the side marked with a question mark?`,
+      desc: `A rectangle has a perimeter of ${P} ${unit}. One side is ${w} ${unit}. How long is the other side?`,
+      steps: [`The two ${w} ${unit} sides make ${2 * w} ${unit}`, `${P} − ${2 * w} = ${P - 2 * w} ${unit} for the other two sides, so each is ${P - 2 * w} ÷ 2 = ${h} ${unit}`],
+      plan: 'Perimeter is all four sides. Take away the two sides you know, then share what is left between the other two.',
+      wrongs: [
+        { v: P - w, cls: 'onlyone', why: `You took away one ${w} ${unit} side, but a rectangle has two of them.` },
+        { v: P - 2 * w, cls: 'nohalf', why: `${P - 2 * w} ${unit} is both of the other sides together. Share it between the two: ÷ 2.` },
+        { v: P / 2, cls: 'nosub', why: `${P / 2} is half the way around: one ${w} ${unit} side plus the side you want. Take the ${w} away.` },
+        { v: P / w, cls: 'areathink', why: `You divided as if ${P} were the area. It is the perimeter: all four sides added.` },
+      ] };
+  }
+  const seen = new Set([q.ans]);
+  q.wrongs = q.wrongs.filter(w => Number.isInteger(w.v) && w.v > 0 && !seen.has(w.v) && seen.add(w.v));
+  // Learners get the unit grid on basic shapes: count, then see why × works.
+  const fresh = ['new', 'learning'].includes(Stats.skillState('geo.' + kind));
+  const grid = (kind === 'area' || kind === 'perim') && fresh && Math.random() < 0.5;
+  return { type: 'geo', gk: kind, label: 'Area & perimeter · 📏', isReview, ...q, scaffold: grid ? { kind: 'grid' } : null };
+}
+function geoQuiz() {
+  const qs = gKinds().map(k => genGeo(k));
+  while (qs.length < 8) qs.push(genGeo());
+  qs.push(genAdd(Stats.pickBucket('add')));
+  qs.push(genSub(Stats.pickBucket('sub')));
+  return shuffleQuiz(qs);
+}
+function geoDims(q) {
+  const s = q.shape;
+  if (q.gk === 'lshape') return `${s.W} × ${s.H} less ${s.cw} × ${s.ch}`;
+  if (q.gk === 'missing') return q.from === 'area' ? `area ${s.w * s.h}, side ${s.h}` : `perimeter ${2 * (s.w + s.h)}, side ${s.w}`;
+  return `${s.w} × ${s.h}`;
+}
+// The figure, drawn to scale with the side lengths the problem gives.
+function geoFigure(q, grid) {
+  const s = q.shape, L = /^sq /.test(q.unit) ? q.unit.slice(3) : q.unit;
+  const lab = (x, y, t, anchor) => `<text x="${x}" y="${y}" text-anchor="${anchor || 'middle'}" class="geo-lbl">${t}</text>`;
+  let body = '', vw, vh;
+  if (q.gk === 'lshape') {
+    const k = Math.min(200 / s.W, 150 / s.H, 22), ox = 52, oy = 26;
+    const X = u => ox + u * k, Y = u => oy + u * k;
+    const pts = [[0, 0], [s.W - s.cw, 0], [s.W - s.cw, s.ch], [s.W, s.ch], [s.W, s.H], [0, s.H]];
+    body += `<polygon points="${pts.map(([x, y]) => X(x) + ',' + Y(y)).join(' ')}" class="geo-shape"/>`;
+    body += lab(X((s.W - s.cw) / 2), Y(0) - 8, `${s.W - s.cw} ${L}`);
+    body += lab(X(s.W - s.cw) + 6, Y(s.ch / 2) + 4, `${s.ch} ${L}`, 'start');
+    body += lab(X(s.W - s.cw / 2), Y(s.ch) + 17, `${s.cw} ${L}`);
+    body += lab(X(s.W) + 6, Y((s.H + s.ch) / 2) + 4, `${s.H - s.ch} ${L}`, 'start');
+    body += lab(X(s.W / 2), Y(s.H) + 18, `${s.W} ${L}`);
+    body += lab(X(0) - 6, Y(s.H / 2) + 4, `${s.H} ${L}`, 'end');
+    vw = X(s.W) + 52; vh = Y(s.H) + 26;
+  } else {
+    const k = Math.min(210 / s.w, 130 / s.h, 24), ox = 52, oy = 26;
+    const X = u => ox + u * k, Y = u => oy + u * k;
+    body += `<rect x="${X(0)}" y="${Y(0)}" width="${s.w * k}" height="${s.h * k}" class="geo-shape"/>`;
+    if (grid) {
+      for (let i = 1; i < s.w; i++) body += `<line x1="${X(i)}" y1="${Y(0)}" x2="${X(i)}" y2="${Y(s.h)}" class="geo-grid"/>`;
+      for (let j = 1; j < s.h; j++) body += `<line x1="${X(0)}" y1="${Y(j)}" x2="${X(s.w)}" y2="${Y(j)}" class="geo-grid"/>`;
+    }
+    body += lab(X(s.w / 2), Y(0) - 8, s.unknown === 'w' ? '?' : `${s.w} ${L}`);
+    body += lab(X(0) - 6, Y(s.h / 2) + 4, s.unknown === 'h' ? '?' : `${s.h} ${L}`, 'end');
+    vw = X(s.w) + 20; vh = Y(s.h) + 14;
+  }
+  const fig = el('div', 'geo-fig');
+  fig.innerHTML = `<svg viewBox="0 0 ${vw} ${vh}" width="${vw}" height="${vh}" role="img" aria-label="${q.desc.replace(/"/g, '')}">${body}</svg>`;
+  return fig;
+}
+// A wrong answer the problem lists gets its own reason; otherwise a near
+// miss is an arithmetic slip, and anything else claims nothing.
+function listedMiss(q, g, isSlip) {
+  if (!Number.isFinite(g)) return { cls: 'blank' };
+  const w = (q.wrongs || []).find(x => x.v === g);
+  if (w) return w;
+  return isSlip(Math.abs(g - q.ans)) ? { cls: 'slip' } : { cls: 'unclear' };
+}
+function geoMiss(q, g) { return listedMiss(q, g, d => d <= Math.max(2, Math.round(q.ans * 0.15))); }
+function stepsText(q) { return q.steps.length > 1 ? q.steps.map((t, i) => `Step ${i + 1}: ${t}`) : q.steps.slice(); }
+function diagGeo(q, g) {
+  const work = stepsText(q).join('\n'), m = geoMiss(q, g);
+  if (m.cls === 'blank') return { why: 'You left this one blank.', work, tip: q.plan };
+  if (m.why) return { why: m.why, work, tip: /perim|area/.test(m.cls) ? 'Area covers the inside (square units). Perimeter goes around the edge (units).' : q.plan };
+  if (m.cls === 'slip') return { why: `${g} is close to ${q.ans}, so the method looks right. Check the arithmetic.`, work, tip: q.plan };
+  return { why: `Not quite. ${q.plan}`, work, tip: 'Area covers the inside (square units). Perimeter goes around the edge (units).' };
+}
+
 /* ---------- Remainders & long division ---------- */
 // Three sub-skills, weighted toward the weakest like fractions and word
 // problems: a fact with a remainder (47 ÷ 6 = 7 R 5), 2-digit ÷ 1-digit, and
@@ -2246,19 +2442,21 @@ function newQuiz() {
   const wordOn = Stats.isUnlocked('word');
   const longOn = Stats.isUnlocked('longdiv');
   const multiOn = Stats.isUnlocked('multi');
+  const geoOn = Stats.isUnlocked('geo');
 
   // Allocate 6 non-add/sub slots by band — more mul-fact reps for novices
   // (easier, builds confidence), more challenge slots for experts.
-  let mul, big, div, frac, rev = 0, word = 0, longdiv = 0, multi = 0;
+  let mul, big, div, frac, rev = 0, word = 0, longdiv = 0, multi = 0, geo = 0;
   if (band === 'novice') {
     mul = 6 - (divOn ? 1 : 0); big = 0; div = divOn ? 1 : 0; frac = 0;
   } else if (band === 'developing') {
-    mul = 4 - (fracOn ? 1 : 0); big = bigOn ? 1 : 0; div = divOn ? 1 : 0; frac = fracOn ? 1 : 0;
+    mul = 4 - (fracOn ? 1 : 0) - (geoOn ? 1 : 0); big = bigOn ? 1 : 0; div = divOn ? 1 : 0; frac = fracOn ? 1 : 0;
+    geo = geoOn ? 1 : 0;
   } else if (band === 'practicing') {
     rev = Stats.reviewQuota(band); mul = Math.max(0, 2 - rev);
     big = bigOn ? 1 : 0; div = divOn ? 1 : 0; frac = fracOn ? 1 : 0; word = wordOn ? 1 : 0;
-    longdiv = longOn ? 1 : 0; multi = multiOn ? 1 : 0;
-  } else if (wordOn || longOn || multiOn) { // expert with learning domains open
+    longdiv = longOn ? 1 : 0; multi = multiOn ? 1 : 0; geo = geoOn ? 1 : 0;
+  } else if (wordOn || longOn || multiOn || geoOn) { // expert with learning domains open
     // The domains still being learned (word problems, long division, two-step
     // problems) each
     // get a slot and the weaker of them one more; the near-mastered domains
@@ -2266,11 +2464,14 @@ function newQuiz() {
     // none of them is dropped for good.
     rev = Stats.reviewQuota(band); mul = 0;
     let budget = 6 - rev;
+    // Once two-step problems are open, one-step word problems (their
+    // prerequisite, already solid) move to the rotation.
     const learning = [];
-    if (wordOn) learning.push('word');
+    if (wordOn && !multiOn) learning.push('word');
     if (longOn) learning.push('longdiv');
     if (multiOn) learning.push('multi');
-    const give = { word: 0, longdiv: 0, multi: 0 };
+    if (geoOn) learning.push('geo');
+    const give = { word: 0, longdiv: 0, multi: 0, geo: 0 };
     for (const d of learning) if (budget > 0) { give[d]++; budget--; }
     if (budget > 1) {
       const weakest = learning.slice().sort((x, y) => Stats.skillP(x) - Stats.skillP(y))[0];
@@ -2280,10 +2481,11 @@ function newQuiz() {
     if (divOn) pool.push('div');
     if (bigOn) pool.push('big');
     if (fracOn) pool.push('frac');
+    if (wordOn && multiOn) pool.push('word');
     for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
-    const take = { div: 0, big: 0, frac: 0 };
+    const take = { div: 0, big: 0, frac: 0, word: 0 };
     for (let i = 0; i < budget && pool.length; i++) take[pool[i % pool.length]]++;
-    word = give.word; longdiv = give.longdiv; multi = give.multi; div = take.div; big = take.big; frac = take.frac;
+    word = give.word + take.word; longdiv = give.longdiv; multi = give.multi; geo = give.geo; div = take.div; big = take.big; frac = take.frac;
   } else { // expert
     // Six slots for five demands, so the two near-mastered domains (2-digit ×
     // and fractions) alternate rather than one of them always being trimmed
@@ -2297,10 +2499,10 @@ function newQuiz() {
   }
   // Backfill into mul if some domains are still locked.
   const target = 6;
-  let used = mul + big + div + frac + rev + word + longdiv + multi;
+  let used = mul + big + div + frac + rev + word + longdiv + multi + geo;
   if (used < target) mul += (target - used);
   // Trim to exactly 6 by dropping from the hardest available domain.
-  used = mul + big + div + frac + rev + word + longdiv + multi;
+  used = mul + big + div + frac + rev + word + longdiv + multi + geo;
   while (used > target) {
     if (frac > 0 && band !== 'expert') frac--;
     else if (big > 0) big--;
@@ -2309,9 +2511,10 @@ function newQuiz() {
     else if (word > 1) word--;
     else if (longdiv > 1) longdiv--;
     else if (multi > 1) multi--;
+    else if (geo > 1) geo--;
     else if (rev > 1) rev--;
     else break;
-    used = mul + big + div + frac + rev + word + longdiv + multi;
+    used = mul + big + div + frac + rev + word + longdiv + multi + geo;
   }
   // Bias mul-fact selection: novices get easier, experts get harder.
   const mulBias = band === 'novice' || band === 'developing' ? 'easy'
@@ -2333,6 +2536,7 @@ function newQuiz() {
   for (let i = 0; i < word; i++) qs.push(genWord());
   for (let i = 0; i < longdiv; i++) qs.push(genLongDiv());
   for (let i = 0; i < multi; i++) qs.push(genMulti());
+  for (let i = 0; i < geo; i++) qs.push(genGeo());
   const bucketBias = band === 'novice' ? 'easy' : band === 'expert' ? 'hard' : 'auto';
   for (let i = 0; i < 2; i++) qs.push(genAdd(Stats.pickBucket('add', bucketBias)));
   for (let i = 0; i < 2; i++) qs.push(genSub(Stats.pickBucket('sub', bucketBias)));
@@ -2483,6 +2687,7 @@ function diagLongDiv(q) {
 }
 function diagnose(q, given) {
   if (q.type === 'ldiv') return diagLongDiv(q);
+  if (q.type === 'geo') return diagGeo(q, String(given == null ? '' : given).trim() === '' ? NaN : Number(given));
   if (q.type === 'fnam' || q.type === 'feq' || q.type === 'fcmp') return diagFraction(q);
   if (q.type === 'word') {
     const g = String(given == null ? '' : given).trim() === '' ? NaN : Number(given);
@@ -2564,16 +2769,10 @@ function diagWord(q, g) {
 // (stopped after step 1, one operation for everything, a leftover mishandled).
 // Anything else near the answer is an arithmetic slip; otherwise claim nothing.
 function multiMiss(q, g) {
-  if (!Number.isFinite(g)) return { cls: 'blank' };
-  const w = (q.wrongs || []).find(x => x.v === g);
-  if (w) return w;
-  const d = Math.abs(g - q.ans);
-  if (q.wkind !== 'mrem' && (d <= Math.max(10, Math.round(q.ans * 0.2)) || (d % 10 === 0 && d <= 90))) return { cls: 'slip' };
-  return { cls: 'unclear' };
+  return listedMiss(q, g, d => q.wkind !== 'mrem' && (d <= Math.max(10, Math.round(q.ans * 0.2)) || (d % 10 === 0 && d <= 90)));
 }
-function multiWork(q) { return q.steps.map((t, i) => `Step ${i + 1}: ${t}`).join('\n'); }
 function diagMulti(q, g) {
-  const work = multiWork(q), m = multiMiss(q, g);
+  const work = stepsText(q).join('\n'), m = multiMiss(q, g);
   if (m.cls === 'blank') return { why: 'You left this one blank.', work, tip: q.plan };
   if (m.why) return { why: m.why, work, tip: m.cls === 'early' ? 'After each step, ask: is this the number the question wants?' : q.plan };
   if (m.cls === 'slip') return { why: `${g} is close to ${q.ans}, so the plan looks right. Check the arithmetic in each step.`, work, tip: 'Work out step 1, write it down, then do step 2.' };
@@ -2867,7 +3066,7 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v66';
+const APP_VERSION = 'v67';
 const APP_UPDATED = '2026-09-25';
 // In-progress quiz survives refreshes/crashes/SW updates: every answer
 // keystroke snapshots the session to localStorage; a fresh page load resumes
@@ -2987,6 +3186,7 @@ function renderTimer() {
 
 // Signature for "same question" — used to keep rerolls honest.
 function qSig(q) {
+  if (q.type === 'geo') return `geo:${q.gk}:${q.ask}:${JSON.stringify(q.shape)}`;
   if (q.type === 'mul' || q.type === 'div') return `${q.type}:${Math.min(q.a, q.b)}x${Math.max(q.a, q.b)}${q.big ? ':big' : ''}`;
   if (q.type === 'word') return `word:${q.wkind}:${q.wvar}:${q.ans}`;
   if (q.type === 'ldiv') return `ldiv:${q.a}/${q.b}`;
@@ -3115,6 +3315,12 @@ function errEntry(q) {
     return { d, k: 'ldiv.' + q.ldk, x: [q.a, q.b], g: g.gq === '' && g.gr === '' ? '' : `${g.gq} R ${g.gr || 0}`, ans: answerText(q), sc,
              bigrem: miss === 'bigrem', norem: miss === 'norem', zskip: miss === 'zeroskip' };
   }
+  if (q.type === 'geo') {
+    const m = geoMiss(q, String(q.given || '').trim() === '' ? NaN : Number(q.given));
+    return { d, k: 'geo.' + q.gk, g: String(q.given || ''), ans: String(q.ans), sc, x: geoDims(q),
+             mix: ['perim', 'area', 'perimthink', 'areathink'].includes(m.cls),
+             sides: ['twosides', 'onlyone'].includes(m.cls), bbox: m.cls === 'bbox' };
+  }
   if (q.type === 'word' && q.multi) {
     const m = multiMiss(q, String(q.given || '').trim() === '' ? NaN : Number(q.given));
     return { d, k: 'multi.' + q.wkind, g: String(q.given || ''), ans: String(q.ans), sc,
@@ -3170,6 +3376,10 @@ function submit(fromTimeout) {
     else if (q.type === 'word') {
       Stats.recordSkill('word', isRight, ms, sc);
       Stats.recordSkill('word.' + q.wkind, isRight, ms, sc);
+    }
+    else if (q.type === 'geo') {
+      Stats.recordSkill('geo', isRight, ms, sc);
+      Stats.recordSkill('geo.' + q.gk, isRight, ms, sc);
     }
     else if (q.type === 'ldiv') {
       Stats.recordSkill('longdiv', isRight, ms, sc);
@@ -3321,6 +3531,7 @@ function renderTopbar() {
   const parts = [['✖️', 'Times tables'], ['➕', 'Addition'], ['➖', 'Subtraction']];
   if (Stats.isUnlocked('division')) parts.push(['➗', 'Division']);
   if (Stats.isUnlocked('bigmul')) parts.push(['🔢', '2-digit ×']);
+  if (Stats.isUnlocked('geo')) parts.push(['📏', 'Area & perimeter']);
   if (Stats.isUnlocked('fractions')) parts.push(['🍕', 'Fractions']);
   if (Stats.isUnlocked('word')) parts.push(['📖', 'Word problems']);
   if (Stats.isUnlocked('longdiv')) parts.push(['🧩', 'Remainders & long division']);
@@ -3481,6 +3692,19 @@ function renderQuestion(q, idx) {
     }
   }
 
+  if (q.type === 'geo') {
+    card.appendChild(geoFigure(q, !!q.scaffold && !state.submitted));
+    card.appendChild(el('p', 'geo-q', q.text));
+    if (!state.submitted && (q.scaffold || q.isReview)) {
+      const tip = el('div', 'pretip');
+      tip.appendChild(spanTxt('💡 ', null));
+      tip.appendChild(spanTxt(q.scaffold
+        ? (q.ask === 'area' ? 'Count the squares, or multiply: rows × squares in each row.' : 'Count the unit edges all the way around, or add all four sides.')
+        : q.plan, null));
+      card.appendChild(tip);
+    }
+  }
+
   if (q.type === 'ldiv') {
     const row = el('div', 'qrow ldiv-row');
     const expr = el('div', 'expr');
@@ -3563,7 +3787,7 @@ function renderQuestion(q, idx) {
     expr.appendChild(spanTxt(q.b, 'tabular'));
     expr.appendChild(spanTxt('=', 'eq'));
   }
-  if (q.type === 'word') expr.innerHTML = '';
+  if (q.type === 'word' || q.type === 'geo') expr.innerHTML = '';
   row.appendChild(expr);
 
   const inp = document.createElement('input');
@@ -3575,7 +3799,8 @@ function renderQuestion(q, idx) {
   inp.dataset.id = String(idx);
   inp.value = q.given;
   inp.placeholder = '?';
-  inp.setAttribute('aria-label', `Question ${idx + 1}: ${q.a} ${q.type === 'mul' ? 'times' : q.type === 'add' ? 'plus' : q.type === 'sub' ? 'minus' : 'divided by'} ${q.b}`);
+  if (q.type === 'geo' || q.type === 'word') inp.setAttribute('aria-label', `Question ${idx + 1}: your answer`);
+  else inp.setAttribute('aria-label', `Question ${idx + 1}: ${q.a} ${q.type === 'mul' ? 'times' : q.type === 'add' ? 'plus' : q.type === 'sub' ? 'minus' : 'divided by'} ${q.b}`);
   if (state.submitted) {
     inp.readOnly = true;
     if (right) inp.classList.add('ok');
@@ -3621,6 +3846,7 @@ function renderQuestion(q, idx) {
     }
   });
   row.appendChild(inp);
+  if (q.type === 'geo') row.appendChild(el('span', 'geo-unit', q.unit));
 
   if (wrong) {
     const pill = el('div', 'correct-pill');
@@ -3759,6 +3985,7 @@ function renderFractionRow(q, idx, right, wrong) {
 }
 
 function teachPayload(q) {
+  if (q.type === 'geo') return { type: 'geo', text: q.desc, ans: q.ans, steps: q.steps };
   if (q.type === 'word' && q.multi) return { type: 'word', text: q.text, op: q.op, ans: q.ans, steps: q.steps };
   if (q.type === 'word') return { type: 'word', text: q.text, op: q.op, ans: q.ans };
   if (q.type === 'ldiv') return { type: 'ldiv', a: q.a, b: q.b, q: q.ans, r: q.rem };
@@ -3791,7 +4018,7 @@ function renderDiag(q) {
   const known = q._priorState === 'accurate' || q._priorState === 'fluent';
   if (known) {
     const reminder = el('div', 'work');
-    reminder.innerHTML = q.type === 'word' && q.multi
+    reminder.innerHTML = q.steps
       ? `Quick check — you know how: <b>${q.steps.join('; ')}</b>.`
       : `Quick check — you know this one: <b>${exprText(q)} = ${answerText(q)}</b>.`;
     wrap.appendChild(reminder);
@@ -4011,6 +4238,7 @@ function startFractionPractice() { startFocusedQuiz('fractionsLesson', fractionQ
 function startWordPractice() { startFocusedQuiz('wordLesson', wordQuiz); }
 function startLongDivPractice() { startFocusedQuiz('longdivLesson', longDivQuiz); }
 function startMultiPractice() { startFocusedQuiz('multiLesson', multiQuiz); }
+function startGeoPractice() { startFocusedQuiz('geoLesson', geoQuiz); }
 
 // Concrete → Representational → Abstract lesson for a domain.
 function renderLessonModal(domain) {
@@ -4112,6 +4340,30 @@ function renderLessonModal(domain) {
 
     const go = el('button', 'btn btn-primary lesson-go', '✏️ Try some');
     go.onclick = startLongDivPractice;
+    m.appendChild(go);
+  } else if (domain === 'geo') {
+    const fresh = !Stats.hasSeen('geoLesson');
+    const fig = (shape, gk, grid) => geoFigure({ gk, shape, unit: gk === 'perim' ? 'cm' : 'sq cm', desc: 'example' }, grid);
+    m.appendChild(el('div', 'ico-big', '📏'));
+    m.appendChild(el('h2', null, fresh ? '🎉 New skill unlocked: Area & perimeter' : 'Area & perimeter'));
+    m.appendChild(el('p', null, 'Two ways to measure a flat shape: how much space is inside, and how far it is around the edge.'));
+
+    m.appendChild(el('h3', 'lesson-h', '1) Area: the squares inside'));
+    m.appendChild(fig({ w: 4, h: 3 }, 'area', true));
+    m.appendChild(el('p', 'lesson-p', 'Count the squares: 12. Quicker: 3 rows of 4 squares is 4 × 3 = 12. Area = length × width, in square units (sq cm).'));
+
+    m.appendChild(el('h3', 'lesson-h', '2) Perimeter: the distance around'));
+    m.appendChild(el('p', 'lesson-p', 'Walk all the way around the same rectangle: 4 + 3 + 4 + 3 = 14 cm. Opposite sides are always equal, so even if only two sides are labelled, add four.'));
+
+    m.appendChild(el('h3', 'lesson-h', '3) Don\'t mix them up'));
+    m.appendChild(el('p', 'lesson-p', 'Same rectangle, two different answers: area 12 sq cm, perimeter 14 cm. Ask: does the question want the inside (area) or the edge (perimeter)?'));
+
+    m.appendChild(el('h3', 'lesson-h', '4) Bigger challenges, later'));
+    m.appendChild(fig({ W: 7, H: 6, cw: 3, ch: 2 }, 'lshape', false));
+    m.appendChild(el('p', 'lesson-p', 'An L-shape splits into two rectangles: 4 × 6 = 24 and 3 × 4 = 12, so the area is 24 + 12 = 36. And if the area is 24 and one side is 4, the other side is 24 ÷ 4 = 6. These come once area and perimeter are solid.'));
+
+    const go = el('button', 'btn btn-primary lesson-go', '✏️ Try some');
+    go.onclick = startGeoPractice;
     m.appendChild(go);
   } else if (domain === 'multi') {
     const fresh = !Stats.hasSeen('multiLesson');
@@ -4293,6 +4545,7 @@ function renderMineModal() {
   rows.push({ name: 'Times tables', emoji: '✖️', mastery: s.mastery });
   if (s.division.unlocked) rows.push({ name: 'Division', emoji: '➗', mastery: s.division.mastery });
   if (s.bigmul.unlocked) rows.push({ name: 'Bigger ×', emoji: '🔢', mastery: s.bigmul.mastery });
+  if (s.geo.unlocked) rows.push({ name: 'Area & perimeter', emoji: '📏', mastery: s.geo.mastery });
   if (s.fractions.unlocked) rows.push({ name: 'Fractions', emoji: '🍕', mastery: s.fractions.mastery });
   if (s.word.unlocked) rows.push({ name: 'Word problems', emoji: '📖', mastery: s.word.mastery });
   if (s.longdiv.unlocked) rows.push({ name: 'Long division', emoji: '🧩', mastery: s.longdiv.mastery });
@@ -4318,6 +4571,13 @@ function renderMineModal() {
       const chips = el('div', 'mine-chips');
       LD_KINDS.forEach(k => {
         chips.appendChild(el('span', 'mine-chip', `${stEmoji[Stats.skillState('ldiv.' + k)] || '⚪'} ${ldKindLabel(k)}`));
+      });
+      card.appendChild(chips);
+    }
+    if (r.name === 'Area & perimeter') {
+      const chips = el('div', 'mine-chips');
+      gKinds().forEach(k => {
+        chips.appendChild(el('span', 'mine-chip', `${stEmoji[Stats.skillState('geo.' + k)] || '⚪'} ${geoKindLabel(k)}`));
       });
       card.appendChild(chips);
     }
@@ -4412,6 +4672,7 @@ function qLabel(q) {
   if (q.type === 'fcmp') return `${q.n1}/${q.d1} ? ${q.n2}/${q.d2}`;
   if (q.type === 'word') return q.multi ? `🪜 ${multiKindLabel(q.wkind)}` : `📖 ${wordKindLabel(q.wkind)}`;
   if (q.type === 'ldiv') return `${q.a} ÷ ${q.b} (with R)`;
+  if (q.type === 'geo') return `📏 ${geoKindLabel(q.gk)}: ${geoDims(q)}`;
   return q.type;
 }
 function sessionQuestions(quiz) {
@@ -4422,6 +4683,7 @@ function sessionQuestions(quiz) {
     const ok = answerCorrect(q) ? 1 : 0;
     const row = [qLabel(q), given === '/' ? '' : given, answerText(q), ok];
     if (!ok && q.type === 'word' && q.text) row.push(String(q.text).slice(0, 240));
+    if (!ok && q.type === 'geo') row.push(String(q.desc).slice(0, 240));
     return row;
   });
 }
@@ -4438,6 +4700,7 @@ function errLabel(e) {
   if (k === 'fcmp') return 'comparing fractions';
   if (k.startsWith('word.')) return `📖 ${wordKindLabel(k.slice(5))}`;
   if (k.startsWith('multi.')) return `🪜 ${multiKindLabel(k.slice(6))}`;
+  if (k.startsWith('geo.')) return `📏 ${geoKindLabel(k.slice(4))}${e.x ? ': ' + e.x : ''}`;
   if (k.startsWith('ldiv.') && e.x) return `${e.x[0]} ÷ ${e.x[1]}`;
   return k;
 }
@@ -4572,6 +4835,7 @@ function renderStatsModal() {
     const domHintParts = [`✖️ ${s.mastery}%`];
     if (s.division.unlocked) domHintParts.push(`➗ ${s.division.mastery}%`);
     if (s.bigmul.unlocked) domHintParts.push(`🔢 ${s.bigmul.mastery}%`);
+    if (s.geo.unlocked) domHintParts.push(`📏 ${s.geo.mastery}%`);
     if (s.fractions.unlocked) domHintParts.push(`🍕 ${s.fractions.mastery}%`);
     if (s.word.unlocked) domHintParts.push(`📖 ${s.word.mastery}%`);
     if (s.longdiv.unlocked) domHintParts.push(`🧩 ${s.longdiv.mastery}%`);
@@ -4693,6 +4957,27 @@ function renderStatsModal() {
       row3.appendChild(learn3);
       row3.appendChild(prac3);
       domGroup.appendChild(row3);
+    }
+
+    domGroup.appendChild(el('h3', 'stats-h3', '📏 Area & perimeter'));
+    if (!s.geo.unlocked) {
+      domGroup.appendChild(el('p', 'stats-line', `Locked — unlocks at 45 mastered multiplication facts (now ${Stats.mulFluentCount()}/45).`));
+    } else {
+      const stTxt = s.geo.state === 'fluent' ? 'fluent 🌟' : s.geo.state === 'accurate' ? 'accurate' : 'learning';
+      domGroup.appendChild(el('p', 'stats-line', `${s.geo.attempts} attempts · ${s.geo.accuracy}% accurate · ${s.geo.mastery}% mastery · ${stTxt}`));
+      domGroup.appendChild(masteryMeter(s.geo.mastery));
+      domGroup.appendChild(el('p', 'stats-line', G_KINDS_ALL.map(k => {
+        const f = Stats.getSkill('geo.' + k);
+        const n = f ? (f.right || 0) + (f.wrong || 0) : 0;
+        return `${geoKindLabel(k)} ${n ? Math.round(100 * (f.right || 0) / n) + '%' : gKinds().includes(k) ? '—' : 'not yet'}`;
+      }).join(' · ')));
+      const rowG = el('div', 'div-actions');
+      const learnG = el('button', 'btn btn-ghost', '📖 Lesson');
+      learnG.onclick = () => { state.showLesson = 'geo'; render(); };
+      const pracG = el('button', 'btn btn-primary', '✏️ Practice area & perimeter');
+      pracG.onclick = startGeoPractice;
+      rowG.appendChild(learnG); rowG.appendChild(pracG);
+      domGroup.appendChild(rowG);
     }
 
     domGroup.appendChild(el('h3', 'stats-h3', '📖 Word problems'));
@@ -4943,6 +5228,7 @@ function openPrintView() {
   ${dom('Multiplication facts (×)', { attempts: s.totalAttempts, mastery: s.mastery }, s.totalAccuracy)}
   ${dom('Division (÷)', s.division, s.division.unlocked ? s.division.accuracy : null)}
   ${dom('2-digit multiplication', s.bigmul, s.bigmul.unlocked ? s.bigmul.accuracy : null)}
+  ${dom('Area & perimeter', s.geo, s.geo.unlocked ? s.geo.accuracy : null)}
   ${dom('Fractions', s.fractions, s.fractions.unlocked ? s.fractions.accuracy : null)}
   ${dom('Word problems', s.word, s.word.unlocked ? s.word.accuracy : null)}
   ${dom('Remainders & long division', s.longdiv, s.longdiv.unlocked ? s.longdiv.accuracy : null)}
@@ -4996,6 +5282,14 @@ async function generatePlan(container, btn) {
         : 'locked',
       twoDigitMultiplication: s.bigmul.unlocked
         ? { attempts: s.bigmul.attempts, accuracyPct: s.bigmul.accuracy, masteryPct: s.bigmul.mastery }
+        : 'locked',
+      areaAndPerimeter: s.geo.unlocked
+        ? { attempts: s.geo.attempts, accuracyPct: s.geo.accuracy, masteryPct: s.geo.mastery,
+            byKind: G_KINDS_ALL.reduce((o, k) => {
+              const f = Stats.getSkill('geo.' + k), n = f ? (f.right || 0) + (f.wrong || 0) : 0;
+              o[geoKindLabel(k)] = n ? Math.round(100 * (f.right || 0) / n) + '%' : 'not seen';
+              return o;
+            }, {}) }
         : 'locked',
       twoStepProblems: s.multi.unlocked
         ? { attempts: s.multi.attempts, accuracyPct: s.multi.accuracy, masteryPct: s.multi.mastery,

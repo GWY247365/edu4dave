@@ -98,5 +98,16 @@ check('more than three steps is rejected', r.status === 400);
 r = await call(teach, { problem: { type: 'word', text: 'a story', op: '1 + 1', ans: 2, steps: ['x'.repeat(121)] } });
 check('an oversized step is rejected', r.status === 400);
 
+console.log('8) area & perimeter problems are accepted by Teach me this');
+kv.clear();
+r = await call(teach, { problem: { type: 'geo', text: 'A rectangle is 6 cm long and 4 cm wide. What is its perimeter?', ans: 20,
+  steps: ['Opposite sides are equal: 6 + 4 + 6 + 4 = 20 cm'] } });
+check('area/perimeter problem gets a lesson', r.status === 200 && r.out.lesson === 'a lesson');
+check('prompt carries the problem and the area/perimeter distinction', /6 cm long/.test(lastModelPrompt) && /mix up area/.test(lastModelPrompt));
+r = await call(teach, { problem: { type: 'geo', text: 'x'.repeat(201), ans: 1, steps: ['1'] } });
+check('an oversized problem is rejected', r.status === 400);
+r = await call(teach, { problem: { type: 'geo', text: 'a shape', ans: 1 } });
+check('a problem without its working is rejected', r.status === 400);
+
 console.log(fails ? `\n${fails} FAILURE(S)` : '\nall rate-limit tests passed');
 process.exit(fails ? 1 : 0);

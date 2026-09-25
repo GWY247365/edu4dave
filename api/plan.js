@@ -13,6 +13,7 @@ The child practices in an iPad quiz app with a progressive curriculum:
 - 3-digit addition / subtraction, classified by carries/borrows needed (0, 1, or 2).
 - Division facts (unlocks after 24 fluent multiplication facts), tracked by fact family.
 - 2-digit × 1-digit multiplication (unlocks after 40 fluent facts).
+- Area & perimeter (unlocks after 45 fluent facts): area of rectangles, perimeter of rectangles, then L-shapes and a missing side from the area or perimeter. The core misconception is mixing up area and perimeter; others are adding only the two labelled sides and using the whole bounding rectangle of an L-shape.
 - Fractions — naming, equivalence, comparison (unlocks after 50 fluent facts).
 - Word problems (unlocks after 55 fluent facts), tracked by problem schema: join/separate, comparing, equal groups, sharing. Here the difficulty is choosing the operation, not the arithmetic, and the characteristic error is keyword-matching ("more" → add) rather than reading the story.
 - Remainders & long division (unlocks after word problems, once 40 division facts are solid): facts with a remainder, 2-digit ÷ 1-digit and 3-digit ÷ 1-digit. Typical errors: a remainder not smaller than the divisor, forgetting the remainder, and dropping a zero inside the quotient.
