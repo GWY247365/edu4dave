@@ -1645,6 +1645,15 @@ const Sound = {
 // feedback plus overcorrection (see the answer, type it once) so a wrong
 // retrieval is never left uncorrected to consolidate. Focused practice
 // quizzes run in this mode; the main mixed quiz stays batch (test-like).
+// Put the cursor in the first answer box when a quiz starts, but never pull
+// it out of a box the child has already tapped into: this runs on a short
+// delay, and a fast tap would otherwise have its typing land in box 1.
+function focusFirstBox() {
+  const a = document.activeElement;
+  if (a && a.classList && a.classList.contains('ansbox')) return;
+  const first = document.querySelector('.ansbox');
+  if (first) first.focus();
+}
 function focusNextOpen(fromInp) {
   const all = [...document.querySelectorAll('.ansbox')];
   for (let i = all.indexOf(fromInp) + 1; i < all.length; i++) {
@@ -3463,10 +3472,7 @@ function startNew() {
   startTimer();
   saveSession();
   render();
-  setTimeout(() => {
-    const first = document.querySelector('.ansbox');
-    if (first) first.focus();
-  }, 50);
+  setTimeout(focusFirstBox, 50);
 }
 
 function startFocus() {
@@ -3485,10 +3491,7 @@ function startFocus() {
   startTimer();
   saveSession();
   render();
-  setTimeout(() => {
-    const first = document.querySelector('.ansbox');
-    if (first) first.focus();
-  }, 50);
+  setTimeout(focusFirstBox, 50);
 }
 
 function retryWrong() {
@@ -3505,10 +3508,7 @@ function retryWrong() {
   startTimer();
   saveSession();
   render();
-  setTimeout(() => {
-    const first = document.querySelector('.ansbox');
-    if (first) first.focus();
-  }, 50);
+  setTimeout(focusFirstBox, 50);
 }
 
 // Build a compact error-log entry from a wrongly-answered question. Per-type
@@ -4514,7 +4514,7 @@ function startFocusedQuiz(seenKey, makeQuiz) {
   startTimer();
   saveSession();
   render();
-  setTimeout(() => { const f = document.querySelector('.ansbox'); if (f) f.focus(); }, 50);
+  setTimeout(focusFirstBox, 50);
 }
 function startDivisionPractice() { startFocusedQuiz('divisionLesson', divisionQuiz); }
 function startBigmulPractice() { startFocusedQuiz('bigmulLesson', bigmulQuiz); }
@@ -5969,10 +5969,7 @@ function spanTxt(text, cls) {
 if (state.phase === 'quiz' && !state.submitted) runTicker();
 saveSession();
 render();
-setTimeout(() => {
-  const first = document.querySelector('.ansbox');
-  if (first) first.focus();
-}, 100);
+setTimeout(focusFirstBox, 100);
 
 // Catch up on any thresholds already crossed by accumulated history (e.g.
 // after a stats-engine upgrade), so unlocks happen on App open — not only
