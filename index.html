@@ -345,6 +345,27 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .fixpill .fix-plan{font-weight:700;color:var(--ink)}
 .fixpill .fix-do{margin-top:4px;font-size:13px}
 .fixpill .fix-ans{font-weight:800;font-size:16px;color:#b45309}
+.fixpill.hintpill{background:#eff6ff;border-color:#bfdbfe;color:#1e3a8a}
+.sprint{max-width:460px;margin:12px auto 0;text-align:center}
+.sprint-goal{font-weight:700;color:var(--ink);margin:6px 0 10px}
+.sprint-top{display:flex;justify-content:space-between;font-size:20px;font-weight:800;color:var(--ink);margin:6px 2px}
+.sprint-bar{height:10px;border-radius:6px;background:#e5e7eb;overflow:hidden}
+.sprint-fill{height:100%;background:#6366f1;transition:width .25s linear}
+.sprint-card{margin-top:22px;background:#fff;border:2px solid #c7d2fe;border-radius:16px;padding:22px 12px}
+.sprint-q{font-size:44px;font-weight:800;color:var(--ink)}
+.sprint-box{margin-top:12px;width:150px;max-width:80%;font-size:40px;font-weight:800;text-align:center;padding:6px;border:2px solid #a5b4fc;border-radius:12px}
+.sprint-note{min-height:22px;margin-top:10px;font-size:16px;font-weight:700;color:#b45309}
+.sprint-note.on{background:#fffbeb;border-radius:8px;padding:6px}
+.sprint-chart{margin:8px auto;max-width:360px}
+.sprint-chart svg{width:100%;height:auto;display:block}
+.sprint-chart .spr-bar{fill:#c7d2fe}
+.sprint-chart .spr-bar.now{fill:#6366f1}
+.sprint-chart .spr-n{font-size:11px;font-weight:700;fill:#374151}
+.sprint-chart .spr-goal{stroke:#f59e0b;stroke-width:2;stroke-dasharray:6 4}
+.sprint-legend{font-size:12px;color:#b45309;text-align:right}
+.sprint-miss{font-size:14px;color:var(--ink-3)}
+.sprint-actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:12px}
+.hintpill .fix-why{color:#1e40af}
 .iconbtn.has-alert{position:relative}
 .iconbtn.has-alert::after{content:'';position:absolute;top:5px;right:5px;width:9px;height:9px;border-radius:50%;background:#dc2626;box-shadow:0 0 0 2px #fff}
 .sync-health{margin:6px 0 10px;font-size:12.5px;line-height:1.45;padding:8px 10px;border-radius:8px}
@@ -411,6 +432,10 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .fcmp-note{margin-top:6px;font-size:13px;color:var(--ink-2);line-height:1.45}
 .ferr-claim{line-height:1.45}
 .ferr-q .frac-vis,.ferr-q .nl-fig{margin:4px 0 6px}
+.wtable{border-collapse:collapse;margin:4px 0 6px;font-size:15px}
+.wtable td{border:1px solid var(--border);padding:4px 12px}
+.wtable td.tabular{font-weight:700;text-align:right}
+.wstory-q{margin:2px 0 0;font-size:15px;line-height:1.5;color:var(--ink)}
 .lab{border:1px solid var(--brand-soft-2);border-radius:12px;padding:10px 12px;margin:6px 0 10px;background:#fff}
 .lab-tasks{margin:0 0 8px;padding-left:22px;font-size:14px;color:var(--ink-2);line-height:1.6}
 .lab-task.done{color:var(--ok-deep);text-decoration:line-through}
@@ -552,7 +577,7 @@ const Stats = (() => {
   const FAST_MS = 6000;      // fluency threshold for single mul facts
   // Multi-step questions take longer even when fluent — one global 6s bar
   // made 'fluent' unreachable for them and suppressed stability growth.
-  const FAST_BY_SKILL = { div: 8000, bigmul: 25000, fractions: 15000, longdiv: 25000, multi: 45000, geo: 20000, mul2: 45000 };
+  const FAST_BY_SKILL = { div: 8000, bigmul: 25000, fractions: 15000, longdiv: 25000, multi: 45000, geo: 20000, mul2: 45000, word: 30000 };
   const STAB_FLUENT = 12;    // days of stability needed to count a fact as mastered
   const STAB_MAX = 400;      // cap on stability (days)
   // Bayesian Knowledge Tracing params → a calibrated P(known) per fact.
@@ -653,6 +678,9 @@ const Stats = (() => {
     if (name === 'multi' || name.indexOf('multi.') === 0) return FAST_BY_SKILL.multi;
     if (name === 'geo' || name.indexOf('geo.') === 0) return FAST_BY_SKILL.geo;
     if (name === 'mul2' || name.indexOf('mul2.') === 0) return FAST_BY_SKILL.mul2;
+    // Reading a story takes time even when the child knows exactly what to
+    // do; the 6s fact bar made one-step word problems almost never "fluent".
+    if (name === 'word' || name === 'wordx' || name.indexOf('word.') === 0) return FAST_BY_SKILL.word;
     return name.indexOf('frac') === 0 ? FAST_BY_SKILL.fractions : FAST_MS;
   }
   function factState(f, now, fastMs) {
@@ -819,6 +847,15 @@ const Stats = (() => {
     }
     all.sort((x, y) => x.r - y.r);
     return all.slice(0, n);
+  }
+  // The most decayed division families, for the warm-up. Practising 7 × 8
+  // carries little over to 56 ÷ 7 (Rickard et al. 1994), so division needs
+  // its own maintenance.
+  function pickDueDivFacts(n) {
+    const now = Date.now();
+    return Object.keys(data.divFacts).filter(k => (data.divFacts[k].right || 0) + (data.divFacts[k].wrong || 0) > 0)
+      .map(k => { const [b, c] = k.split('x').map(Number); return { b, c, r: retr(data.divFacts[k], now) }; })
+      .sort((x, y) => x.r - y.r).slice(0, n);
   }
   // How many practised facts have decayed past usable recall. This is the
   // signal the review quota sizes itself from, so a backlog can never sit
@@ -1007,10 +1044,52 @@ const Stats = (() => {
   }
   // Correct-but-slow = the child is counting/deriving, not retrieving
   // (Siegler's overlapping waves). These facts need a strategy, not more reps.
+  // 4.5s rather than 9s: at this level a fact at 5-8s is exactly the one a
+  // strategy tip helps (Woodward 2006: strategies plus timed practice).
+  const SLOW_MS = 4500, AUTO_MS = 3000;
   function isSlowFact(a, b) {
     const f = getFact(a, b);
-    return !!f && (f.right || 0) >= 3 && f.avgT != null && f.avgT > FAST_MS * 1.5 &&
+    return !!f && (f.right || 0) >= 3 && f.avgT != null && f.avgT > SLOW_MS &&
            (f.recent || '').slice(-1) !== '0'; // currently getting it right — just slowly
+  }
+  // Facts answered right at retrieval speed (about 3s including typing;
+  // Burns 2006 fluency bands): what is left to build once accuracy is high.
+  function automaticCount() {
+    const now = Date.now();
+    let n = 0;
+    for (const k in data.facts) {
+      const f = data.facts[k];
+      if (isMasteredState(factState(f, now)) && f.avgT != null && f.avgT <= AUTO_MS) n++;
+    }
+    return n;
+  }
+  // ---- Fact sprint: one minute a day on facts already known ----
+  // Accuracy first, then speed (the instructional hierarchy, Haring & Eaton
+  // 1978): sprints start once 20 facts are solid, draw only on solid facts,
+  // and serve the slow ones three times as often.
+  const SPRINT_MIN = 20;
+  function sprintReady() { return mulFluentCount() >= SPRINT_MIN; }
+  function sprintPool() {
+    const now = Date.now(), pool = [];
+    const add = (op, k, f, fast) => {
+      if (!isMasteredState(factState(f, now, fast))) return;
+      const [a, b] = k.split('x').map(Number);
+      if (a >= 2 && b >= 2 && a <= 12 && b <= 12) pool.push({ op, a, b, w: f.avgT != null && f.avgT > AUTO_MS ? 3 : 1 });
+    };
+    for (const k in data.facts) add('×', k, data.facts[k]);
+    if (data.unlocked.division) for (const k in data.divFacts) add('÷', k, data.divFacts[k], FAST_BY_SKILL.div);
+    return pool;
+  }
+  // A score is facts right in the minute. The goal is the child's usual, the
+  // median of the last three, so one lucky day does not set the bar.
+  function recordSprint(right, wrong) {
+    data.sprints = (data.sprints || []).concat({ d: Date.now(), n: right, w: wrong }).slice(-60);
+    save(data);
+  }
+  function getSprints() { return (data.sprints || []).slice(); }
+  function sprintGoal() {
+    const s = (data.sprints || []).slice(-3).map(x => x.n).sort((x, y) => x - y);
+    return s.length ? s[Math.floor((s.length - 1) / 2)] : null;
   }
   function markSeen(k) { data.seen[k] = true; save(data); }
   function hasSeen(k) { return !!(data.seen && data.seen[k]); }
@@ -1185,7 +1264,7 @@ const Stats = (() => {
   // ---- Daily session: the system decides, the child just presses start ----
   function getDaily() {
     const today = todayKey();
-    if (!data.daily || data.daily.day !== today) data.daily = { day: today, warmup: false, quiz: false };
+    if (!data.daily || data.daily.day !== today) data.daily = { day: today, warmup: false, quiz: false, sprint: false };
     return { ...data.daily };
   }
   function markDaily(step) {
@@ -1275,7 +1354,7 @@ const Stats = (() => {
         else label = `${nm}: missed ${list.length}×`;
       } else if (k.indexOf('geo.') === 0) {
         const mix = list.filter(e => e.mix).length, sides = list.filter(e => e.sides).length, bbox = list.filter(e => e.bbox).length;
-        const nm = { 'geo.area': 'Area', 'geo.perim': 'Perimeter', 'geo.lshape': 'L-shapes', 'geo.missing': 'Missing side' }[k] || 'Area & perimeter';
+        const nm = { 'geo.area': 'Area', 'geo.perim': 'Perimeter', 'geo.lshape': 'L-shapes', 'geo.missing': 'Missing side', 'geo.which': 'Which measure' }[k] || 'Area & perimeter';
         if (mix >= 2) { kind = 'misconception'; label = `${nm}: mixes up area and perimeter (${mix}×) — area covers the inside, perimeter goes around`; }
         else if (sides >= 2) { kind = 'misconception'; label = `${nm}: counts only the labelled sides (${sides}×) — opposite sides are equal, a rectangle has four`; }
         else if (bbox >= 2) { kind = 'misconception'; label = `${nm}: uses the whole big rectangle (${bbox}×) — the missing corner has to come out; split into rectangles`; }
@@ -1289,10 +1368,11 @@ const Stats = (() => {
         else if (one >= 2) { kind = 'misconception'; label = `${nm} problems: runs one operation over every number (${one}×) — each step needs its own`; }
         else label = `${nm} problems: missed ${list.length}×`;
       } else if (k.indexOf('word.') === 0) {
-        const schema = list.filter(e => e.schema).length;
+        const schema = list.filter(e => e.schema).length, extra = list.filter(e => e.extra).length;
         const nm = { 'word.wjoin': 'Join/separate', 'word.wcompare': 'Comparing',
                      'word.wgroups': 'Equal groups', 'word.wshare': 'Sharing' }[k] || 'Word problems';
         if (schema >= 2) { kind = 'misconception'; label = `${nm} word problems: picks the operation the keywords suggest (${schema}×) — reading the story, not the words, is the fix`; }
+        else if (extra >= 2) { kind = 'misconception'; label = `${nm} word problems: uses numbers the question does not need (${extra}×) — first cross out what the question does not ask about`; }
         else label = `${nm} word problems: missed ${list.length}×`;
       } else if (k === 'fadd') {
         const n = list.filter(e => e.addden).length;
@@ -1313,9 +1393,10 @@ const Stats = (() => {
       } else if (k === 'feq') {
         label = `Equivalent fractions: missed ${list.length}×`;
       } else if (k === 'bigmul' || k.indexOf('add:') === 0 || k.indexOf('sub:') === 0) {
-        const tens = list.filter(e => e.ten).length;
+        const tens = list.filter(e => e.ten).length, zero = list.filter(e => e.zero).length;
         const opName = k === 'bigmul' ? '2-digit ×' : k.indexOf('add:') === 0 ? 'Addition' : 'Subtraction';
-        if (tens >= 2) { kind = 'carry'; label = `${opName}: answers off in the tens place (${tens}×) — a carry/borrow or place-value slip`; }
+        if (zero >= 2) { kind = 'misconception'; label = `Subtraction across a 0 (${zero}×) — a 0 in the tens has nothing to trade: trade from the hundreds first, so the 0 becomes 9`; }
+        else if (tens >= 2) { kind = 'carry'; label = `${opName}: answers off in the tens place (${tens}×) — a carry/borrow or place-value slip`; }
         else label = `${opName}: missed ${list.length}×`;
       }
       if (label) out.push({ key: k, kind, count: list.length, label, pair, lastD: last.d });
@@ -1530,13 +1611,15 @@ const Stats = (() => {
     data.snaps = mergeSnaps(data.snaps, remote.snaps).slice(-26);
     data.plans = mergeByKey(data.plans, remote.plans, x => `${x.week}|${x.ts}`, 'ts').slice(-12);
     data.errlog = mergeByKey(data.errlog, remote.errlog, x => `${x.d}|${x.k}|${x.g}`, 'd').slice(-200);
+    data.sprints = mergeByKey(data.sprints, remote.sprints, x => String(x.d), 'd').slice(-60);
     // Daily flags: same day → OR across devices; otherwise the newer day wins.
     const rd = remote.daily;
     if (rd && rd.day) {
       if (data.daily && data.daily.day === rd.day) {
         data.daily.warmup = data.daily.warmup || !!rd.warmup;
         data.daily.quiz = data.daily.quiz || !!rd.quiz;
-      } else if (!data.daily || !data.daily.day || rd.day > data.daily.day) data.daily = { day: rd.day, warmup: !!rd.warmup, quiz: !!rd.quiz };
+        data.daily.sprint = !!data.daily.sprint || !!rd.sprint;
+      } else if (!data.daily || !data.daily.day || rd.day > data.daily.day) data.daily = { day: rd.day, warmup: !!rd.warmup, quiz: !!rd.quiz, sprint: !!rd.sprint };
     }
     save(data);
   }
@@ -1563,7 +1646,7 @@ const Stats = (() => {
     }
     return Object.values(byKey).sort((x, y) => (x[tsField] || 0) - (y[tsField] || 0));
   }
-  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery, mulSeenCount, recentAccuracy, nextUnlock, divMasteredCount, wordSolidCount, bigmulRecentRight, fracBasicSolid, fracOpsProgress, fracSolid, recordPlace, placeTrend, skillP, isSlowFact, pickDueFacts, getHist, getErrlog, pickMasteredFact, dueBacklog, reviewQuota, getSnaps, repairSnaps, engineCheck, savePlan, getPlans, recordError, errorPatterns, getDaily, markDaily };
+  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery, mulSeenCount, recentAccuracy, nextUnlock, divMasteredCount, wordSolidCount, bigmulRecentRight, fracBasicSolid, fracOpsProgress, fracSolid, recordPlace, placeTrend, skillP, isSlowFact, automaticCount, sprintReady, sprintPool, recordSprint, getSprints, sprintGoal, pickDueFacts, pickDueDivFacts, getHist, getErrlog, pickMasteredFact, dueBacklog, reviewQuota, getSnaps, repairSnaps, engineCheck, savePlan, getPlans, recordError, errorPatterns, getDaily, markDaily };
 })();
 
 // Merge helpers for cross-device sync (keep the richer record, union history)
@@ -1781,7 +1864,7 @@ function focusNextOpen(fromInp) {
 function buildFixPill(q) {
   const pill = el('div', 'fixpill');
   if ((q.type === 'word' && q.multi) || q.type === 'geo' || q.type === 'mul2') {
-    const g = Number(String(q.given).trim());
+    const g = Number(String(q._try2 != null ? q._try2 : q.given).trim());
     const m = q.type === 'geo' ? geoMiss(q, g) : q.type === 'mul2' ? mul2Miss(q, g) : multiMiss(q, g);
     if (m.why) pill.appendChild(el('div', 'fix-why', m.why));
     else if (m.cls === 'slip') pill.appendChild(el('div', 'fix-why', 'Right idea — just check the arithmetic.'));
@@ -1793,9 +1876,10 @@ function buildFixPill(q) {
     return pill;
   }
   if (q.type === 'word') {
-    const kind = wordMiss(q, Number(String(q.given).trim()));
+    const kind = wordMiss(q, Number(String(q._try2 != null ? q._try2 : q.given).trim()));
     const lead = kind === 'trap' ? "That's the answer to the wrong operation. "
                : kind === 'slip' ? 'Right idea — just check the arithmetic. '
+               : kind === 'extra' ? `That uses ${q.extra}, a number the question does not need. `
                : '';
     if (lead) pill.appendChild(el('div', 'fix-why', lead));
     if (kind !== 'slip') pill.appendChild(el('div', 'fix-reason', wordReason(q)));
@@ -1812,8 +1896,74 @@ function buildFixPill(q) {
   pill.appendChild(spanTxt(' — type it to lock it in 💪', null));
   return pill;
 }
+// Stories, area and 2-digit × 2-digit get two tries in practice: the first
+// miss names what went wrong but not the answer, and the child goes again;
+// only a second miss shows the steps and the answer to type. Showing the
+// answer at once is the weaker feedback for children who already know a lot
+// (Shute 2008; Fyfe et al. 2012). Facts keep the straight see-it, type-it.
+const twoTry = q => q.type === 'word' || q.type === 'geo' || q.type === 'mul2';
+// A hint names the mistake, never the answer: any sentence that states the
+// answer's number waits for the second miss.
+function hintSafe(q, text, fallback) {
+  const says = new RegExp('(^|[^0-9])' + q.ans + '(?![0-9])');
+  const kept = (text.match(/[^.!?]+[.!?]+/g) || [text]).map(t => t.trim()).filter(t => !says.test(t)).join(' ');
+  return kept || fallback;
+}
+function buildHintPill(q) {
+  const pill = el('div', 'fixpill hintpill');
+  const g = Number(String(q.given).trim());
+  let why;
+  if (q.type === 'word' && !q.multi) {
+    const kind = wordMiss(q, g);
+    why = kind === 'trap' ? "That's the answer to the wrong operation. " + wordReason(q)
+        : kind === 'extra' ? `That uses ${q.extra}, a number the question does not need.`
+        : kind === 'slip' ? 'Right idea — check the arithmetic.'
+        : wordReason(q);
+    why = hintSafe(q, why, 'Read it again: what does the question ask for?');
+  } else {
+    const m = q.type === 'geo' ? geoMiss(q, g) : q.type === 'mul2' ? mul2Miss(q, g) : multiMiss(q, g);
+    why = hintSafe(q, m.why || (m.cls === 'slip' ? 'Right idea — check the arithmetic.' : q.plan), q.plan);
+  }
+  pill.appendChild(el('div', 'fix-why', why));
+  pill.appendChild(el('div', 'fix-do', 'Have another go 💪'));
+  return pill;
+}
+function immRetry(q, idx, inp, card) {
+  const t = String(q._retype || '').trim();
+  if (q._imm !== 'retry' || state.submitted || t === '') return;
+  const old = card.querySelector('.fixpill');
+  if (old) old.remove();
+  if (Number(t) === q.ans) {
+    q._imm = 'fixed';
+    card.classList.remove('imm-fixing'); card.classList.add('imm-fixed');
+    inp.readOnly = true;
+    try { Sound.tick(); } catch {}
+    saveSession();
+    focusNextOpen(inp);
+    return;
+  }
+  q._try2 = t;               // the second miss is the one the steps answer
+  q._imm = 'fixing';
+  q._retype = '';
+  inp.value = '';
+  inp.parentElement.parentElement.appendChild(buildFixPill(q));
+  try { Sound.soft(); } catch {}
+  saveSession();
+  inp.focus();
+}
 function immCheck(q, idx, inp, card) {
   if (q._imm || state.submitted || String(q.given).trim() === '') return;
+  if (!answerCorrect(q) && twoTry(q)) {
+    q._imm = 'retry';
+    q._retype = '';
+    card.classList.add('imm-fixing');
+    inp.parentElement.parentElement.appendChild(buildHintPill(q));
+    inp.value = '';
+    try { Sound.soft(); } catch {}
+    saveSession();
+    inp.focus();
+    return;
+  }
   if (answerCorrect(q)) {
     q._imm = 'right';
     card.classList.add('imm-good');
@@ -1948,8 +2098,8 @@ function genBigMul() {
 }
 
 // Division fact (inverse of a times-table fact, no remainder).
-function genDiv() {
-  const p = Stats.pickDivFacts(1)[0] || { b: rint(2, 12), c: rint(2, 12) };
+function genDiv(pick) {
+  const p = pick || Stats.pickDivFacts(1)[0] || { b: rint(2, 12), c: rint(2, 12) };
   const flip = Math.random() < 0.5;
   const divisor = flip ? p.c : p.b;
   const quotient = flip ? p.b : p.c;
@@ -2407,19 +2557,78 @@ function pickWordKind() {
   for (let i = 0; i < W_KINDS.length; i++) { r -= ws[i]; if (r <= 0) return W_KINDS[i]; }
   return W_KINDS[W_KINDS.length - 1];
 }
+// Transfer: once a schema is solid, half its stories carry one twist the
+// child has not yet met inside it: a number the question does not need, the
+// question first, or the numbers in a table. Teaching children to recognise
+// a problem type through such surface changes ("schema broadening") raised
+// word-problem scores in whole-class trials (Fuchs et al. 2003, 2010), and
+// the 2021 IES practice guide rates word-problem structure instruction
+// strong.
+const W_TWISTS = ['extra', 'qfirst', 'table'];
+const W_EXTRA = [x => `The bus ride took ${x} minutes.`, x => `${x} birds sat on a fence nearby.`,
+                 x => `It was ${x} minutes before lunch.`, x => `The table was ${x} feet long.`];
+const W_COLORS = [['red', 'blue'], ['green', 'yellow'], ['big', 'small'], ['shiny', 'plain']];
+function wCalc(a, sym, b) { return sym === '+' ? a + b : sym === '−' ? a - b : sym === '×' ? a * b : a / b; }
+function wordTwist(q, tw) {
+  if (!tw || tw === 'table') return q;
+  const sentences = q.text.match(/[^.?!]+[.?!]/g).map(t => t.trim());
+  if (tw === 'qfirst') {
+    const ask = sentences.pop();
+    return { ...q, xf: 'qfirst', text: [ask].concat(sentences).join(' ') };
+  }
+  // extra: a sentence with a number nobody needs, after the first sentence
+  const [a, sym, b] = q.op.split(' '), A = Number(a), B = Number(b);
+  let x;
+  do { x = rint(5, 15); } while (x === A || x === B || x === q.ans || x === q.trap);
+  sentences.splice(1, 0, wPick(W_EXTRA)(x));
+  const uses = [wCalc(x, sym, B), wCalc(A, sym, x), q.ans + x, q.ans - x]
+    .filter(v => Number.isInteger(v) && v > 0 && v !== q.ans && v !== q.trap);
+  return { ...q, xf: 'extra', extra: x, extraVals: [...new Set(uses)], text: sentences.join(' ') };
+}
 function genWord(kind) {
   kind = kind || pickWordKind();
   const isReview = (() => {
     const st = Stats.getSkill('word.' + kind);
     return !!st && (st.wrong || 0) > 0 && Stats.factWeight(st) > 1.5;
   })();
+  const solid = ['accurate', 'fluent'].includes(Stats.skillState('word.' + kind));
+  const tw = solid && Math.random() < 0.5 ? wPick(W_TWISTS) : null;
+  const q = genWordBase(kind, isReview, tw);
+  return wordTwist(q, q.xf === 'table' ? null : tw === 'table' ? wPick(['extra', 'qfirst']) : tw);
+}
+// A two-row table instead of two sentences: the same story, read off a chart.
+function wTable(q, intro, rows, ask) {
+  return { ...q, xf: 'table', tbl: { intro, rows, ask }, text: `${intro} ${rows.map(r => `${r[0]}: ${r[1]}.`).join(' ')} ${ask}` };
+}
+function genWordBase(kind, isReview, tw) {
   const base = { type: 'word', wkind: kind, label: 'Word problem · 📖', isReview };
 
   if (kind === 'wjoin') {
-    // Join/separate. Half the time the UNKNOWN is the change or the start,
-    // where the story's verb points at the wrong operation.
+    // Join/separate/total. Often the UNKNOWN is the change or the start, where
+    // the story's verb points at the wrong operation.
     const it = wPick(W_ITEMS), n = wPick(W_NAMES);
-    const variant = rint(0, 2);
+    const variant = rint(0, 5);
+    if (variant === 3) {                       // separate, result unknown → subtract
+      const a = rint(41, 78), b = rint(12, 29);
+      return { ...base, wvar: 'sep',
+        text: `${n} had ${a} ${it.many}. ${n} ${it.gave} ${b} of them. How many ${it.many} does ${n} have left?`,
+        ans: a - b, trap: a + b, op: `${a} − ${b}` };
+    }
+    if (variant === 4) {                       // join, start unknown → SUBTRACT although the story says "more"
+      const start = rint(23, 48), add = rint(14, 29), end = start + add;
+      return { ...base, wvar: 'startjoin',
+        text: `${n} had some ${it.many}. Then ${n} ${it.got} ${add} more. Now ${n} has ${end}. How many ${it.many} did ${n} have at the start?`,
+        ans: start, trap: end + add, op: `${end} − ${add}` };
+    }
+    if (variant === 5) {                       // total: two parts, one whole → add
+      const a = rint(23, 58), b = rint(12, 29), [c1, c2] = wPick(W_COLORS);
+      const q = { ...base, wvar: 'total',
+        text: `${n} has ${a} ${c1} ${it.many} and ${b} ${c2} ${it.many}. How many ${it.many} does ${n} have in all?`,
+        ans: a + b, trap: a - b, op: `${a} + ${b}` };
+      return tw === 'table' ? wTable(q, `Here are ${n}'s ${it.many}.`,
+        [[`${c1[0].toUpperCase() + c1.slice(1)} ${it.many}`, a], [`${c2[0].toUpperCase() + c2.slice(1)} ${it.many}`, b]],
+        `How many ${it.many} does ${n} have in all?`) : q;
+    }
     if (variant === 0) {                       // result unknown → add
       const a = rint(23, 68), b = rint(14, 29);
       return { ...base, wvar: 'result',
@@ -2442,7 +2651,15 @@ function genWord(kind) {
   if (kind === 'wcompare') {
     // Compare. The "more than" wording is deliberately sometimes a subtraction.
     const it = wPick(W_ITEMS), [n1, n2] = wTwoNames();
-    if (Math.random() < 0.5) {                 // compare, bigger unknown → add
+    const r = Math.random();
+    if (r < 0.34) {                            // difference unknown → subtract although it asks "how many more"
+      const big = rint(41, 78), small = big - rint(12, 29), fewer = Math.random() < 0.4;
+      const ask = fewer ? `How many fewer ${it.many} does ${n2} have than ${n1}?` : `How many more ${it.many} does ${n1} have than ${n2}?`;
+      const q = { ...base, wvar: 'diff', text: `${n1} has ${big} ${it.many}. ${n2} has ${small} ${it.many}. ${ask}`,
+        ans: big - small, trap: big + small, op: `${big} − ${small}` };
+      return tw === 'table' ? wTable(q, `The table shows how many ${it.many} each child has.`, [[n1, big], [n2, small]], ask) : q;
+    }
+    if (r < 0.67) {                            // compare, bigger unknown → add
       const a = rint(23, 58), d = rint(12, 29);
       return { ...base, wvar: 'more-add',
         text: `${n1} has ${a} ${it.many}. ${n2} has ${d} more ${it.many} than ${n1}. How many ${it.many} does ${n2} have?`,
@@ -2470,11 +2687,19 @@ function genWord(kind) {
       ans: groups * per, trap: groups + per, op: `${groups} × ${per}` };
   }
 
-  // wshare — division, both partitive and quotitive
+  // wshare — division: partitive, quotitive, and "times as many" with the
+  // smaller amount unknown (DIVIDE although the story says "times")
   const g = wPick(W_GROUPS), p = Stats.pickMasteredFact();
   const per = Math.max(3, Math.max(p.a, p.b)), groups = Math.max(2, Math.min(p.a, p.b));
   const total = per * groups;
-  if (Math.random() < 0.5) {                   // partitive: how many each
+  const r = Math.random();
+  if (r < 0.33) {
+    const [n1, n2] = wTwoNames();
+    return { ...base, wvar: 'timesdiv',
+      text: `${n2} has ${total} ${g.many}. That is ${groups} times as many ${g.many} as ${n1} has. How many ${g.many} does ${n1} have?`,
+      ans: per, trap: total * groups, op: `${total} ÷ ${groups}` };
+  }
+  if (r < 0.66) {                              // partitive: how many each
     const [n1] = wTwoNames();
     return { ...base, wvar: 'each',
       text: `${n1} shares ${total} ${g.many} equally among ${groups} friends. How many ${g.many} does each friend get?`,
@@ -2639,7 +2864,10 @@ function genMulti(kind) {
   const seen = new Set([q.ans]);
   q.wrongs = q.wrongs.filter(w => w.v >= 0 && !seen.has(w.v) && seen.add(w.v));
   const fresh = ['new', 'learning'].includes(Stats.skillState('multi.' + kind));
-  return { type: 'word', multi: true, wkind: kind, label: 'Two-step problem · 🪜', isReview, ...q,
+  // The label does not say "two-step": noticing the hidden first step is
+  // part of the skill (and mixed with one-step stories, choosing the
+  // approach is what interleaving trains).
+  return { type: 'word', multi: true, wkind: kind, label: 'Word problem · 📖', isReview, ...q,
            scaffold: fresh && Math.random() < 0.5 ? { kind: 'plan' } : null };
 }
 function multiQuiz() {
@@ -2730,13 +2958,31 @@ function mul2Quiz() {
 // sides of a rectangle, taking the whole bounding box of an L-shape, and
 // undoing area with subtraction. Area uses facts the child already owns, so
 // the challenge is the concept, not the multiplication.
-const G_KINDS_ALL = ['area', 'perim', 'lshape', 'missing'];
-// L-shapes and missing sides build on both basics, so they wait until those are solid.
+const G_KINDS_ALL = ['area', 'perim', 'lshape', 'missing', 'which'];
+// Jobs for "which measure?": the story names a job, never the measure, so the
+// child decides whether it goes around the edge or covers the inside. Picking
+// the measure without the cue word is the transfer test (CCSS 3.MD.D.8).
+const GEO_JOBS = [
+  { ask: 'perim', unit: 'm', what: 'A garden', edge: 'A fence goes around the edge',
+    text: 'A fence goes all the way around this garden. How much fence is needed?' },
+  { ask: 'perim', unit: 'cm', what: 'A card', edge: 'Ribbon goes around the edge',
+    text: 'Mia glues ribbon all the way around the edge of this card. How much ribbon does she need?' },
+  { ask: 'perim', unit: 'm', what: 'A playground', edge: 'Walking around goes along the edge',
+    text: 'Leo walks once around the edge of this playground. How far does he walk?' },
+  { ask: 'area', unit: 'm', what: 'A room', edge: 'Carpet covers the inside',
+    text: 'Carpet will cover the whole floor of this room. How much carpet is needed?' },
+  { ask: 'area', unit: 'cm', count: 'tiles', what: 'A board', edge: 'Tiles cover the inside',
+    text: 'Square tiles, 1 cm on each side, cover this whole board with no gaps. How many tiles are needed?' },
+  { ask: 'area', unit: 'm', what: 'A lawn', edge: 'Grass covers the inside',
+    text: 'New grass will cover this whole lawn. How much grass is needed?' },
+];
+// L-shapes, missing sides and choosing the measure build on both basics, so
+// they wait until those are solid.
 function gKinds() {
   const solid = k => ['accurate', 'fluent'].includes(Stats.skillState('geo.' + k));
   return solid('area') && solid('perim') ? G_KINDS_ALL : G_KINDS_ALL.slice(0, 2);
 }
-function geoKindLabel(k) { return { area: 'Area', perim: 'Perimeter', lshape: 'L-shapes', missing: 'Missing side' }[k] || k; }
+function geoKindLabel(k) { return { area: 'Area', perim: 'Perimeter', lshape: 'L-shapes', missing: 'Missing side', which: 'Which measure?' }[k] || k; }
 function pickGeoKind() {
   const ks = gKinds();
   const ws = ks.map(k => Stats.factWeight(Stats.getSkill('geo.' + k)));
@@ -2795,6 +3041,30 @@ function genGeo(kind) {
         { v: a2, cls: 'onepart', why: `${a2} is only the right part. Add the left part too: ${lw} × ${H} = ${a1}.` },
         { v: 2 * (W + H), cls: 'perim', why: `${2 * (W + H)} is the perimeter, the distance around. Area counts the squares inside.` },
       ] };
+  } else if (kind === 'which') {
+    let w = 8, h = 5;
+    for (let i = 0; i < 20; i++) {             // area ≠ perimeter, or the choice can't be seen
+      const p = Stats.pickMasteredFact();
+      const a = Math.max(p.a, p.b), b = Math.min(p.a, p.b);
+      if (a !== b && b >= 2 && a * b !== 2 * (a + b) && a * b !== a + b) { w = a; h = b; break; }
+    }
+    const around = Math.random() < 0.5;
+    const jobs = GEO_JOBS.filter(j => (j.ask === 'perim') === around), job = jobs[rint(0, jobs.length - 1)];
+    const u = job.unit, A = w * h, P = 2 * (w + h), au = job.count || `sq ${u}`;
+    q = { ask: job.ask, which: true, shape: { w, h }, unit: around ? u : au, lin: u, ans: around ? P : A,
+      text: job.text,
+      desc: `${job.what} is ${w} ${u} long and ${h} ${u} wide. ${job.text}`,
+      steps: [around ? `${job.edge}, so it is the perimeter: ${w} + ${h} + ${w} + ${h} = ${P} ${u}`
+                     : `${job.edge}, so it is the area: ${w} × ${h} = ${A} ${au}`],
+      plan: 'Does this job go around the edge, or cover the inside?',
+      wrongs: around ? [
+        { v: A, cls: 'area', why: `${A} would cover the inside. ${job.edge}, so add all four sides.` },
+        { v: w + h, cls: 'twosides', why: `${w} + ${h} is only two of the four sides. ${job.edge}: all four.` },
+        { v: 2 * w + h, cls: 'twosides', why: `That is three sides. A rectangle has four: ${w} + ${h} + ${w} + ${h}.` },
+      ] : [
+        { v: P, cls: 'perim', why: `${P} is the distance around the edge. ${job.edge}, so it is ${h} rows of ${w}: multiply.` },
+        { v: w + h, cls: 'addsides', why: `You added two sides. ${job.edge}: ${h} rows of ${w}, so multiply.` },
+      ] };
   } else if (Math.random() < 0.5) {           // missing side from the area
     let known = 4, other = 6;
     for (let i = 0; i < 20; i++) {             // no squares, no ×2: the division should be real
@@ -2847,7 +3117,7 @@ function geoDims(q) {
 }
 // The figure, drawn to scale with the side lengths the problem gives.
 function geoFigure(q, grid) {
-  const s = q.shape, L = /^sq /.test(q.unit) ? q.unit.slice(3) : q.unit;
+  const s = q.shape, L = q.lin || (/^sq /.test(q.unit) ? q.unit.slice(3) : q.unit);
   const lab = (x, y, t, anchor) => `<text x="${x}" y="${y}" text-anchor="${anchor || 'middle'}" class="geo-lbl">${t}</text>`;
   let body = '', vw, vh;
   if (q.gk === 'lshape') {
@@ -3160,15 +3430,39 @@ function wordQuiz() {
   qs.push(genSub(Stats.pickBucket('sub')));
   return shuffleQuiz(qs);
 }
+// The story skill most in need of review: the most decayed or most recently
+// missed of those already met. Kinds never tried are left to the quiz, which
+// introduces them; the warm-up retrieves what has been learned.
+function warmStoryPick() {
+  const cands = [];
+  if (Stats.isUnlocked('word')) W_KINDS.forEach(k => cands.push(['word.' + k, () => genWord(k)]));
+  if (Stats.isUnlocked('multi')) mKinds().forEach(k => cands.push(['multi.' + k, () => genMulti(k)]));
+  if (Stats.isUnlocked('geo')) gKinds().forEach(k => cands.push(['geo.' + k, () => genGeo(k)]));
+  const met = cands.filter(c => { const f = Stats.getSkill(c[0]); return f && (f.right || 0) + (f.wrong || 0) > 0; });
+  if (!met.length) return null;
+  const w = c => Stats.factWeight(Stats.getSkill(c[0]));
+  return met.reduce((best, c) => w(c) > w(best) ? c : best)[1];
+}
 function focusQuiz(compact) {
   const s = Stats.summary();
   const qs = [];
-  // While fractions are still being learned the warm-up carries one, picked
-  // by weakness: the warm-up is where a miss gets fixed on the spot. It takes
-  // a fact slot, so the warm-up stays at 5-6 questions.
-  const fracItem = compact && Stats.isUnlocked('fractions') && !Stats.fracSolid();
-  const factCap = compact ? (fracItem ? 3 : 4) : 6;
-  const totalCap = compact ? (fracItem ? 4 : 5) : 8;
+  // The warm-up is where a miss gets fixed on the spot, so beyond the
+  // multiplication facts it carries, when those domains are open: one
+  // fraction while fractions are still being learned, one item from the most
+  // overdue story skill (word problems, two-step, area & perimeter), and the
+  // most decayed division fact. Each takes a fact slot, so it stays at 5-6
+  // questions; a big fact backlog keeps one more fact slot. (Spaced, mixed
+  // retrieval with feedback: Dunlosky et al. 2013; Rohrer et al. 2020.)
+  let extras = [];
+  if (compact) {
+    if (Stats.isUnlocked('fractions') && !Stats.fracSolid()) extras.push(() => genFraction());
+    const story = warmStoryPick();
+    if (story) extras.push(story);
+    if (Stats.isUnlocked('division')) { const due = Stats.pickDueDivFacts(1)[0]; extras.push(() => genDiv(due)); }
+    extras = extras.slice(0, Stats.dueBacklog(0.3) > 10 ? 2 : 3);
+  }
+  const factCap = compact ? Math.max(1, 4 - extras.length) : 6;
+  const totalCap = compact ? factCap + 1 : 8;
   let facts = s.weak.slice(0, factCap).map(w => ({ a: w.a, b: w.b }));
   if (facts.length < factCap) {
     const extra = Stats.pickMulFacts(factCap - facts.length);
@@ -3204,7 +3498,7 @@ function focusQuiz(compact) {
     const wSub = ws ? Stats.bucketWeight(`sub:${ws.k}`) : 1;
     if (wAdd >= wSub) qs.push(genAdd(wa ? wa.k : null));
     else qs.push(genSub(ws ? ws.k : null));
-    if (fracItem) qs.push(genFraction());
+    extras.forEach(make => qs.push(make()));
   } else {
     for (let i = 0; i < 2; i++) qs.push(genAdd(wa ? wa.k : null));
     for (let i = 0; i < 2; i++) qs.push(genSub(ws ? ws.k : null));
@@ -3359,6 +3653,11 @@ function wordReason(q) {
     times: '"Times as many" means groups of the same amount — multiply.',
     each: 'One whole shared into equal parts, asking for the size of a part — divide.',
     howmany: 'One whole split into parts of a known size, asking how many parts — divide.',
+    sep: 'Some were taken away and the question wants what is LEFT — subtract.',
+    startjoin: 'You know the END and how many were added — to get back to the start, take the added ones away, even though the story says "more".',
+    total: 'Two parts make one whole group — the question wants the TOTAL, so add.',
+    diff: 'The question asks how many more (or fewer) — that is the DIFFERENCE between the two amounts, so subtract, even though it says "more".',
+    timesdiv: '"Times as many" says the bigger amount is made of equal groups of the smaller one — to find the smaller amount, divide.',
   })[q.wvar] || 'Ask yourself what the question wants: a total, a difference, or a share.';
 }
 // Classify a wrong answer to a word problem. 'trap' = the keyword-matched
@@ -3367,6 +3666,7 @@ function wordReason(q) {
 function wordMiss(q, g) {
   if (!Number.isFinite(g)) return 'blank';
   if (g === q.trap) return 'trap';
+  if (q.extraVals && q.extraVals.includes(g)) return 'extra';
   const d = Math.abs(g - q.ans);
   if (d <= Math.max(10, Math.round(q.ans * 0.2)) || (d % 10 === 0 && d <= 90)) return 'slip';
   return 'unclear';
@@ -3385,6 +3685,10 @@ function diagWord(q, g) {
       work: plan,
       tip: asks,
     };
+  }
+  if (wordMiss(q, g) === 'extra') {
+    return { why: `${g} uses ${q.extra}, but ${q.extra} has nothing to do with the question. Some stories have numbers you do not need.`,
+             work: plan, tip: 'Before you calculate, cross out the numbers the question does not need. ' + asks };
   }
   if (wordMiss(q, g) === 'unclear') {
     return { why: `${g} doesn't match this story. Start from what the question is asking for.`, work: plan, tip: asks };
@@ -3493,42 +3797,54 @@ function diagAdd(q, g) {
   if (g === noCarry && noCarry !== ans) {
     const cols = whichColumnsNeedCarry(a, b);
     return {
-      why: `You forgot to carry. The ${cols.join(' and ')} column went over 10.`,
+      why: `You forgot to carry. The ${cols.join(' and ')} column${cols.length > 1 ? 's' : ''} went over 10.`,
       work: buildAddWork(a, b),
-      tip: 'When a column adds to 10 or more, carry the 1 to the next column.'
+      tip: backCheck(q, g) + 'When a column adds to 10 or more, carry the 1 to the next column.'
     };
   }
 
-  if (diff === -10) return { why: 'You missed the carry from ones to tens (off by 10).', work: buildAddWork(a, b), tip: 'When the ones add to 10 or more, add 1 to the tens.' };
-  if (diff === -100) return { why: 'You missed the carry from tens to hundreds (off by 100).', work: buildAddWork(a, b), tip: 'When the tens add to 10 or more, add 1 to the hundreds.' };
-  if (diff === -110) return { why: 'You missed both carries (off by 110).', work: buildAddWork(a, b), tip: 'Check each column right-to-left: any column ≥ 10? Carry 1.' };
+  if (diff === -10) return { why: 'You missed the carry from ones to tens (off by 10).', work: buildAddWork(a, b), tip: backCheck(q, g) + 'When the ones add to 10 or more, add 1 to the tens.' };
+  if (diff === -100) return { why: 'You missed the carry from tens to hundreds (off by 100).', work: buildAddWork(a, b), tip: backCheck(q, g) + 'When the tens add to 10 or more, add 1 to the hundreds.' };
+  if (diff === -110) return { why: 'You missed both carries (off by 110).', work: buildAddWork(a, b), tip: backCheck(q, g) + 'Check each column right-to-left: any column ≥ 10? Carry 1.' };
 
-  if (Math.abs(diff) <= 3) return { why: `So close — off by ${Math.abs(diff)}. A small slip in one column.`, work: buildAddWork(a, b), tip: 'Double-check each column total on scratch paper.' };
+  if (Math.abs(diff) <= 3) return { why: `So close — off by ${Math.abs(diff)}. A small slip in one column.`, work: buildAddWork(a, b), tip: backCheck(q, g) + 'Double-check each column total on scratch paper.' };
 
-  return { why: `Off by ${Math.abs(diff)} — probably lined up the columns wrong.`, work: buildAddWork(a, b), tip: 'Line up ones under ones, tens under tens, hundreds under hundreds.' };
+  return { why: `Off by ${Math.abs(diff)} — probably lined up the columns wrong.`, work: buildAddWork(a, b), tip: backCheck(q, g) + 'Line up ones under ones, tens under tens, hundreds under hundreds.' };
 }
 
+// Subtraction that has to regroup across a 0 in the tens (503 − 278): the
+// commonest place for subtraction bugs (VanLehn's data, Lee & Corter 2011).
+function subAcrossZero(a, b) { return a % 10 < b % 10 && Math.floor(a / 10) % 10 === 0 && a >= 100; }
+// Self-check by the inverse operation, from the child's own answer.
+function backCheck(q, g) {
+  if (!Number.isFinite(g)) return '';
+  return q.type === 'sub' ? `Check it backwards: ${g} + ${q.b} = ${g + q.b}, not ${q.a}. ` : `Check it backwards: ${g} − ${q.b} = ${g - q.b}, not ${q.a}. `;
+}
 function diagSub(q, g) {
   const { a, b, ans } = q;
-  const diff = g - ans;
+  const diff = g - ans, chk = backCheck(q, g);
 
   const noBorrow = subAbsPerColumn(a, b);
   if (g === noBorrow && noBorrow !== ans) {
     return {
-      why: 'You did bigger-minus-smaller in each column instead of borrowing.',
+      why: 'You did bigger-minus-smaller in each column instead of regrouping.',
       work: buildSubWork(a, b),
-      tip: 'When the top is smaller, borrow 1 (worth 10) from the column to its left.'
+      tip: chk + 'When the top digit is smaller, trade 1 from the column to its left: it becomes 10 more.'
     };
   }
-  if (diff === 10) return { why: 'You missed the borrow from tens (off by 10).', work: buildSubWork(a, b), tip: 'Top smaller than bottom? Borrow 1 — it becomes +10.' };
-  if (diff === 100) return { why: 'You missed the borrow from hundreds (off by 100).', work: buildSubWork(a, b), tip: 'When you borrow from the hundreds, subtract 1 from that hundreds digit.' };
-  if (diff === 110) return { why: 'You missed both borrows (off by 110).', work: buildSubWork(a, b), tip: 'Check each column: top smaller than bottom? Borrow.' };
+  if (subAcrossZero(a, b) && [10, 100, 110].includes(diff)) {
+    return { why: `The tens were 0, so there was nothing to trade from them. Trade 1 hundred for 10 tens first, then 1 ten for 10 ones: the hundreds go down by 1 and the 0 tens become 9.`,
+             work: buildSubWork(a, b), tip: chk + 'A 0 in the middle? Trade from the hundreds first.' };
+  }
+  if (diff === 10) return { why: 'You missed the trade from the tens (off by 10).', work: buildSubWork(a, b), tip: chk + 'Top smaller than bottom? Trade 1 ten for 10 ones, and the tens go down by 1.' };
+  if (diff === 100) return { why: 'You missed the trade from the hundreds (off by 100).', work: buildSubWork(a, b), tip: chk + 'When you trade a hundred for 10 tens, the hundreds digit goes down by 1.' };
+  if (diff === 110) return { why: 'You missed both trades (off by 110).', work: buildSubWork(a, b), tip: chk + 'Check each column: top smaller than bottom? Regroup.' };
 
   if (g === b - a) return { why: 'You swapped the numbers — that was smaller minus bigger.', work: buildSubWork(a, b), tip: `${a} − ${b} means: start with ${a}, take away ${b}.` };
 
-  if (Math.abs(diff) <= 3) return { why: `So close — off by ${Math.abs(diff)}. A small slip in one column.`, work: buildSubWork(a, b), tip: 'Double-check the column right after a borrow.' };
+  if (Math.abs(diff) <= 3) return { why: `So close — off by ${Math.abs(diff)}. A small slip in one column.`, work: buildSubWork(a, b), tip: chk + 'Double-check the column right after a trade.' };
 
-  return { why: `Off by ${Math.abs(diff)} — probably lined up the columns wrong.`, work: buildSubWork(a, b), tip: 'Line up ones under ones, tens under tens, hundreds under hundreds.' };
+  return { why: `Off by ${Math.abs(diff)} — probably lined up the columns wrong.`, work: buildSubWork(a, b), tip: chk + 'Line up ones under ones, tens under tens, hundreds under hundreds.' };
 }
 
 /* ---------- Solution rendering ---------- */
@@ -3650,23 +3966,34 @@ function buildSubWork(a, b) {
   const bCells = [{v:'−', cls:'sign'}].concat(sb.padStart(opW,' ').split('').map(d => ({v: d.trim(), cls:'op'})));
   const sCells = [{v:''}].concat(ss.padStart(opW,' ').split('').map(d => ({v: d.trim(), cls:'sum'})));
   const colStyle = gridCols(totW);
-  const b1 = borrowed[0], b2 = borrowed[1];
-  const o = (a%10), t = Math.floor(a/10)%10, h = Math.floor(a/100);
-  const bo = (b%10), bt = Math.floor(b/10)%10, bh = Math.floor(b/100);
-  const newO = b1 ? o + 10 : o;
-  const newT = (b1 ? t - 1 : t) + (b2 ? 10 : 0);
-  const newH = b2 ? h - 1 : h;
+  // One line per column. A column of 0 has nothing to trade, so the trade
+  // comes from the next place first (503 − 278: 1 hundred → 10 tens, then
+  // 1 ten → 10 ones); the old text printed "the tens digit is -1" there.
+  const NAMES = ['Ones', 'Tens', 'Hundreds', 'Thousands'], UNIT = ['one', 'ten', 'hundred', 'thousand'];
+  const lines = [];
+  for (let i = 0; i < opW; i++) {
+    const lent = i > 0 && borrowed[i - 1], top = aD[i] - (lent ? 1 : 0), res = newA[i] - bD[i];
+    let line;
+    if (borrowed[i] && lent && aD[i] === 0) {
+      line = `0 ${UNIT[i]}s to trade from, so 1 ${UNIT[i + 1]} became 10 ${UNIT[i]}s and 1 of them went to the ${UNIT[i - 1]}s: ${newA[i]} − ${bD[i]} = ${res}`;
+    } else if (borrowed[i]) {
+      const across = aD[i + 1] === 0 && i + 2 < opW + 1 && borrowed[i + 1];
+      line = `${lent ? `after the trade, ${top}. ` : ''}${top} can't take ${bD[i]}. ` +
+        (across ? `There are 0 ${UNIT[i + 1]}s, so <b>trade 1 ${UNIT[i + 2]} for 10 ${UNIT[i + 1]}s</b> first, then <b>1 ${UNIT[i + 1]} for 10 ${UNIT[i]}s</b>`
+                : `<b>Regroup: trade 1 ${UNIT[i + 1]} for 10 ${UNIT[i]}s</b>`) + ` → ${newA[i]} − ${bD[i]} = ${res}`;
+    } else {
+      line = `${lent ? `after the trade, ${top}. ` : ''}${top} − ${bD[i]} = ${res}`;
+    }
+    lines.push(`${NAMES[i]}: ${line}`);
+  }
   return `<div class="wgrid" ${colStyle}>` +
     (anyBorrow ? gridRow(bwCells) : '') +
     gridRow(aCells) +
     gridRow(bCells) +
     `<div class="wline"></div>` +
     gridRow(sCells) +
-    `</div><div class="wsteps">` +
-    `Ones: ${b1 ? `${o} can't take ${bo}. <b>Borrow 1 from tens</b> → ${newO} − ${bo}` : `${o} − ${bo}`} = ${newO - bo}<br>` +
-    `Tens: ${b1 ? `after lending, the tens digit is ${t - 1}. ` : ''}${b2 ? `${t - (b1?1:0)} can't take ${bt}. <b>Borrow 1 from hundreds</b> → ${newT} − ${bt}` : `${t - (b1?1:0)} − ${bt}`} = ${newT - bt}<br>` +
-    `Hundreds: ${b2 ? `after lending, hundreds digit is ${h - 1}. ${h - 1} − ${bh}` : `${h} − ${bh}`} = ${newH - bh}` +
-    (anyBorrow ? `<br><span style="color:var(--ink-3)">(Numbers above each column show its value after borrowing.)</span>` : '') +
+    `</div><div class="wsteps">` + lines.join('<br>') +
+    (anyBorrow ? `<br><span style="color:var(--ink-3)">(Numbers above each column show its value after the trades.)</span>` : '') +
     `</div>`;
 }
 
@@ -3703,7 +4030,7 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v72';
+const APP_VERSION = 'v73';
 const APP_UPDATED = '2026-10-07';
 // In-progress quiz survives refreshes/crashes/SW updates: every answer
 // keystroke snapshots the session to localStorage; a fresh page load resumes
@@ -3837,6 +4164,8 @@ function qSig(q) {
   return `${q.type}:${q.a},${q.b}`;
 }
 function startNew() {
+  if (state.phase === 'sprint' && sprint && sprint.stage === 'run') { render(); return; }
+  if (sprintDue()) { startSprint(); return; }
   // Anti-fishing: rerolling/refresh must not be an escape hatch. EVERY
   // unanswered question from an abandoned quiz carries over verbatim —
   // including add/sub, or a lucky reroll could fish for easier operands and
@@ -3845,7 +4174,7 @@ function startNew() {
   const isAS = q => q.type === 'add' || q.type === 'sub';
   const unanswered = (!state.submitted && Array.isArray(state.quiz))
     ? state.quiz.filter(q => !answered(q))
-        .map(q => ({ ...q, given: '', givenNum: '', givenDen: '', givenQ: '', givenR: '', givenWhy: '', _t0: undefined, _t1: undefined, _imm: undefined, _retype: undefined, _priorState: undefined }))
+        .map(q => ({ ...q, given: '', givenNum: '', givenDen: '', givenQ: '', givenR: '', givenWhy: '', _t0: undefined, _t1: undefined, _imm: undefined, _retype: undefined, _try2: undefined, _priorState: undefined }))
     : [];
   const stepInfo = composeDailyStep();
   let fresh = stepInfo.quiz;
@@ -3899,10 +4228,33 @@ function startFocus() {
   setTimeout(focusFirstBox, 50);
 }
 
+// Retrying the identical story or shape only tests memory of the answer
+// just shown; a fresh problem of the same kind tests the idea. Facts repeat
+// as they are, since retrieving that fact is the point.
+function freshOfKind(q) {
+  const b = q.bucket ? Number(String(q.bucket).split(':')[1]) : null;
+  switch (q.type) {
+    case 'word': return q.multi ? genMulti(q.wkind) : genWord(q.wkind);
+    case 'geo': return genGeo(q.gk);
+    case 'mul2': return genMul2(q.mk);
+    case 'ldiv': return genLongDiv(q.ldk);
+    case 'fpos': return genFracPos(q.fk);
+    case 'fcmp': return genFracCompare(q.ck);
+    case 'ferr': return genFracErr(q.ek);
+    case 'fnam': return genFracName();
+    case 'feq': return genFracEquiv();
+    case 'fadd': return genFracAdd();
+    case 'fline': return genFracLine();
+    case 'add': return genAdd(Number.isInteger(b) ? b : null);
+    case 'sub': return genSub(Number.isInteger(b) ? b : null);
+    case 'mul': return q.big ? genBigMul() : q;
+    default: return q;
+  }
+}
 function retryWrong() {
   const wrong = state.quiz.filter(q => !answerCorrect(q));
   if (!wrong.length) { startNew(); return; }
-  state.quiz = wrong.map((q, i) => ({ ...q, id: i, given: '', givenNum: '', givenDen: '', givenQ: '', givenR: '', givenWhy: '', _imm: undefined, _retype: undefined, _t0: undefined, _t1: undefined }));
+  state.quiz = wrong.map((q, i) => ({ ...freshOfKind(q), id: i, given: '', givenNum: '', givenDen: '', givenQ: '', givenR: '', givenWhy: '', _imm: undefined, _retype: undefined, _try2: undefined, _t0: undefined, _t1: undefined }));
   state.phase = 'quiz';
   state.immediate = true; // relearning missed items → immediate corrective feedback
   state.isPractice = true; // don't log a partial set to history/streak
@@ -3987,10 +4339,12 @@ function errEntry(q) {
              early: m.cls === 'early', onesum: m.cls === 'onesum', remx: /^rem/.test(m.cls) };
   }
   if (q.type === 'word') {
-    return { d, k: 'word.' + q.wkind, g: String(q.given || ''), ans: String(q.ans), sc,
-             schema: num(q.given) === q.trap };  // picked the keyword-matched operation
+    return { d, k: 'word.' + q.wkind, g: String(q.given || ''), ans: String(q.ans), sc, xf: q.xf || undefined,
+             schema: num(q.given) === q.trap,                                   // picked the keyword-matched operation
+             extra: wordMiss(q, String(q.given || '').trim() === '' ? NaN : num(q.given)) === 'extra' };  // used the number nobody needed
   }
-  return { d, k: q.bucket || q.type, g: String(q.given || ''), ans: String(q.ans), sc, ten: tensSlip(q.given) };
+  return { d, k: q.bucket || q.type, g: String(q.given || ''), ans: String(q.ans), sc, ten: tensSlip(q.given),
+           zero: q.type === 'sub' && subAcrossZero(q.a, q.b) && [10, 100, 110].includes(num(q.given) - q.ans) };
 }
 
 function submit(fromTimeout) {
@@ -4037,6 +4391,7 @@ function submit(fromTimeout) {
     else if (q.type === 'word') {
       Stats.recordSkill('word', isRight, ms, sc);
       Stats.recordSkill('word.' + q.wkind, isRight, ms, sc);
+      if (q.xf) Stats.recordSkill('wordx', isRight, ms, sc);   // stories with a transfer twist
     }
     else if (q.type === 'mul2') {
       Stats.recordSkill('mul2', isRight, ms, sc);
@@ -4087,19 +4442,238 @@ function dismissModal() {
   render();
 }
 
+/* ---------- Fact sprint ---------- */
+// One minute, one card at a time, on facts the child already knows. Brief
+// daily timed practice on known facts is what turns accurate into automatic
+// (IES 2021 practice guide; Burns 2006), and charting each score against the
+// child's own usual ("meet or beat") makes the clock about personal
+// progress, not a race against anyone. A miss shows the answer to type
+// before moving on, the same see-it, type-it fix as the warm-up; the clock
+// keeps running, so accuracy pays.
+const SPRINT_SEC = 60;
+let sprint = null;
+function sprintDue() {
+  const d = Stats.getDaily();
+  return d.warmup && !d.sprint && Stats.sprintReady();
+}
+function sprintCard(prev) {
+  const same = p => !!prev && p.op === prev.op && p.a === prev.fa && p.b === prev.fb;
+  const pool = sprint.pool.length > 1 ? sprint.pool.filter(p => !same(p)) : sprint.pool;   // never twice in a row
+  let r = Math.random() * pool.reduce((t, x) => t + x.w, 0), i = 0;
+  while (i < pool.length - 1 && r > pool[i].w) { r -= pool[i].w; i++; }
+  const p = pool[i], flip = Math.random() < 0.5;
+  if (p.op === '×') return { op: '×', fa: p.a, fb: p.b, x: flip ? p.b : p.a, y: flip ? p.a : p.b, ans: p.a * p.b, t0: Date.now() };
+  const by = flip ? p.b : p.a;
+  return { op: '÷', fa: p.a, fb: p.b, x: p.a * p.b, y: by, ans: p.a * p.b / by, t0: Date.now() };
+}
+function startSprint() {
+  const pool = Stats.sprintPool();
+  if (!pool.length) { Stats.markDaily('sprint'); startNew(); return; }
+  clearInterval(tickHandle); tickHandle = null;
+  if (sprint && sprint.timer) clearInterval(sprint.timer);
+  sprint = { stage: 'intro', pool, right: 0, wrong: 0, misses: [], seen: new Set(),
+             card: null, miss: false, goal: Stats.sprintGoal() };
+  state.phase = 'sprint';
+  state.showMine = false;
+  render();
+  try { window.scrollTo(0, 0); } catch {}
+}
+function sprintGo() {
+  sprint.stage = 'run';
+  sprint.endsAt = Date.now() + SPRINT_SEC * 1000;
+  sprint.card = sprintCard(null);
+  sprint.timer = setInterval(sprintTick, 250);
+  render();
+  const inp = document.querySelector('.sprint-box');
+  if (inp) inp.focus();                         // inside the tap, so the iPad keyboard opens
+}
+function sprintTick() {
+  if (!sprint || sprint.stage !== 'run') return;
+  const left = Math.max(0, sprint.endsAt - Date.now());
+  const fill = document.querySelector('.sprint-fill'), txt = document.querySelector('.sprint-left');
+  if (fill) fill.style.width = (100 * left / (SPRINT_SEC * 1000)) + '%';
+  if (txt) txt.textContent = Math.ceil(left / 1000) + 's';
+  if (left <= 0) sprintEnd();
+}
+// Each fact feeds its memory model once per sprint, and a miss always does:
+// meeting 7 × 8 three times in one minute is massed practice, and growing its
+// review interval three times over would push it out of review for months.
+function sprintRecord(c, ok, given) {
+  const key = c.op + c.fa + 'x' + c.fb, ms = Date.now() - c.t0;
+  if (!ok || !sprint.seen.has(key)) {
+    if (c.op === '×') Stats.recordMul(c.fa, c.fb, ok, ms);
+    else Stats.recordDiv(c.fa, c.fb, ok, ms);
+  }
+  sprint.seen.add(key);
+  if (ok) return;
+  const q = c.op === '×' ? { type: 'mul', a: c.x, b: c.y, ans: c.ans, given }
+                         : { type: 'div', a: c.x, b: c.y, ans: c.ans, fam: [c.fa, c.fb], given };
+  try { Stats.recordError({ ...errEntry(q), sp: 1 }); } catch {}
+}
+function sprintAnswer(inp) {
+  if (!sprint || sprint.stage !== 'run') return;
+  const c = sprint.card, v = inp.value.trim(), a = String(c.ans);
+  if (sprint.miss) {                            // copying the answer shown
+    if (v === a) sprintNext(inp);
+    else if (v.length >= a.length) inp.value = '';
+    return;
+  }
+  if (v === a) {
+    sprint.right++;
+    sprintRecord(c, true);
+    sprintNext(inp);
+  } else if (v.length >= a.length) sprintMiss(inp, v);
+}
+function sprintMiss(inp, v) {
+  const c = sprint.card;
+  sprint.wrong++;
+  sprint.miss = true;
+  sprint.misses.push(`${c.x} ${c.op} ${c.y} = ${c.ans}`);
+  sprintRecord(c, false, v);
+  try { Sound.soft(); } catch {}
+  inp.value = '';
+  sprintPaint(document);
+}
+function sprintNext(inp) {
+  sprint.miss = false;
+  sprint.card = sprintCard(sprint.card);
+  inp.value = '';
+  sprintPaint(document);
+}
+// The running card updates in place: rebuilding the box would drop the
+// iPad keyboard between facts.
+function sprintPaint(root) {
+  const c = sprint.card, q = root.querySelector('.sprint-q'), note = root.querySelector('.sprint-note'), sc = root.querySelector('.sprint-score');
+  if (q) q.textContent = `${c.x} ${c.op} ${c.y} =`;
+  if (note) {
+    note.textContent = sprint.miss ? `${c.x} ${c.op} ${c.y} = ${c.ans} — type ${c.ans} to keep going` : '';
+    note.classList.toggle('on', sprint.miss);
+  }
+  if (sc) sc.textContent = `✓ ${sprint.right}`;
+}
+function sprintEnd() {
+  clearInterval(sprint.timer);
+  sprint.timer = null;
+  sprint.stage = 'done';
+  sprint.recorded = sprint.right + sprint.wrong > 0;
+  if (sprint.recorded) {
+    Stats.recordSprint(sprint.right, sprint.wrong);
+    Stats.markDaily('sprint');
+    pushIfSynced();
+    try { if (sprint.goal == null || sprint.right >= sprint.goal) Sound.perfect(); else Sound.right(); } catch {}
+  }
+  render();
+}
+// Where the sprints stand, for the parent: the middle of the first three
+// against the middle of the last three is the growth a single day hides.
+function sprintSummary() {
+  const spr = Stats.getSprints();
+  if (!spr.length) return null;
+  const mid = a => { const t = a.map(x => x.n).sort((x, y) => x - y); return t[Math.floor((t.length - 1) / 2)]; };
+  return { done: spr.length, last: spr[spr.length - 1].n, usual: Stats.sprintGoal(), best: Math.max(...spr.map(x => x.n)),
+           first3: mid(spr.slice(0, 3)), last3: mid(spr.slice(-3)) };
+}
+// The last ten scores as bars, today's in colour, the usual as a dashed line.
+function sprintChart(list, goal, hiLast) {
+  const xs = list.slice(-10), top = Math.max(5, goal || 0, ...xs.map(x => x.n));
+  const W = 300, H = 120, bw = W / 10, base = H - 4, room = H - 24;
+  let body = '';
+  xs.forEach((x, i) => {
+    const h = Math.max(2, Math.round(room * x.n / top)), X = i * bw + 4;
+    body += `<rect x="${X}" y="${base - h}" width="${bw - 8}" height="${h}" rx="3" class="spr-bar${hiLast && i === xs.length - 1 ? ' now' : ''}"/>`;
+    body += `<text x="${X + (bw - 8) / 2}" y="${base - h - 4}" text-anchor="middle" class="spr-n">${x.n}</text>`;
+  });
+  if (goal != null) {
+    const gy = base - Math.round(room * goal / top);
+    body += `<line x1="0" x2="${W}" y1="${gy}" y2="${gy}" class="spr-goal"/>`;
+  }
+  const fig = el('div', 'sprint-chart');
+  fig.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Your last ${xs.length} sprint scores: ${xs.map(x => x.n).join(', ')}">${body}</svg>`;
+  if (goal != null) fig.appendChild(el('div', 'sprint-legend', `- - - your usual: ${goal}`));
+  return fig;
+}
+function renderSprint() {
+  const s = sprint, wrap = el('div', 'sprint');
+  if (s.stage === 'intro') {
+    wrap.appendChild(el('div', 'ready-emoji', '⚡'));
+    wrap.appendChild(el('h2', 'ready-title', '1-minute sprint'));
+    wrap.appendChild(el('p', 'ready-desc', 'Facts you already know: how many can you answer in one minute? Miss one, and type the answer shown to keep going.'));
+    wrap.appendChild(el('p', 'sprint-goal', s.goal == null ? 'Your first sprint sets your goal.' : `Your usual: ${s.goal}. Can you meet or beat it?`));
+    const list = Stats.getSprints();
+    if (list.length) wrap.appendChild(sprintChart(list, s.goal, false));
+    const go = el('button', 'btn btn-primary btn-big sprint-go', 'Go! ⚡');
+    go.onclick = sprintGo;
+    wrap.appendChild(go);
+    return wrap;
+  }
+  if (s.stage === 'run') {
+    const left = Math.max(0, s.endsAt - Date.now());
+    const top = el('div', 'sprint-top');
+    top.appendChild(el('span', 'sprint-left tabular', Math.ceil(left / 1000) + 's'));
+    top.appendChild(el('span', 'sprint-score tabular'));
+    wrap.appendChild(top);
+    const bar = el('div', 'sprint-bar'), fill = el('div', 'sprint-fill');
+    fill.style.width = (100 * left / (SPRINT_SEC * 1000)) + '%';
+    bar.appendChild(fill);
+    wrap.appendChild(bar);
+    const card = el('div', 'sprint-card');
+    card.appendChild(el('div', 'sprint-q tabular'));
+    const inp = document.createElement('input');
+    inp.className = 'sprint-box tabular'; inp.inputMode = 'numeric'; inp.autocomplete = 'off';
+    inp.setAttribute('aria-label', 'Your answer');
+    inp.addEventListener('input', () => sprintAnswer(inp));
+    inp.addEventListener('keydown', e => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      const v = inp.value.trim();
+      if (sprint.stage === 'run' && !sprint.miss && v !== '' && v !== String(sprint.card.ans)) sprintMiss(inp, v);
+    });
+    card.appendChild(inp);
+    card.appendChild(el('div', 'sprint-note'));
+    wrap.appendChild(card);
+    sprintPaint(wrap);
+    return wrap;
+  }
+  const met = s.goal == null || s.right >= s.goal;
+  wrap.appendChild(el('div', 'ready-emoji', !s.recorded ? '⚡' : met ? '🏆' : '💪'));
+  wrap.appendChild(el('h2', 'ready-title', s.recorded ? `${s.right} right in one minute!` : 'No answers this time'));
+  wrap.appendChild(el('p', 'sprint-goal', !s.recorded ? 'Tap Again when you are ready.'
+    : s.goal == null ? 'That is your goal to meet or beat next time.'
+    : s.right > s.goal ? `Your usual was ${s.goal}: you beat it! 🎉`
+    : s.right === s.goal ? `Your usual was ${s.goal}: you met it! 🎉`
+    : `Your usual is ${s.goal}. Every sprint makes the facts quicker, so try again tomorrow!`));
+  if (s.recorded) wrap.appendChild(sprintChart(Stats.getSprints(), s.goal, true));
+  if (s.misses.length) wrap.appendChild(el('p', 'sprint-miss', 'To practise: ' + [...new Set(s.misses)].join(' · ')));
+  const row = el('div', 'sprint-actions');
+  const again = el('button', 'btn btn-ghost btn-big', '⚡ Again');
+  again.onclick = startSprint;
+  const next = el('button', 'btn btn-primary btn-big', nextStepLabel());
+  next.onclick = startNew;
+  row.appendChild(again); row.appendChild(next);
+  wrap.appendChild(row);
+  return wrap;
+}
+
 // Today's session strip: the system-decided plan, visible and simple.
+function dailySteps(d) {
+  const steps = [{ key: 'warmup', label: '🎯 Warm-up', done: d.warmup }];
+  if (d.sprint || Stats.sprintReady()) steps.push({ key: 'sprint', label: '⚡ Sprint', done: !!d.sprint });
+  steps.push({ key: 'quiz', label: '📝 Quiz', done: d.quiz });
+  return steps;
+}
+function dailyDone(d) { return dailySteps(d).every(st => st.done); }
 function renderDailyStrip() {
   const d = Stats.getDaily();
   const wrap = el('div', 'daystrip');
-  [{ key: 'warmup', label: '🎯 Warm-up', done: d.warmup },
-   { key: 'quiz', label: '📝 Quiz', done: d.quiz }].forEach((st, i) => {
+  const now = state.phase === 'sprint' || (state.phase === 'ready' && sprintDue()) ? 'sprint' : state.dailyStep;
+  dailySteps(d).forEach((st, i) => {
     if (i) wrap.appendChild(el('span', 'day-arrow', '→'));
-    const active = !st.done && state.dailyStep === st.key && !state.submitted;
+    const active = !st.done && now === st.key && (now === 'sprint' || !state.submitted);
     const chip = el('span', 'day-chip' + (st.done ? ' done' : active ? ' active' : ''));
     chip.textContent = (st.done ? '✓ ' : '') + st.label;
     wrap.appendChild(chip);
   });
-  if (d.warmup && d.quiz) wrap.appendChild(el('span', 'day-done', "🎉 Done for today — anything more is bonus!"));
+  if (dailyDone(d)) wrap.appendChild(el('span', 'day-done', "🎉 Done for today — anything more is bonus!"));
   return wrap;
 }
 // Ready screen: no questions on display, no clock running — the child sees
@@ -4114,6 +4688,7 @@ function renderReadyScreen() {
     : `🔥 ${sk.current}-day streak — keep it rolling!`));
   const d = Stats.getDaily();
   const desc = !d.warmup ? '🎯 First up: a warm-up on your tricky ones — mistakes get fixed on the spot.'
+    : sprintDue() ? '⚡ Next up: one minute of facts you know — can you beat your usual?'
     : !d.quiz ? "📝 Next up: today's quiz — show what you've got!"
     : '🌟 Today is done — a bonus round is extra brain power!';
   wrap.appendChild(el('p', 'ready-desc', desc));
@@ -4133,6 +4708,10 @@ function render() {
     shell.appendChild(renderReadyScreen());
     shell.appendChild(renderFooter());
     app.appendChild(shell);
+  } else if (state.phase === 'sprint' && sprint) {
+    shell.appendChild(renderSprint());
+    shell.appendChild(renderFooter());
+    app.appendChild(shell);
   } else {
   if (state.submitted) shell.appendChild(renderSummary());
   shell.appendChild(renderProgress());
@@ -4147,6 +4726,11 @@ function render() {
   if (state.showStats) app.appendChild(renderStatsModal());
   if (state.showMine) app.appendChild(renderMineModal());
   if (state.showLesson) app.appendChild(renderLessonModal(state.showLesson));
+  // A redraw mid-sprint (a sync landing, say) must not leave the box unfocused.
+  if (state.phase === 'sprint' && sprint && sprint.stage === 'run' && !state.showStats && !state.showMine) {
+    const b = document.querySelector('.sprint-box');
+    if (b) b.focus();
+  }
   renderTimer();
 }
 
@@ -4339,7 +4923,13 @@ function renderQuestion(q, idx) {
 
   if (q.type === 'word') {
     const story = el('div', 'wstory-wrap');
-    story.appendChild(el('p', 'wstory', q.text));
+    if (q.tbl) {
+      story.appendChild(el('p', 'wstory', q.tbl.intro));
+      const t = el('table', 'wtable');
+      q.tbl.rows.forEach(([k, v]) => { const tr = el('tr'); tr.appendChild(el('td', null, k)); tr.appendChild(el('td', 'tabular', String(v))); t.appendChild(tr); });
+      story.appendChild(t);
+      story.appendChild(el('p', 'wstory-q', q.tbl.ask));
+    } else story.appendChild(el('p', 'wstory', q.text));
     // Read-aloud: a word problem should measure the maths, not how well an
     // eight-year-old decodes the sentence. Built into iPad Safari, no cost.
     if (canSpeak()) {
@@ -4409,7 +4999,7 @@ function renderQuestion(q, idx) {
   }
 
   if (isFracQ(q)) {
-    if (state.immediate && !state.submitted && q._imm) card.classList.add({ right: 'imm-good', fixing: 'imm-fixing', fixed: 'imm-fixed' }[q._imm]);
+    if (state.immediate && !state.submitted && q._imm) card.classList.add({ right: 'imm-good', fixing: 'imm-fixing', retry: 'imm-fixing', fixed: 'imm-fixed' }[q._imm]);
     card.appendChild(renderFractionRow(q, idx, right, wrong));
     if (!state.submitted && q.isReview) {
       const tip = el('div', 'pretip');
@@ -4487,7 +5077,7 @@ function renderQuestion(q, idx) {
   } else if (state.immediate && q._imm) {
     if (q._imm === 'right') { card.classList.add('imm-good'); inp.readOnly = true; }
     else if (q._imm === 'fixed') { card.classList.add('imm-fixed'); inp.readOnly = true; inp.value = answerText(q); }
-    else if (q._imm === 'fixing') { card.classList.add('imm-fixing'); inp.value = q._retype || ''; }
+    else if (q._imm === 'fixing' || q._imm === 'retry') { card.classList.add('imm-fixing'); inp.value = q._retype || ''; }
   }
   inp.addEventListener('focus', () => {
     card.classList.add('focused');
@@ -4496,6 +5086,7 @@ function renderQuestion(q, idx) {
   inp.addEventListener('blur', () => card.classList.remove('focused'));
   inp.addEventListener('input', e => {
     const qq = state.quiz[idx];
+    if (state.immediate && qq._imm === 'retry') { qq._retype = e.target.value; saveSession(); return; }
     if (state.immediate && qq._imm === 'fixing') {
       // Overcorrection retype: the original wrong answer stays in .given for
       // honest grading/error-log; the retype goes to a scratch field.
@@ -4518,6 +5109,10 @@ function renderQuestion(q, idx) {
         immCheck(state.quiz[idx], idx, inp, card);
         return;
       }
+      if (state.immediate && !state.submitted && state.quiz[idx]._imm === 'retry') {
+        immRetry(state.quiz[idx], idx, inp, card);
+        return;
+      }
       const all = [...document.querySelectorAll('.ansbox')];
       const i = all.indexOf(inp);
       if (i + 1 < all.length) all[i+1].focus();
@@ -4525,7 +5120,7 @@ function renderQuestion(q, idx) {
     }
   });
   row.appendChild(inp);
-  if (q.type === 'geo') row.appendChild(el('span', 'geo-unit', q.unit));
+  if (q.type === 'geo' && !q.which) row.appendChild(el('span', 'geo-unit', q.unit));   // the unit would name the measure
 
   if (wrong) {
     const pill = el('div', 'correct-pill');
@@ -4535,6 +5130,7 @@ function renderQuestion(q, idx) {
   }
   card.appendChild(row);
   if (!state.submitted && state.immediate && q._imm === 'fixing') card.appendChild(buildFixPill(q));
+  if (!state.submitted && state.immediate && q._imm === 'retry') card.appendChild(buildHintPill(q));
 
   // Pre-practice strategy card: review questions (learn, then try) and
   // correct-but-slow facts (the child is counting — teach the shortcut).
@@ -5121,6 +5717,7 @@ function chip(kind, text) {
 function nextStepLabel() {
   const d = Stats.getDaily();
   if (!d.warmup) return '🎯 Start warm-up';
+  if (sprintDue()) return '⚡ 1-minute sprint';
   if (!d.quiz) return "▶ Today's quiz";
   return '🌟 Bonus round';
 }
@@ -5445,7 +6042,7 @@ function renderLessonModal(domain) {
     m.appendChild(el('p', 'lesson-p', 'Walk all the way around the same rectangle: 4 + 3 + 4 + 3 = 14 cm. Opposite sides are always equal, so even if only two sides are labelled, add four.'));
 
     m.appendChild(el('h3', 'lesson-h', '3) Don\'t mix them up'));
-    m.appendChild(el('p', 'lesson-p', 'Same rectangle, two different answers: area 12 sq cm, perimeter 14 cm. Ask: does the question want the inside (area) or the edge (perimeter)?'));
+    m.appendChild(el('p', 'lesson-p', 'Same rectangle, two different answers: area 12 sq cm, perimeter 14 cm. Real jobs never say which: a fence, a ribbon or a walk goes around the edge (perimeter); carpet, tiles or grass cover the inside (area). Ask what the job does.'));
 
     m.appendChild(el('h3', 'lesson-h', '4) Bigger challenges, later'));
     m.appendChild(fig({ W: 7, H: 6, cw: 3, ch: 2 }, 'lshape', false));
@@ -5634,12 +6231,13 @@ function renderMineModal() {
 
   // One button, no menu: the engine decides what gets practiced. This page
   // is the child's open learner model — a place to SEE growth, not to pick.
-  const busyQuiz = state.phase === 'quiz' && !state.submitted && state.quiz.some(q => answered(q));
+  const busyQuiz = (state.phase === 'quiz' && !state.submitted && state.quiz.some(q => answered(q))) ||
+                   (state.phase === 'sprint' && !!sprint && sprint.stage === 'run');
   const goBtn = el('button', 'btn btn-primary mine-go mine-start',
-    busyQuiz ? '↩ Back to my quiz' : nextStepLabel());
+    busyQuiz ? (state.phase === 'sprint' ? '↩ Back to my sprint' : '↩ Back to my quiz') : nextStepLabel());
   goBtn.onclick = () => { state.showMine = false; if (busyQuiz) render(); else startNew(); };
   m.appendChild(goBtn);
-  if (dToday.warmup && dToday.quiz) m.appendChild(el('p', 'mine-note', "Today's practice is done — a bonus round is always welcome! 🎉"));
+  if (dailyDone(dToday)) m.appendChild(el('p', 'mine-note', "Today's practice is done — a bonus round is always welcome! 🎉"));
 
   // View-only skill cards: stage + meter (+ fraction sub-skill chips).
   const rows = [];
@@ -5965,8 +6563,12 @@ function renderStatsModal() {
     if (s.multi.unlocked) domHintParts.push(`🪜 ${s.multi.mastery}%`);
     const domGroup = statsGroup('📚 By domain', domHintParts.join(' · '), false);
     const factsLine = el('p', 'stats-line',
-      `Multiplication: ${s.totalAttempts} attempts · ${s.totalAccuracy}% accurate · ${s.mastered}/66 facts mastered`);
+      `Multiplication: ${s.totalAttempts} attempts · ${s.totalAccuracy}% accurate · ${s.mastered}/66 facts mastered · ${Stats.automaticCount()}/66 automatic (≤3 s)`);
     domGroup.appendChild(factsLine);
+    const sp = sprintSummary();
+    if (sp) domGroup.appendChild(el('p', 'stats-line', `⚡ 1-minute sprint: ${sp.done} done · last ${sp.last} right · usual ${sp.usual} · best ${sp.best}` +
+      (sp.done >= 6 ? ` · first three ${sp.first3} → last three ${sp.last3}` : '')));
+    else if (Stats.sprintReady()) domGroup.appendChild(el('p', 'stats-line', '⚡ 1-minute sprint: none yet (it comes after the warm-up)'));
     domGroup.appendChild(masteryMeter(s.mastery));
 
     if (s.weak.length) {
@@ -6153,6 +6755,10 @@ function renderStatsModal() {
         return `${wordKindLabel(k)} ${n ? Math.round(100 * (f.right || 0) / n) + '%' : '—'}`;
       }).join(' · '));
       domGroup.appendChild(byKind);
+      const fx = Stats.getSkill('wordx'), nx = fx ? (fx.right || 0) + (fx.wrong || 0) : 0;
+      domGroup.appendChild(el('p', 'stats-line', nx
+        ? `With a twist (a number not needed, the question first, or a table): ${Math.round(100 * (fx.right || 0) / nx)}% of ${nx}`
+        : 'With a twist (a number not needed, the question first, or a table): starts once a story type is solid'));
       const row4 = el('div', 'div-actions');
       const learn4 = el('button', 'btn btn-ghost', '📖 Lesson');
       learn4.onclick = () => { state.showLesson = 'word'; render(); };
@@ -6426,6 +7032,13 @@ async function generatePlan(container, btn) {
       quizzesDone: s.quizzesDone,
       multiplicationAccuracyPct: s.totalAccuracy,
       factsMastered: s.mastered,
+      factsAutomatic: Stats.automaticCount(),
+      factSprint: (() => {
+        const sp = sprintSummary();
+        if (!sp) return Stats.sprintReady() ? 'not started yet' : 'not yet (starts at 20 facts mastered)';
+        return { sprintsDone: sp.done, lastRightPerMinute: sp.last, usual: sp.usual, best: sp.best,
+                 firstThreeMedian: sp.first3, lastThreeMedian: sp.last3 };
+      })(),
       streak: { current: s.streak.current, best: s.streak.best },
       weakestMultiplicationFacts: s.weak.map(w => ({
         fact: `${w.a}×${w.b}`, correct: w.right, wrong: w.wrong,
@@ -6482,7 +7095,11 @@ async function generatePlan(container, btn) {
               const f = Stats.getSkill('word.' + k), n = f ? (f.right || 0) + (f.wrong || 0) : 0;
               o[wordKindLabel(k)] = n ? Math.round(100 * (f.right || 0) / n) + '%' : 'not seen';
               return o;
-            }, {}) }
+            }, {}),
+            withTwist: (() => {
+              const f = Stats.getSkill('wordx'), n = f ? (f.right || 0) + (f.wrong || 0) : 0;
+              return n ? { accuracyPct: Math.round(100 * (f.right || 0) / n), attempts: n } : 'not seen';
+            })() }
         : 'locked',
       fractions: s.fractions.unlocked
         ? { attempts: s.fractions.attempts, accuracyPct: s.fractions.accuracy, masteryPct: s.fractions.mastery,
