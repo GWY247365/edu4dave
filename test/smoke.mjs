@@ -862,6 +862,47 @@ await page.waitForTimeout(200);
 check('the lesson shows the bars and two number lines', await page.evaluate(() => document.querySelectorAll('.modal .nl-fig svg').length === 2 && document.querySelectorAll('.modal .frac-vis').length === 2));
 await page.evaluate(() => { state.showLesson = null; localStorage.clear(); });
 
+console.log('20. fractions stay in every quiz, and in the warm-up, until every fraction skill is solid');
+await page.evaluate(() => { localStorage.clear(); });
+await page.goto(base);
+await page.waitForSelector('.ready-start, .qcard');
+const al = await page.evaluate(() => {
+  localStorage.clear(); Stats.reset();
+  for (let r = 0; r < 8; r++) for (let a = 2; a <= 12; a++) for (let b = a; b <= 12; b++) Stats.recordMul(a, b, true, 2000);
+  Stats.checkUnlocks();
+  Stats.importMerge({ unlocked: { longdiv: true, multi: true, mul2: true } });  // every domain open
+  const nFrac = qs => qs.filter(isFracQ).length;
+  const stat = list => ({ min: Math.min(...list.map(nFrac)), max: Math.max(...list.map(nFrac)),
+    mean: Math.round(100 * list.reduce((s, q) => s + nFrac(q), 0) / list.length) / 100, lens: [...new Set(list.map(q => q.length))].sort().join(',') });
+  const many = (n, f) => Array.from({ length: n }, f);
+  const learnBand = difficultyBand();
+  const learnQ = stat(many(60, () => newQuiz())), learnW = stat(many(40, () => focusQuiz(true)));
+  // the last quizzes came in under 70%: one band down, to practicing
+  const t0 = Date.now() - 3600000;
+  Stats.importMerge({ hist: [0, 1, 2].map(i => ({ d: t0 + i * 60000, n: 10, c: 6, t: 300, k: 'quiz' })) });
+  const lowBand = difficultyBand(), practQ = stat(many(60, () => newQuiz()));
+  for (const k of ['fnam', 'feq', 'fcmp', 'fpos']) for (let i = 0; i < 6; i++) { Stats.recordSkill('fractions', true, 9000); Stats.recordSkill('frac.' + k, true, 9000); }
+  const newly = Stats.checkUnlocks();
+  const opsOpenLearning = !Stats.fracSolid();          // level 2 just opened: still learning
+  for (const k of ['fadd', 'fline']) for (let i = 0; i < 6; i++) { Stats.recordSkill('fractions', true, 9000); Stats.recordSkill('frac.' + k, true, 9000); }
+  const solidPract = stat(many(60, () => newQuiz()));
+  Stats.importMerge({ hist: [3, 4, 5, 6, 7].map(i => ({ d: t0 + i * 60000, n: 10, c: 10, t: 300, k: 'quiz' })) });
+  return { learnBand, learnQ, learnW, lowBand, practQ, newly, opsOpenLearning, solid: Stats.fracSolid(), solidPract,
+           topBand: difficultyBand(), solidQ: stat(many(200, () => newQuiz())), solidW: stat(many(40, () => focusQuiz(true))) };
+});
+check('not yet solid, top band, every domain open: every quiz has a fraction question and 10 questions',
+  al.learnBand === 'expert' && al.learnQ.min >= 1 && al.learnQ.lens === '10', JSON.stringify({ band: al.learnBand, ...al.learnQ }));
+check('not yet solid: the warm-up carries exactly one, and stays at 5-6 questions',
+  al.learnW.min === 1 && al.learnW.max === 1 && /^[56](,[56])?$/.test(al.learnW.lens), JSON.stringify(al.learnW));
+check('one band down (practicing, every domain open): 10 questions, and fractions are not trimmed',
+  al.lowBand === 'practicing' && al.practQ.lens === '10' && al.practQ.min >= 1, JSON.stringify({ band: al.lowBand, ...al.practQ }));
+check('level 2 opening keeps fractions in the learning slots until adding and reading the line are solid too',
+  al.newly === 'fracops' && al.opsOpenLearning && al.solid, JSON.stringify({ newly: al.newly, learning: al.opsOpenLearning, solid: al.solid }));
+check('practicing with every domain open and fractions solid: 10 questions, not 11', al.solidPract.lens === '10', JSON.stringify(al.solidPract));
+check('all solid at the top band: fractions go back into rotation, none in the warm-up',
+  al.topBand === 'expert' && al.solidQ.min === 0 && al.solidQ.mean > 0.1 && al.solidQ.mean < 0.5 && al.solidW.max === 0,
+  JSON.stringify({ band: al.topBand, quiz: al.solidQ, warm: al.solidW }));
+
 console.log('21. placing fractions on the number line: kinds, grading, misconceptions, real taps, practice fix, lesson');
 const np = await page.evaluate(() => {
   localStorage.clear(); Stats.reset(); Stats.importMerge({ unlocked: { fractions: true } });
