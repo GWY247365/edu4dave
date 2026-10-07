@@ -16,13 +16,26 @@ Rules:
 - Don't lecture; make it feel easy and fun.`;
 
 function isNum(x) { return typeof x === 'number' && Number.isFinite(x); }
+// How a comparison is best seen, sent with it.
+const FCMP_HOW = {
+  den: 'both have the same-size pieces, so count the pieces',
+  num: 'both have the same number of pieces, and fewer cuts make bigger pieces',
+  eq: 'they land on the same place on the number line',
+  half: 'one is less than a half and the other more than a half',
+  one: 'each is one piece short of 1, and the smaller missing piece is closer to 1',
+};
 function validProblem(p) {
   if (!p || typeof p.type !== 'string') return false;
   if (['mul', 'add', 'sub', 'div'].includes(p.type)) return isNum(p.a) && isNum(p.b);
   if (p.type === 'mul2') return isNum(p.a) && isNum(p.b) && p.a >= 10 && p.a < 100 && p.b >= 10 && p.b < 100;
   if (p.type === 'fnam') return isNum(p.shaded) && isNum(p.den);
   if (p.type === 'feq') return isNum(p.n1) && isNum(p.d1) && isNum(p.d2) && isNum(p.ans);
-  if (p.type === 'fcmp') return isNum(p.n1) && isNum(p.d1) && isNum(p.n2) && isNum(p.d2) && typeof p.ans === 'string';
+  if (p.type === 'fcmp') return isNum(p.n1) && isNum(p.d1) && isNum(p.n2) && isNum(p.d2) && typeof p.ans === 'string' &&
+                                (p.how === undefined || Object.prototype.hasOwnProperty.call(FCMP_HOW, p.how));
+  // A claim to judge: its text, whether it is right, and why; bounded so the
+  // endpoint cannot be used as a general-purpose prompt.
+  if (p.type === 'ferr') return typeof p.text === 'string' && p.text.length > 0 && p.text.length <= 200 && typeof p.right === 'boolean' &&
+                                typeof p.why === 'string' && p.why.length > 0 && p.why.length <= 200;
   // Must be a real division, or the model would be told a wrong answer.
   if (p.type === 'fadd') return isNum(p.n1) && isNum(p.n2) && isNum(p.d) && p.d > 0 && p.d <= 12 && (p.op === '+' || p.op === '-') &&
                                 (p.op === '+' ? p.n1 + p.n2 <= p.d : p.n1 > p.n2);
@@ -97,7 +110,12 @@ function describe(p) {
       'The real skill here is working out from the story whether it asks for a total, a difference, or a share — ' +
       'words like "more" or "gave away" can point to the wrong operation, so explain how the story itself tells you which one to use';
   }
-  if (p.type === 'fcmp') return `comparing two fractions ${p.n1}/${p.d1} and ${p.n2}/${p.d2} using <, =, or > — the correct comparison is ${p.n1}/${p.d1} ${p.ans} ${p.n2}/${p.d2}`;
+  if (p.type === 'fcmp') return `comparing two fractions ${p.n1}/${p.d1} and ${p.n2}/${p.d2} using <, =, or > — the correct comparison is ${p.n1}/${p.d1} ${p.ans} ${p.n2}/${p.d2}` +
+    (p.how ? `. The best way to see it: ${FCMP_HOW[p.how]}. Children often think a bigger bottom number makes a bigger fraction, so explain the reason, not a rule` : '');
+  if (p.type === 'ferr') {
+    return `a "spot the mistake" question. Another child said: "${p.text.replace(/\s+/g, ' ').trim()}" That claim is ${p.right ? 'RIGHT' : 'WRONG'}: ${p.why} ` +
+      'Explain kindly whether the claim is right and why, with a picture in words or the number line, so the child could catch this idea next time';
+  }
   return 'this problem';
 }
 

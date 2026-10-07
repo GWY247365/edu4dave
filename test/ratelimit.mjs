@@ -143,5 +143,18 @@ check('a mark off the line is rejected', r.status === 400);
 r = await call(teach, { problem: { type: 'fpos', n: 1.5, d: 4, max: 1 } });
 check('a non-whole top number is rejected', r.status === 400);
 
+console.log('12) comparisons carry their reason, and spot-the-mistake claims are accepted by Teach me this');
+kv.clear();
+r = await call(teach, { problem: { type: 'fcmp', n1: 7, d1: 8, n2: 5, d2: 6, ans: '>', how: 'one' } });
+check('a comparison with its reason kind gets a lesson that names the reason', r.status === 200 && /one piece short of 1/.test(lastModelPrompt) && /bigger bottom number/.test(lastModelPrompt));
+r = await call(teach, { problem: { type: 'fcmp', n1: 7, d1: 8, n2: 5, d2: 6, ans: '>', how: 'magic' } });
+check('an unknown reason kind is rejected', r.status === 400);
+r = await call(teach, { problem: { type: 'ferr', text: 'Leo says 1/8 is bigger than 1/4, because 8 is bigger than 4.', right: false, why: 'More pieces means smaller pieces, so 1/8 < 1/4.' } });
+check('a claim gets a lesson that says whether it is right and why', r.status === 200 && /Leo says 1\/8/.test(lastModelPrompt) && /WRONG: More pieces/.test(lastModelPrompt));
+r = await call(teach, { problem: { type: 'ferr', text: 'x'.repeat(201), right: false, why: 'y' } });
+check('an oversized claim is rejected', r.status === 400);
+r = await call(teach, { problem: { type: 'ferr', text: 'a claim', right: 'no', why: 'y' } });
+check('a claim without a true/false verdict is rejected', r.status === 400);
+
 console.log(fails ? `\n${fails} FAILURE(S)` : '\nall rate-limit tests passed');
 process.exit(fails ? 1 : 0);
