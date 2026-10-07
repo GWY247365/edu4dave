@@ -589,8 +589,45 @@ check('a learner sees the two steps named before answering', /Two steps: First f
 const firstBox = await (await page.$$('.qcard'))[0].$('input');
 await firstBox.fill('42'); await firstBox.press('Enter');
 await page.waitForTimeout(200);
+const hint = await page.evaluate(() => ({ pill: document.querySelector('.fixpill').textContent, hint: !!document.querySelector('.fixpill.hintpill'),
+                                          box: document.querySelector('.qcard input').value, imm: state.quiz[0]._imm }));
+check('practice mode: a first miss names stopping early, but shows neither the steps nor the answer', hint.hint && hint.imm === 'retry' && hint.box === '' &&
+  /one more step/.test(hint.pill) && /another go/.test(hint.pill) && !/Step 1|72/.test(hint.pill), JSON.stringify(hint));
+await firstBox.press('Enter');
+check('…an empty second try does nothing', await page.evaluate(() => state.quiz[0]._imm === 'retry' && !!document.querySelector('.fixpill.hintpill')));
+await firstBox.fill('42'); await firstBox.press('Enter');
+await page.waitForTimeout(200);
 const fix = await page.$eval('.fixpill', e => e.textContent);
-check('practice mode: stopping early is named, then both steps are shown', /one more step/.test(fix) && /Step 1: 30 \+ 12 = 42/.test(fix) && /Step 2: 30 \+ 42 = 72/.test(fix), fix.slice(0, 80));
+check('…a second miss shows both steps and the answer to type', /one more step/.test(fix) && /Step 1: 30 \+ 12 = 42/.test(fix) && /Step 2: 30 \+ 42 = 72/.test(fix) && /Type 72/.test(fix), fix.slice(0, 80));
+await firstBox.fill('72');
+await page.waitForTimeout(150);
+check('…copying it locks the card; the first try is what gets graded', await page.evaluate(() =>
+  state.quiz[0]._imm === 'fixed' && document.querySelector('.qcard').classList.contains('imm-fixed') && state.quiz[0].given === '42' && !answerCorrect(state.quiz[0])));
+await pinMulti();
+const box2 = await (await page.$$('.qcard'))[0].$('input');
+await box2.fill('42'); await box2.press('Enter');
+await page.waitForTimeout(150);
+await box2.fill('72');
+await page.waitForTimeout(150);
+const hintOk = await page.evaluate(() => ({ imm: state.quiz[0]._imm, pill: !!document.querySelector('.qcard .fixpill') }));
+await box2.press('Enter');
+await page.waitForTimeout(150);
+const hintOk2 = await page.evaluate(() => ({ imm: state.quiz[0]._imm, pill: !!document.querySelector('.qcard .fixpill'), cls: document.querySelector('.qcard').className,
+                                             given: state.quiz[0].given, right: answerCorrect(state.quiz[0]) }));
+const leak = await page.evaluate(() => {
+  const says = (t, n) => new RegExp('(^|[^0-9])' + n + '(?![0-9])').test(t), bad = [];
+  for (let i = 0; i < 1200; i++) {
+    const r = i % 4, q = r === 0 ? genWord() : r === 1 ? genMulti() : r === 2 ? genGeo() : genMul2();
+    const vals = r === 0 ? [q.trap, ...(q.extraVals || []), q.ans + 1, q.ans + 37] : [...q.wrongs.map(w => w.v), q.ans + 1, q.ans + 37];
+    const shown = `${q.text || ''} ${q.desc || ''} ${q.type === 'mul2' ? q.a + ' ' + q.b : ''}`;   // a number in the problem itself gives nothing away
+    for (const v of vals) { const t = buildHintPill({ ...q, given: String(v) }).textContent; if (says(t, q.ans) && !says(shown, q.ans)) bad.push(`${q.wkind || q.gk || q.mk}: ${t}`); }
+  }
+  return bad.slice(0, 3);
+});
+check('a first-miss hint never states the answer, across 1200 stories, two-step, area and 2-digit problems', !leak.length, leak.join(' | '));
+check('…a right second try counts only after Enter, then locks with no answer shown; still graded on the first try',
+  hintOk.imm === 'retry' && hintOk2.imm === 'fixed' && !hintOk2.pill && /imm-fixed/.test(hintOk2.cls) && hintOk2.given === '42' && !hintOk2.right,
+  JSON.stringify([hintOk, hintOk2]));
 await pinMulti();
 await page.evaluate(() => { state.immediate = false; render(); });
 const nMulti = await page.evaluate(() => state.quiz.length);
@@ -618,6 +655,14 @@ check('stopping early is logged as such', msRun.err.k === 'multi.mcompare' && ms
 check('the card names the mistake and shows both steps', /one more step/.test(msRun.diag) && /Step 2: 30 \+ 42 = 72/.test(msRun.diag));
 check('the daily log shows the question and the story', msRun.logRow[0] === '🪜 Compare, then total' && msRun.logRow[1] === '42' && /Leo has 30/.test(msRun.logRow[4] || ''), JSON.stringify(msRun.logRow));
 check('"Teach me this" sends the story and both steps', msRun.teach.steps && msRun.teach.steps.length === 2 && msRun.teach.ans === 72);
+const redo = await page.evaluate(() => {
+  const old = state.quiz[0];
+  retryWrong();
+  const q = state.quiz[0];
+  return { n: state.quiz.length, multi: !!q.multi, kind: q.wkind, same: q.text === old.text, given: q.given, imm: q._imm };
+});
+check('"Retry missed" gives a fresh two-step problem of the same kind, not the one just answered', redo.n === 1 && redo.multi && redo.kind === 'mcompare' && !redo.same && redo.given === '' && redo.imm === undefined,
+  JSON.stringify(redo));
 const msPat = await page.evaluate(() => {
   Stats.recordError({ d: Date.now() + 5, k: 'multi.mcompare', g: '50', ans: '80', early: true });
   return Stats.errorPatterns().filter(p => p.key === 'multi.mcompare').map(p => p.kind + ': ' + p.label)[0] || '';
@@ -661,7 +706,7 @@ const geo = await page.evaluate(() => {
            inQuiz: Math.min(...Array.from({ length: 30 }, () => newQuiz().filter(q => q.type === 'geo').length)) };
 });
 check('unlocks at 45 fluent multiplication facts', geo.unlockedAt.geo && geo.unlockedAt.fluent >= 45, JSON.stringify(geo.unlockedAt));
-check('L-shapes and missing sides wait until area and perimeter are solid', geo.kinds0 === 'area,perim' && geo.kinds1 === 'area,perim,lshape,missing', `${geo.kinds0} → ${geo.kinds1}`);
+check('L-shapes, missing sides and choosing the measure wait until area and perimeter are solid', geo.kinds0 === 'area,perim' && geo.kinds1 === 'area,perim,lshape,missing,which', `${geo.kinds0} → ${geo.kinds1}`);
 check('1500 problems: answers match the figure, steps reach the answer, figures draw', geo.badCount === 0, geo.bad.join('; '));
 check('every area problem lists its perimeter as a wrong answer, and the reverse', geo.mixAll);
 check('every listed wrong answer is diagnosed with its own reason', geo.badCount === 0 && geo.wrongs > 3000, `${geo.wrongs} checked`);
@@ -712,6 +757,46 @@ const geoPat = await page.evaluate(() => {
   return Stats.errorPatterns().filter(p => p.key === 'geo.perim').map(p => p.kind + ': ' + p.label)[0] || '';
 });
 check('repeated mix-ups become a named pattern for the parent', /^misconception: .*mixes up area and perimeter/.test(geoPat), geoPat);
+// Which measure: a job that names neither area nor perimeter.
+const which = await page.evaluate(() => {
+  const qs = Array.from({ length: 400 }, () => genGeo('which')), bad = [];
+  for (const q of qs) {
+    if (/\b(area|perimeter)\b/i.test(q.text)) bad.push('names the measure: ' + q.text);
+    const other = q.ask === 'area' ? 2 * (q.shape.w + q.shape.h) : q.shape.w * q.shape.h;
+    const w = q.wrongs.find(x => x.v === other);
+    if (!w || !/^(perim|area)$/.test(w.cls)) bad.push('the other measure is not a listed wrong answer: ' + q.desc);
+    if (q.desc.length > 200 || q.steps.some(t => t.length > 160)) bad.push('too long for Teach me this: ' + q.desc);
+  }
+  return { bad: bad.slice(0, 3), badCount: bad.length, asks: [...new Set(qs.map(q => q.ask))].sort().join(','), jobs: new Set(qs.map(q => q.text)).size };
+});
+check('which measure: jobs that go around and jobs that cover, never named, with the other measure as a listed wrong answer',
+  which.badCount === 0 && which.asks === 'area,perim' && which.jobs === 6, JSON.stringify(which));
+await page.evaluate(() => {
+  localStorage.clear(); Stats.reset();
+  startGeoPractice();
+  let q;
+  do q = genGeo('which'); while (q.ask !== 'perim' || q.unit !== 'm');
+  state.quiz[0] = { ...q, id: 0, given: '' };
+  render();
+});
+const wCard = await page.evaluate(() => {
+  const c = document.querySelector('.qcard'), q = state.quiz[0];
+  return { unit: !!c.querySelector('.geo-unit'), labels: [...c.querySelectorAll('.geo-lbl')].map(t => t.textContent).join(','),
+           named: /\b(area|perimeter)\b/i.test(c.querySelector('.geo-q').textContent), w: q.shape.w, h: q.shape.h };
+});
+check('the job card shows the sides but no answer unit, since the unit would name the measure',
+  !wCard.unit && !wCard.named && wCard.labels === `${wCard.w} m,${wCard.h} m`, JSON.stringify(wCard));
+const wBox = await (await page.$$('.qcard'))[0].$('input');
+await wBox.fill(String(wCard.w * wCard.h)); await wBox.press('Enter');
+await page.waitForTimeout(150);
+const wHint = await page.evaluate(() => document.querySelector('.qcard .fixpill.hintpill').textContent);
+check('practice: covering the inside instead of going around is named, without the answer',
+  /would cover the inside/.test(wHint) && /the edge, so add all four sides/.test(wHint) && !wHint.includes(String(2 * (wCard.w + wCard.h))), wHint);
+await wBox.fill(String(2 * (wCard.w + wCard.h))); await wBox.press('Enter');
+await page.waitForTimeout(150);
+const wDone = await page.evaluate(() => ({ imm: state.quiz[0]._imm, err: errEntry(state.quiz[0]) }));
+check('…the right second try locks it, and the first try is logged as an area/perimeter mix-up',
+  wDone.imm === 'fixed' && wDone.err.k === 'geo.which' && wDone.err.mix === true, JSON.stringify(wDone));
 await page.evaluate(() => { state.showLesson = 'geo'; render(); });
 await page.waitForTimeout(200);
 check('the area & perimeter lesson opens with its figures and offers practice',
@@ -1184,6 +1269,248 @@ check('the lesson strip: 4 parts with 3 coloured reads 3/4; cutting every part i
   /3 of 4 equal parts/.test(lab1.label) && lab1.done === 2 && /6 of 8 equal parts/.test(lab2.label) && Math.abs(lab1.dot - lab2.dot) < 0.5 &&
   lab2.done === 3 && /same number/.test(lab2.note), JSON.stringify({ lab1, lab2 }));
 await page.evaluate(() => { state.showLesson = null; localStorage.clear(); });
+
+console.log('23. word problems that transfer: new story types, twists once a type is solid, the number nobody needs');
+await page.evaluate(() => { localStorage.clear(); });
+await page.goto(base);
+await page.waitForSelector('.ready-start, .qcard');
+const wt = await page.evaluate(() => {
+  localStorage.clear(); Stats.reset();
+  for (let r = 0; r < 8; r++) for (let a = 2; a <= 12; a++) for (let b = a; b <= 12; b++) Stats.recordMul(a, b, true, 2000);
+  Stats.checkUnlocks();
+  const learning = Array.from({ length: 300 }, () => genWord()).filter(q => q.xf).length;
+  for (const k of ['wjoin', 'wcompare', 'wgroups', 'wshare']) for (let i = 0; i < 6; i++) { Stats.recordSkill('word', true, 9000); Stats.recordSkill('word.' + k, true, 9000); }
+  const vars = new Set(), xfs = {}, bad = [];
+  let twisted = 0;
+  for (let i = 0; i < 2000; i++) {
+    const q = genWord();
+    vars.add(q.wvar);
+    if (q.xf) { xfs[q.xf] = (xfs[q.xf] || 0) + 1; twisted++; }
+    const [x, sym, y] = q.op.split(' ');
+    if (wCalc(+x, sym, +y) !== q.ans || q.trap === q.ans || !Number.isInteger(q.ans) || q.ans <= 0) bad.push('key: ' + q.text);
+    if (/undefined|NaN/.test(q.text)) bad.push('text: ' + q.text);
+    if (q.xf === 'qfirst' && !/^How /.test(q.text)) bad.push('question not first: ' + q.text);
+    if (q.xf === 'extra') {
+      if (!q.text.includes(String(q.extra))) bad.push('the extra number is missing: ' + q.text);
+      if (q.extraVals.includes(q.ans) || q.extraVals.includes(q.trap)) bad.push('the extra number overlaps the key: ' + q.text);
+      for (const v of q.extraVals) if (wordMiss(q, v) !== 'extra') bad.push('using the extra number is not diagnosed: ' + q.text);
+    }
+    if (q.xf === 'table' && !(q.tbl && q.tbl.rows.length === 2 && q.text.endsWith(q.tbl.ask))) bad.push('table: ' + q.text);
+  }
+  return { learning, vars: [...vars].sort().join(','), xfs, share: twisted / 2000, bad: bad.slice(0, 3), badCount: bad.length };
+});
+check('no twists while a story type is still being learned', wt.learning === 0, 'twisted=' + wt.learning);
+check('new story types: take away, start unknown, two parts, the difference, "times as many" that divides',
+  ['sep', 'startjoin', 'total', 'diff', 'timesdiv'].every(v => wt.vars.split(',').includes(v)), wt.vars);
+check('once solid, about half the stories get a twist: a number not needed, the question first, or a table',
+  wt.share > 0.4 && wt.share < 0.6 && wt.xfs.extra > 0 && wt.xfs.qfirst > 0 && wt.xfs.table > 0, `${wt.share} ${JSON.stringify(wt.xfs)}`);
+check('2000 stories: keys right, twists well formed, every use of the unneeded number diagnosed', wt.badCount === 0, wt.bad.join('; '));
+await page.evaluate(() => {
+  startWordPractice();
+  let q, t;
+  do q = genWord('wjoin'); while (q.xf !== 'extra' || !q.extraVals.length);
+  do t = genWord(); while (t.xf !== 'table');
+  state.quiz[0] = { ...q, id: 0, given: '' };
+  state.quiz[1] = { ...t, id: 1, given: '' };
+  render();
+});
+const tCard = await page.evaluate(() => {
+  const c = document.querySelectorAll('.qcard')[1];
+  return { rows: c.querySelectorAll('.wtable tr').length, ask: (c.querySelector('.wstory-q') || {}).textContent, want: state.quiz[1].tbl.ask };
+});
+check('a table story draws its table, then the question', tCard.rows === 2 && tCard.ask === tCard.want, JSON.stringify(tCard));
+const xv = await page.evaluate(() => state.quiz[0].extraVals[0]);
+const xb = await (await page.$$('.qcard'))[0].$('input');
+await xb.fill(String(xv)); await xb.press('Enter');
+await page.waitForTimeout(150);
+const xh = await page.evaluate(() => ({ pill: document.querySelector('.qcard .fixpill').textContent, extra: state.quiz[0].extra, err: errEntry(state.quiz[0]) }));
+check('practice: using the number nobody needs is named, without the answer', xh.pill.includes(`That uses ${xh.extra}`) && /another go/.test(xh.pill), xh.pill);
+check('…and logged as such, with its twist', xh.err.extra === true && xh.err.xf === 'extra', JSON.stringify(xh.err));
+const wx = await page.evaluate(() => {
+  state.quiz = [state.quiz[0]];
+  submit(false);
+  const f = Stats.getSkill('wordx') || {};
+  return { right: f.right || 0, wrong: f.wrong || 0 };
+});
+check('stories with a twist are tracked on their own', wx.right === 0 && wx.wrong === 1, JSON.stringify(wx));
+const twLine = await page.evaluate(() => {
+  Stats.recordSkill('wordx', true, 9000);
+  state.showStats = true; render();
+  const t = [...document.querySelectorAll('.stats-line')].map(e => e.textContent).find(x => /With a twist/.test(x)) || '';
+  state.showStats = false; render();
+  return t;
+});
+check('the parent panel shows how stories with a twist go', /With a twist .*: 50% of 2/.test(twLine), twLine);
+const wPat = await page.evaluate(() => {
+  Stats.recordError({ d: Date.now() + 5, k: 'word.wjoin', g: '50', ans: '30', extra: true });
+  Stats.recordError({ d: Date.now() + 6, k: 'word.wjoin', g: '51', ans: '31', extra: true });
+  return Stats.errorPatterns().filter(p => p.key === 'word.wjoin').map(p => p.kind + ': ' + p.label)[0] || '';
+});
+check('using numbers the question does not need becomes a named pattern for the parent', /^misconception: .*numbers the question does not need/.test(wPat), wPat);
+
+console.log('24. subtraction: trading across a 0 in words, the across-0 bug named, answers checked backwards');
+const sb = await page.evaluate(() => {
+  const strip = h => h.replace(/<br>/g, '\n').replace(/<[^>]+>/g, '');
+  const steps = {};
+  for (const [a, b] of [[503, 278], [742, 318], [900, 456], [654, 321]]) steps[`${a}-${b}`] = strip(buildSubWork(a, b));
+  const q = { type: 'sub', a: 503, b: 278, ans: 225 };
+  const d = {};
+  for (const g of ['335', '325', '235', '375']) d[g] = diagnose(q, g);
+  localStorage.clear(); Stats.reset();
+  for (const g of ['335', '325']) Stats.recordError({ ...errEntry({ ...q, bucket: 'sub:2', given: g }), d: Date.now() + Number(g) });
+  return { steps, d, add: diagnose({ type: 'add', a: 368, b: 275, ans: 643 }, '533'),
+           zero: errEntry({ ...q, given: '335' }).zero, plain: errEntry({ type: 'sub', a: 742, b: 318, ans: 424, given: '434', bucket: 'sub:1' }),
+           pat: Stats.errorPatterns().filter(p => p.key === 'sub:2').map(p => p.kind + ': ' + p.label)[0] || '' };
+});
+check('503 − 278 is worked in words: no tens to trade from, so a hundred first; the 0 becomes 9, never "-1"',
+  /There are 0 tens, so trade 1 hundred for 10 tens first, then 1 ten for 10 ones → 13 − 8 = 5/.test(sb.steps['503-278']) &&
+  /9 − 7 = 2/.test(sb.steps['503-278']) && /Hundreds: after the trade, 4\. 4 − 2 = 2/.test(sb.steps['503-278']) &&
+  !Object.values(sb.steps).some(t => /-1|−1\b/.test(t)), sb.steps['503-278'].split('\n').slice(-4).join(' | '));
+check('a plain trade says regroup; no trade, no trade words', /Regroup: trade 1 ten for 10 ones → 12 − 8 = 4/.test(sb.steps['742-318']) &&
+  /0 can't take 6/.test(sb.steps['900-456']) && !/trade/i.test(sb.steps['654-321']));
+check('the across-0 answers (off by 10, 100 or 110) are named as the 0 with nothing to trade', ['335', '325', '235'].every(g => /nothing to trade/.test(sb.d[g].why)));
+check('every subtraction tip starts with the backwards check from the child\'s own answer, and so does addition',
+  /^Check it backwards: 335 \+ 278 = 613, not 503\./.test(sb.d['335'].tip) && /bigger-minus-smaller/.test(sb.d['375'].why) &&
+  /^Check it backwards: 533 − 275 = 258, not 368\./.test(sb.add.tip) && /ones and tens columns went over 10/.test(sb.add.why), sb.d['335'].tip);
+check('the across-0 slip is logged; an ordinary tens slip is not', sb.zero === true && sb.plain.zero === false && sb.plain.ten === true);
+check('two of them become a named pattern for the parent', /^misconception: Subtraction across a 0/.test(sb.pat), sb.pat);
+
+console.log('25. the warm-up keeps every strand alive: a division fact and the weakest story already met');
+await page.evaluate(() => { localStorage.clear(); });
+await page.goto(base);
+await page.waitForSelector('.ready-start, .qcard');
+const wu = await page.evaluate(() => {
+  localStorage.clear(); Stats.reset();
+  for (let r = 0; r < 8; r++) for (let a = 2; a <= 12; a++) for (let b = a; b <= 12; b++) Stats.recordMul(a, b, true, 2000);
+  Stats.checkUnlocks();
+  for (let r = 0; r < 4; r++) for (let b = 2; b <= 12; b++) for (let c = b; c <= 12; c++) Stats.recordDiv(b, c, true, 3000);
+  const none = focusQuiz(true).filter(q => q.type === 'word' || q.type === 'geo').length;   // no story met yet
+  for (const k of ['wjoin', 'wcompare', 'wgroups']) for (let i = 0; i < 6; i++) Stats.recordSkill('word.' + k, true, 9000);
+  for (let i = 0; i < 3; i++) Stats.recordSkill('word.wshare', false, 9000);
+  const runs = Array.from({ length: 40 }, () => focusQuiz(true));
+  return {
+    none, lens: [...new Set(runs.map(r => r.length))].sort().join(','),
+    div: runs.every(r => r.filter(q => q.type === 'div').length === 1),
+    share: runs.every(r => r.filter(q => q.type === 'word').length === 1 && r.some(q => q.type === 'word' && q.wkind === 'wshare')),
+    geo: runs.some(r => r.some(q => q.type === 'geo')),
+    frac: runs.every(r => r.some(q => isFracQ(q))),
+    addsub: runs.every(r => r.filter(q => q.type === 'add' || q.type === 'sub').length === 1),
+    facts: runs.every(r => r.some(q => q.type === 'mul')),
+  };
+});
+check('stories and shapes not met yet stay out of the warm-up (the quiz introduces them)', wu.none === 0, 'stories=' + wu.none);
+check('the warm-up is still 5-6 questions, with at least one times-table fact and one add/subtract', /^[56](,[56])?$/.test(wu.lens) && wu.facts && wu.addsub, wu.lens);
+check('…plus one division fact, the most missed story type, and a fraction while fractions are being learned', wu.div && wu.share && !wu.geo && wu.frac, JSON.stringify(wu));
+
+console.log('26. the 1-minute fact sprint: known facts only, misses fixed on the spot, meet or beat your usual');
+await page.evaluate(() => { localStorage.clear(); });
+await page.goto(base);
+await page.waitForSelector('.ready-start, .qcard');
+const sp0 = await page.evaluate(() => {
+  localStorage.clear(); Stats.reset();
+  for (let r = 0; r < 8; r++) for (let b = 2; b <= 12; b++) Stats.recordMul(2, b, true, 2000);
+  Stats.markDaily('warmup');
+  state.phase = 'ready'; render();
+  return { ready: Stats.sprintReady(), chip: [...document.querySelectorAll('.day-chip')].some(c => /Sprint/.test(c.textContent)), label: nextStepLabel() };
+});
+check('no sprint before 20 facts are solid: the warm-up leads straight to the quiz', !sp0.ready && !sp0.chip && /Today's quiz/.test(sp0.label), JSON.stringify(sp0));
+const sp1 = await page.evaluate(() => {
+  for (let r = 0; r < 8; r++) for (let a = 3; a <= 5; a++) for (let b = a; b <= 12; b++) Stats.recordMul(a, b, true, a === 5 ? 6000 : 2000);
+  const pool = Stats.sprintPool(), solid = Stats.mulFluentCount();
+  render();
+  return { ready: Stats.sprintReady(), n: pool.length, solid, ops: [...new Set(pool.map(p => p.op))].join(''),
+           slow: pool.filter(p => p.w === 3).map(p => p.a + 'x' + p.b).join(','),
+           chips: [...document.querySelectorAll('.day-chip')].map(c => c.textContent).join(' → '),
+           active: (document.querySelector('.day-chip.active') || {}).textContent, start: document.querySelector('.ready-start').textContent };
+});
+check('from 20 solid facts the day gains a sprint after the warm-up', sp1.ready && sp1.chips === '✓ 🎯 Warm-up → ⚡ Sprint → 📝 Quiz' && sp1.active === '⚡ Sprint' && /1-minute sprint/.test(sp1.start), JSON.stringify(sp1));
+check('it draws on solid facts only, the slow ones three times as often', sp1.n === sp1.solid && sp1.ops === '×' && /^5x5(,5x\d+)+$/.test(sp1.slow), JSON.stringify(sp1));
+await page.click('.ready-start');
+await page.waitForSelector('.sprint-go');
+const sIntro = await page.evaluate(() => ({ phase: state.phase, goal: document.querySelector('.sprint-goal').textContent, chart: !!document.querySelector('.sprint-chart'), timer: !!sprint.timer }));
+check('the sprint opens on an intro with the clock stopped; the first one sets the goal', sIntro.phase === 'sprint' && !sIntro.timer && /first sprint sets your goal/.test(sIntro.goal) && !sIntro.chart, JSON.stringify(sIntro));
+await page.click('.sprint-go');
+await page.waitForTimeout(100);
+// Two facts make the order known: they take turns.
+await page.evaluate(() => { sprint.pool = [{ op: '×', a: 3, b: 7, w: 1 }, { op: '×', a: 4, b: 8, w: 1 }]; sprint.card = sprintCard(null); sprintPaint(document); });
+const spBefore = await page.evaluate(() => { const r = Stats.exportRaw(); return { f37: { ...r.facts['3x7'] }, f48: { ...r.facts['4x8'] } }; });
+const seq = [];
+for (let i = 0; i < 3; i++) {
+  const c = await page.evaluate(() => ({ ...sprint.card }));
+  seq.push(`${c.fa}x${c.fb}`);
+  await page.type('.sprint-box', String(c.ans));
+}
+const run1 = await page.evaluate(() => ({ right: sprint.right, score: document.querySelector('.sprint-score').textContent, box: document.querySelector('.sprint-box').value,
+                                          focused: document.activeElement === document.querySelector('.sprint-box') }));
+check('typing the answer moves straight on to the next fact, in the same box, never the same fact twice running',
+  run1.right === 3 && run1.score === '✓ 3' && run1.box === '' && run1.focused && seq[0] !== seq[1] && seq[2] === seq[0], JSON.stringify(run1) + ' ' + seq.join(','));
+const mc = await page.evaluate(() => ({ ...sprint.card }));
+const wrongAns = String(mc.ans + 1);
+await page.type('.sprint-box', wrongAns);
+const miss = await page.evaluate(() => ({ wrong: sprint.wrong, note: document.querySelector('.sprint-note').textContent, on: document.querySelector('.sprint-note').classList.contains('on'),
+                                          err: Stats.getErrlog().slice(-1)[0] || {}, same: sprint.card.fa + 'x' + sprint.card.fb }));
+check('a wrong answer shows the fact with its answer to type before moving on, and is logged as a sprint miss',
+  miss.wrong === 1 && miss.on && miss.note.includes(`= ${mc.ans} — type ${mc.ans}`) && miss.same === `${mc.fa}x${mc.fb}` &&
+  miss.err.sp === 1 && miss.err.g === wrongAns && miss.err.ans === String(mc.ans), JSON.stringify(miss));
+await page.type('.sprint-box', String(mc.ans));
+const spAfter = await page.evaluate(() => ({ right: sprint.right, miss: sprint.miss, note: document.querySelector('.sprint-note').textContent }));
+check('…copying it moves on without a point', spAfter.right === 3 && !spAfter.miss && spAfter.note === '', JSON.stringify(spAfter));
+const ec = await page.evaluate(() => ({ ...sprint.card }));
+await page.type('.sprint-box', '9');
+await page.press('.sprint-box', 'Enter');
+const ent = await page.evaluate(() => ({ wrong: sprint.wrong, miss: sprint.miss, right: sprint.right }));
+check('Enter on a short wrong answer counts as a miss too', ent.wrong === 2 && ent.miss && ent.right === 3, JSON.stringify(ent));
+await page.type('.sprint-box', String(ec.ans));
+await page.evaluate(() => { sprint.endsAt = Date.now() - 1; sprintTick(); });
+await page.waitForTimeout(150);
+const spDone = await page.evaluate(() => {
+  const r = Stats.exportRaw();
+  return { stage: sprint.stage, right: sprint.right, title: document.querySelector('.ready-title').textContent, goal: document.querySelector('.sprint-goal').textContent,
+           bars: document.querySelectorAll('.sprint-chart .spr-bar').length, now: document.querySelectorAll('.sprint-chart .spr-bar.now').length,
+           misses: (document.querySelector('.sprint-miss') || {}).textContent || '', sprints: r.sprints, daily: Stats.getDaily(),
+           f37: r.facts['3x7'], f48: r.facts['4x8'], next: [...document.querySelectorAll('.sprint-actions button')].map(b => b.textContent) };
+});
+check('when the minute is up: the score, the goal it sets, a chart, and the misses to practise',
+  spDone.stage === 'done' && spDone.title === '3 right in one minute!' && /goal to meet or beat/.test(spDone.goal) && spDone.bars === 1 && spDone.now === 1 &&
+  /^To practise: \d+ × \d+ = \d+ · \d+ × \d+ = \d+$/.test(spDone.misses), JSON.stringify({ ...spDone, sprints: undefined, f37: undefined, f48: undefined }));
+const dd = k => ({ right: spDone[k].right - (spBefore[k].right || 0), wrong: spDone[k].wrong - (spBefore[k].wrong || 0) });
+check('each fact feeds its memory once per sprint, a miss always: the repeat right answer adds to the score, not to the fact',
+  ['f37', 'f48'].every(k => dd(k).right === 1 && dd(k).wrong === 1), JSON.stringify({ f37: dd('f37'), f48: dd('f48') }));
+check('the sprint is saved with its misses, and today\'s sprint is done',
+  spDone.sprints.length === 1 && spDone.sprints[0].n === 3 && spDone.sprints[0].w === 2 && spDone.daily.sprint === true, JSON.stringify(spDone.sprints));
+check('it offers another go, or on to today\'s quiz', spDone.next.join('|') === "⚡ Again|▶ Today's quiz", spDone.next.join('|'));
+const sync = await page.evaluate(() => {
+  const t = Date.now() + 60000;
+  const remote = { sprints: [{ d: t, n: 12, w: 1 }, { d: t + 1, n: 20, w: 0 }, { d: t + 2, n: 15, w: 2 }] };
+  Stats.importMerge(remote); Stats.importMerge(remote);
+  return { n: Stats.getSprints().length, goal: Stats.sprintGoal(), sum: sprintSummary() };
+});
+check('sprints from another device merge in once; the usual is the middle of the last three', sync.n === 4 && sync.goal === 15 && sync.sum.best === 20 && sync.sum.last === 15, JSON.stringify(sync));
+await page.click('.sprint-actions button:has-text("Again")');
+await page.waitForSelector('.sprint-go');
+const intro2 = await page.evaluate(() => ({ goal: document.querySelector('.sprint-goal').textContent, bars: document.querySelectorAll('.sprint-chart .spr-bar').length, line: !!document.querySelector('.sprint-chart .spr-goal') }));
+check('another go starts from the usual to meet or beat, drawn on the chart', /Your usual: 15\. Can you meet or beat it\?/.test(intro2.goal) && intro2.bars === 4 && intro2.line, JSON.stringify(intro2));
+await page.click('.sprint-go');
+await page.waitForTimeout(100);
+await page.evaluate(() => { sprint.endsAt = Date.now() - 1; sprintTick(); });
+await page.waitForTimeout(100);
+const idle = await page.evaluate(() => ({ title: document.querySelector('.ready-title').textContent, n: Stats.getSprints().length }));
+check('a minute with no answers is not saved as a score', idle.title === 'No answers this time' && idle.n === 4, JSON.stringify(idle));
+await page.click(`.sprint-actions button:has-text("Today's quiz")`);
+await page.waitForTimeout(300);
+const q2 = await page.evaluate(() => ({ phase: state.phase, step: state.dailyStep, len: state.quiz.length, imm: state.immediate,
+                                        chips: [...document.querySelectorAll('.day-chip')].map(c => c.textContent).join(' → ') }));
+check('then on to today\'s quiz, with the sprint ticked off', q2.phase === 'quiz' && q2.step === 'quiz' && q2.len === 10 && !q2.imm && q2.chips === '✓ 🎯 Warm-up → ✓ ⚡ Sprint → 📝 Quiz', JSON.stringify(q2));
+const spLine = await page.evaluate(() => {
+  state.showStats = true; render();
+  const t = [...document.querySelectorAll('.stats-line')].map(e => e.textContent).find(x => /1-minute sprint/.test(x)) || '';
+  state.showStats = false; render();
+  const mk = Stats.getDaily();
+  Stats.importMerge({ daily: { day: mk.day, warmup: true, quiz: true, sprint: false } });
+  return { t, kept: Stats.getDaily().sprint };
+});
+check('the parent panel shows the sprints; a device that has not sprinted today cannot untick it',
+  /⚡ 1-minute sprint: 4 done · last 15 right · usual 15 · best 20/.test(spLine.t) && spLine.kept === true, JSON.stringify(spLine));
 
 console.log('13. a release is announced when the app is resumed, not only on reload');
 await page.goto(base);
