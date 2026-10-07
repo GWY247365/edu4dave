@@ -128,5 +128,20 @@ check('a sum past one whole is rejected', r.status === 400);
 r = await call(teach, { problem: { type: 'fline', k: 9, d: 4, max: 2 } });
 check('a dot off the line is rejected', r.status === 400);
 
+console.log('11) placing a fraction on the number line is accepted by Teach me this');
+kv.clear();
+r = await call(teach, { problem: { type: 'fpos', n: 3, d: 4, max: 1, placed: 0.5 } });
+check('placing gets a lesson', r.status === 200 && r.out.lesson === 'a lesson');
+check('prompt carries the jumps, where the child put it, and the big-bottom warning',
+  /3\/4 is 3 of those jumps from 0/.test(lastModelPrompt) && /put it at about 0\.5/.test(lastModelPrompt) && /bigger bottom number/.test(lastModelPrompt));
+r = await call(teach, { problem: { type: 'fpos', n: 5, d: 4, max: 2 } });
+check('a fraction past one whole, not yet placed, gets a lesson', r.status === 200 && /more than one whole/.test(lastModelPrompt));
+r = await call(teach, { problem: { type: 'fpos', n: 9, d: 4, max: 2 } });
+check('a fraction off the line is rejected', r.status === 400);
+r = await call(teach, { problem: { type: 'fpos', n: 3, d: 4, max: 1, placed: 7 } });
+check('a mark off the line is rejected', r.status === 400);
+r = await call(teach, { problem: { type: 'fpos', n: 1.5, d: 4, max: 1 } });
+check('a non-whole top number is rejected', r.status === 400);
+
 console.log(fails ? `\n${fails} FAILURE(S)` : '\nall rate-limit tests passed');
 process.exit(fails ? 1 : 0);

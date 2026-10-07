@@ -75,6 +75,16 @@ async function fillAll(value) {
     if (b) await b.click();
   }
 }
+// Tap a number-line card at value v (0..max) through real pointer events,
+// using the line's own geometry: 600 wide, 0 at x=30, max at x=570, axis y=64 of 112.
+async function placeAt(card, v, max) {
+  const svg = await card.$('.fpos-fig svg');
+  // centred, so the fixed action bar at the bottom cannot be under the tap
+  await svg.evaluate(e => e.scrollIntoView({ block: 'center' }));
+  const b = await svg.boundingBox();
+  await page.mouse.click(b.x + b.width * (30 + 540 * v / max) / 600, b.y + b.height * 64 / 112);
+  await page.waitForTimeout(80);
+}
 
 console.log('1. plain mixed quiz grades (via ready screen)');
 await page.goto(base);
@@ -786,7 +796,9 @@ const fr = await page.evaluate(() => {
   for (let i = 0; i < 6; i++) Stats.recordSkill('frac.fnam', true, 9000);
   const at1 = Stats.checkUnlocks();
   for (let i = 0; i < 6; i++) Stats.recordSkill('frac.feq', true, 9000);
-  const at2 = Stats.checkUnlocks();
+  const at2 = Stats.checkUnlocks();                 // two basics, but not the number line
+  for (let i = 0; i < 6; i++) Stats.recordSkill('frac.fpos', true, 9000);
+  const at3 = Stats.checkUnlocks();
   const after = types();
   const bad = [];
   const g = (q, n, d) => ({ ...q, givenNum: String(n), givenDen: String(d) });
@@ -801,10 +813,11 @@ const fr = await page.evaluate(() => {
     if (numberLineEl(l.d, l.max, l.k).querySelectorAll('.nl-tick,.nl-major').length !== l.d * l.max + 1) bad.push('tick count');
     if (!answerCorrect(g(l, l.k, l.d)) || answerCorrect(g(l, l.k, l.d + 1)) || fracOpMiss(g(l, l.k, l.d + 1)) !== 'ticks') bad.push(`ticks not caught: ${l.k}/${l.d}`);
   }
-  return { before, at1, at2, after, bad: bad.slice(0, 3), badCount: bad.length,
+  return { before, at1, at2, at3, after, bad: bad.slice(0, 3), badCount: bad.length,
            practice: fractionQuiz().filter(q => q.type === 'fadd' || q.type === 'fline').length };
 });
-check('adding and the number line open once 2 of the 3 basics are solid', fr.before === 'fcmp,feq,fnam' && !fr.at1 && fr.at2 === 'fracops' && fr.after === 'fadd,fcmp,feq,fline,fnam', JSON.stringify(fr));
+check('adding and reading the line open once the number line and one more basic are solid (two other basics are not enough)',
+  fr.before === 'fcmp,feq,fnam,fpos' && !fr.at1 && !fr.at2 && fr.at3 === 'fracops' && fr.after === 'fadd,fcmp,feq,fline,fnam,fpos', JSON.stringify(fr));
 check('1500 of each: sums in range, equivalent answers accepted, added bottoms and counted ticks caught', fr.badCount === 0, fr.bad.join('; '));
 check('fraction practice covers both new kinds', fr.practice >= 2, `${fr.practice}`);
 
@@ -826,6 +839,7 @@ for (let i = 0; i < nFr; i++) {
     const v = frIn[i] || [String(q.ansNum), String(q.ansDen)];
     await a.fill(v[0]); await b.fill(v[1]);
   } else if (q.type === 'fcmp') await (await card.$(`.fcmp-btn:text-is("${q.ans}")`)).click();
+  else if (q.type === 'fpos') await placeAt(card, q.n / q.d, q.max);
   else await (await card.$('input')).fill(String(q.ans));
 }
 await page.click('button:has-text("Check answers")');
@@ -847,6 +861,151 @@ await page.evaluate(() => { state.showLesson = 'fracops'; render(); });
 await page.waitForTimeout(200);
 check('the lesson shows the bars and two number lines', await page.evaluate(() => document.querySelectorAll('.modal .nl-fig svg').length === 2 && document.querySelectorAll('.modal .frac-vis').length === 2));
 await page.evaluate(() => { state.showLesson = null; localStorage.clear(); });
+
+console.log('21. placing fractions on the number line: kinds, grading, misconceptions, real taps, practice fix, lesson');
+const np = await page.evaluate(() => {
+  localStorage.clear(); Stats.reset(); Stats.importMerge({ unlocked: { fractions: true } });
+  const bad = [];
+  const early = new Set(Array.from({ length: 300 }, () => genFracPos().fk));
+  for (let i = 0; i < 4; i++) Stats.recordSkill('frac.fpos', true, 3000);
+  Stats.recordSkill('frac.fpos', false, 3000);       // 4 right, not yet solid: cuts still offered
+  const later = new Set();
+  let cuts = 0;
+  for (let i = 0; i < 1500; i++) {
+    const q = genFracPos(), v = q.n / q.d, at = g => answerCorrect({ ...q, given: String(g) });
+    later.add(q.fk); if (q.ticks) cuts++;
+    if (!(v > 0 && v <= q.max) || q.ansNum !== q.n || q.ansDen !== q.d || answerText(q) !== `${q.n}/${q.d}`) bad.push(`range ${q.n}/${q.d} on 0-${q.max}`);
+    if ({ unit: !(q.n === 1 && q.max === 1), below: !(q.n >= 2 && v < 1 && q.max === 1), one: !(v === 1 && q.max === 2),
+          past: !(v > 1 && v < 2 && q.max === 2), below2: !(v < 1 && q.max === 2) }[q.fk]) bad.push(`${q.fk} ${q.n}/${q.d} on 0-${q.max}`);
+    if (q.max === 2 && !q.ticks && q.d > 4) bad.push(`pieces too fine without cuts: ${q.n}/${q.d}`);
+    if (!!q.scaffold !== q.ticks) bad.push('scaffold flag');
+    if (!at(v)) bad.push(`exact point refused ${q.n}/${q.d}`);
+    if (q.ticks && (at(v + 1 / q.d) || at(v - 1 / q.d))) bad.push(`next cut accepted ${q.n}/${q.d}`);
+    if (!q.ticks) {
+      const tol = fposTol(q);
+      if (!at(v + 0.9 * tol) || !at(v - 0.9 * tol)) bad.push(`near miss refused ${q.n}/${q.d}`);
+      if (at(v + 1.5 * tol) || at(v - 1.5 * tol)) bad.push(`far miss accepted ${q.n}/${q.d}`);
+      if (tol * q.d >= 0.5) bad.push(`tolerance reaches the next fraction ${q.n}/${q.d}`);
+    }
+    if (diagnose(q, '').why !== 'You did not put a mark on the line.') bad.push('blank diagnosis');
+  }
+  const mk = (n, d, max, ticks, g) => ({ type: 'fpos', n, d, max, ticks, given: String(g), ansNum: n, ansDen: d });
+  const miss = [mk(1, 8, 1, true, 7 / 8), mk(3, 4, 1, true, 2 / 4), mk(1, 2, 2, false, 1), mk(3, 4, 1, true, 1 / 4), mk(5, 4, 2, false, 0.6),
+                mk(3, 8, 1, false, 0.8), mk(2, 3, 1, false, 0.75), mk(2, 3, 2, false, 2), mk(3, 4, 1, true, '')].map(fposMiss).join(',');
+  return { bad: bad.slice(0, 3), badCount: bad.length, early: [...early].sort().join(','), later: [...later].sort().join(','), cuts, miss,
+           gap: fposGap(mk(3, 4, 1, true, 0.5)), why: fposWhy(mk(1, 8, 1, true, 7 / 8), 'bigden') };
+});
+check('kinds: unit fractions and a/b below 1 first; 1, past 1 and the 0-2 line once a few are right',
+  np.early === 'below,unit' && np.later === 'below,below2,one,past,unit', `${np.early} → ${np.later}`);
+check('1500 problems: on the line, right kind, cuts as a scaffold on about half, fine pieces only with cuts',
+  np.badCount === 0 && np.cuts > 500 && np.cuts < 1000, np.bad.join('; ') || `cuts ${np.cuts}`);
+check('grading: the right cut only; without cuts within about 6% of the line, never as far as the next fraction', np.badCount === 0);
+check('misconception classes: big bottom, 0 counted as a jump, whole line as one, from the right, wrong side of 1, of a half, close, the top as a whole number, blank',
+  np.miss === 'bigden,countzero,wholeline,fromright,side1,half,close,numwhole,blank', np.miss);
+check('the miss is told in jumps, and the big-bottom error is explained', np.gap === '1 jump of 1/4 too far left' && /More pieces means smaller pieces/.test(np.why), `${np.gap} / ${np.why}`);
+
+// the child taps through a graded practice set: 3/4 one jump short, 1/3 and 5/4 estimated well
+await page.evaluate(() => {
+  localStorage.clear(); Stats.reset(); Stats.importMerge({ unlocked: { fractions: true }, seen: { fractionsLesson: true, fracLineLesson: true } });
+  startFractionPractice(); state.immediate = false;
+  const pin = (i, o) => { state.quiz[i] = { ...genFracPos(o.fk), ...o, ans: o.n / o.d, ansNum: o.n, ansDen: o.d, scaffold: o.ticks ? { kind: 'ticks' } : null,
+    steps: [`${o.n}/${o.d} is ${o.n} jumps of 1/${o.d} from 0`], id: i, given: '' }; };
+  pin(0, { fk: 'below', n: 3, d: 4, max: 1, ticks: true });
+  pin(1, { fk: 'unit', n: 1, d: 3, max: 1, ticks: false });
+  pin(2, { fk: 'past', n: 5, d: 4, max: 2, ticks: false });
+  render();
+});
+const npAt = { 0: 0.5, 1: 0.36, 2: 1.31 };
+const nNp = await page.evaluate(() => state.quiz.length);
+for (let i = 0; i < nNp; i++) {
+  const q = await page.evaluate(i => state.quiz[i], i);
+  const card = (await page.$$('.qcard'))[i];
+  if (q.type === 'fpos') await placeAt(card, i in npAt ? npAt[i] : q.n / q.d, q.max);
+  else if (q.type === 'fnam') { const [a, b] = await card.$$('input.frac-in'); await a.fill(String(q.ansNum)); await b.fill(String(q.ansDen)); }
+  else if (q.type === 'fcmp') await (await card.$(`.fcmp-btn:text-is("${q.ans}")`)).click();
+  else await (await card.$('input')).fill(String(q.ans));
+}
+await page.click('button:has-text("Check answers")');
+await page.waitForTimeout(400);
+const npRun = await page.evaluate(() => {
+  const raw = Stats.exportRaw(), sk = raw.skills['frac.fpos'] || {}, card = document.querySelector('.qcard');
+  state.showStats = true; render();
+  document.querySelectorAll('details.stats-group').forEach(d => d.open = true);
+  const panel = document.querySelector('.modal').textContent;
+  state.showStats = false; render();
+  return {
+    wrong: state.quiz.map((q, i) => answerCorrect(q) ? null : i).filter(x => x !== null).join(','),
+    nPos: state.quiz.filter(q => q.type === 'fpos').length, unaided: state.quiz.filter(q => q.type === 'fpos' && !q.ticks).length,
+    right: sk.right || 0, wrongN: sk.wrong || 0, pe: sk.pe || [],
+    err: raw.errlog.slice(-1)[0] || {}, row: raw.hist.slice(-1)[0].q[0] || [],
+    card: card.textContent, jumps: card.querySelectorAll('.fpos-jump').length, ans: card.querySelectorAll('.fpos-ans').length,
+    teach: JSON.stringify(teachPayload(state.quiz[0])), aim: (panel.match(/🎯 Number-line aim.*?lower is better/) || [''])[0],
+  };
+});
+check('placements grade through real taps: only the one-jump-short mark is wrong', npRun.wrong === '0', `wrong=${npRun.wrong}`);
+check('every placement is recorded on the number-line skill', npRun.right === npRun.nPos - 1 && npRun.wrongN === 1, `${npRun.right}+${npRun.wrongN} of ${npRun.nPos}`);
+check('the miss size is kept for unaided placements only, all inside the tolerance here',
+  npRun.pe.length === npRun.unaided && npRun.pe.every(x => x < 6), JSON.stringify({ pe: npRun.pe, unaided: npRun.unaided }));
+check('the miss is logged as counting the 0 mark, with the mark it snapped to', npRun.err.k === 'fpos' && npRun.err.zero === true && npRun.err.g === '2/4' && npRun.err.ans === '3/4', JSON.stringify(npRun.err));
+check('the card shows the answer with its three jumps, says how far off, and why', npRun.ans === 1 && npRun.jumps === 3 &&
+  /Your mark: 1 jump of 1\/4 too far left/.test(npRun.card) && /One jump short/.test(npRun.card) && /1\/4 \+ 1\/4 \+ 1\/4 = 3\/4/.test(npRun.card));
+check('the daily log row says what was asked and where it went', npRun.row.slice(0, 4).join('|') === 'number line 0–1: put 3/4|2/4|3/4|0', JSON.stringify(npRun.row));
+check('"Teach me this" sends the fraction and the mark', npRun.teach === '{"type":"fpos","n":3,"d":4,"max":1,"placed":0.5}', npRun.teach);
+check('the parent panel shows the number-line aim', /off by [\d.]+% of the line on average over the last \d/.test(npRun.aim), npRun.aim);
+
+// practice mode: a miss is fixed by counting jumps on the cut line, then copying
+await page.evaluate(() => {
+  startFractionPractice();
+  state.quiz[0] = { ...genFracPos('below'), n: 3, d: 4, max: 1, ticks: false, scaffold: null, ans: 0.75, ansNum: 3, ansDen: 4, id: 0, given: '' };
+  render();
+});
+const c0 = async () => (await page.$$('.qcard'))[0];
+await placeAt(await c0(), 0.1, 1);
+await (await (await c0()).$('.fpos-check')).click();
+await page.waitForTimeout(150);
+const fx1 = await page.evaluate(() => { const c = document.querySelector('.qcard');
+  return { cls: c.className, pill: (c.querySelector('.fixpill') || {}).textContent || '', cuts: c.querySelectorAll('.nl-tick').length, ans: c.querySelectorAll('.fpos-ans').length }; });
+check('practice: a miss names the reason and asks to count jumps, on a line that now shows the cuts',
+  /imm-fixing/.test(fx1.cls) && /more than half/.test(fx1.pill) && /Count 3 jumps of 1\/4 from 0/.test(fx1.pill) && fx1.cuts === 3 && fx1.ans === 0, JSON.stringify(fx1));
+await placeAt(await c0(), 0.5, 1);
+const fx2 = await page.evaluate(() => { const c = document.querySelector('.qcard'); return { ans: c.querySelectorAll('.fpos-ans').length, pill: c.querySelector('.fixpill').textContent }; });
+check('a second miss shows the answer and its jumps to copy', fx2.ans === 1 && /The green dot is 3\/4/.test(fx2.pill), JSON.stringify(fx2));
+await placeAt(await c0(), 0.75, 1);
+const fx3 = await page.evaluate(() => ({ cls: document.querySelector('.qcard').className, given: state.quiz[0].given, right: answerCorrect(state.quiz[0]),
+  note: (document.querySelector('.qcard .fpos-note') || {}).textContent || '' }));
+check('placing it right locks the card; the first try is still what gets graded', /imm-fixed/.test(fx3.cls) && fx3.given === '0.1' && !fx3.right && /Fixed: 3\/4 = 3 jumps of 1\/4/.test(fx3.note), JSON.stringify(fx3));
+await page.evaluate(() => {
+  state.quiz[1] = { ...genFracPos('below'), n: 2, d: 3, max: 1, ticks: true, scaffold: { kind: 'ticks' }, ans: 2 / 3, ansNum: 2, ansDen: 3, id: 1, given: '' };
+  render(); document.querySelectorAll('.qcard')[1].querySelector('.fpos-fig svg').focus();
+});
+// first press puts the marker at 0, then one cut per press: 0, 1/3, 2/3, 1, back to 2/3
+for (const key of ['ArrowRight', 'ArrowRight', 'ArrowRight', 'ArrowRight', 'ArrowLeft']) await page.keyboard.press(key);
+check('arrow keys move the marker one cut at a time', await page.evaluate(() => Math.abs(Number(state.quiz[1].given) - 2 / 3) < 1e-9), await page.evaluate(() => state.quiz[1].given));
+const npPat = await page.evaluate(() => {
+  Stats.recordError({ d: Date.now() + 5, k: 'fpos', x: [1, 6, 1], g: '5/6', ans: '1/6', bigden: true });
+  Stats.recordError({ d: Date.now() + 6, k: 'fpos', x: [1, 8, 1], g: '0.85', ans: '1/8', bigden: true });
+  return Stats.errorPatterns().filter(p => p.key === 'fpos').map(p => p.kind + ': ' + p.label)[0] || '';
+});
+check('putting 1/8-type fractions far along becomes a named misconception for the parent', /^misconception: .*bigger bottom/.test(npPat), npPat);
+
+// a child who had fractions before this release sees the new lesson once, on open
+await page.evaluate(() => {
+  localStorage.clear(); Stats.reset();
+  Stats.importMerge({ unlocked: { fractions: true }, seen: { fractionsLesson: true } });
+  localStorage.removeItem('mathquiz.session.v1');
+});
+await page.reload();
+await page.waitForSelector('.modal');
+const intro = await page.evaluate(() => ({ title: document.querySelector('.modal h2').textContent, lines: document.querySelectorAll('.modal .nl-fig svg').length,
+  text: document.querySelector('.modal').textContent }));
+check('existing fraction learners get the number-line lesson on open: jumps, past 1, more pieces = smaller, same place = same number',
+  /New in fractions: the number line/.test(intro.title) && intro.lines === 5 && /1\/4 \+ 1\/4 \+ 1\/4/.test(intro.text) && /1\/8 < 1\/3/.test(intro.text) && /1\/2 = 2\/4/.test(intro.text),
+  JSON.stringify({ title: intro.title, lines: intro.lines }));
+await page.click('.modal button:has-text("Later")');
+await page.reload();
+await page.waitForSelector('.ready-start, .qcard');
+check('…and only once', !(await page.$('.modal')) && await page.evaluate(() => Stats.hasSeen('fracLineLesson')));
+await page.evaluate(() => { localStorage.clear(); });
 
 console.log('13. a release is announced when the app is resumed, not only on reload');
 await page.goto(base);

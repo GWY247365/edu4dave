@@ -370,6 +370,27 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .nl-lbl{font:700 14px 'Inter',system-ui,sans-serif;fill:var(--ink)}
 .nl-dot{fill:var(--brand);stroke:#fff;stroke-width:2}
 .nl-q{font:800 15px 'Inter',system-ui,sans-serif;fill:var(--brand-deep)}
+.fpos-prompt{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.fpos-fig svg{display:block;width:100%;max-width:600px;height:auto;touch-action:none;cursor:pointer;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;border-radius:10px}
+.fpos-fig svg:focus-visible{outline:3px solid var(--brand-soft-2)}
+.fpos-fig svg.locked{cursor:default;touch-action:auto}
+.fpos-fig .nl-lbl{font-size:22px}
+.fpos-fig .nl-axis,.fpos-fig .nl-major{stroke-width:3}
+.fpos-fig .nl-tick{stroke-width:2.5}
+.fpos-hit{fill:transparent}
+.fpos-stem{stroke:var(--brand);stroke-width:4}
+.fpos-head{fill:var(--brand);stroke:#fff;stroke-width:2}
+.fpos-pin.ok .fpos-stem{stroke:var(--ok)}
+.fpos-pin.ok .fpos-head{fill:var(--ok)}
+.fpos-pin.bad .fpos-stem{stroke:var(--bad)}
+.fpos-pin.bad .fpos-head{fill:var(--bad)}
+.fpos-pin.ghost{opacity:.4}
+.fpos-ans{fill:var(--ok);stroke:#fff;stroke-width:2}
+.fpos-ans-lbl{font:800 24px 'Inter',system-ui,sans-serif;fill:var(--ok-deep)}
+.fpos-jump{fill:none;stroke:var(--ok);stroke-width:2.5;stroke-dasharray:5 4}
+.fpos-hint{font-size:12px;color:var(--ink-3);margin-top:2px}
+.fpos-note{font-size:13px;font-weight:600;color:var(--ink-2);margin-top:4px}
+.fpos-check{margin-top:6px;padding:8px 16px;font-size:15px}
 .m2-grid{display:grid;grid-template-columns:repeat(3,64px);gap:4px;margin:6px 0 8px;font-variant-numeric:tabular-nums}
 .m2-head{font-weight:700;color:var(--ink-3);text-align:center;padding:6px 0}
 .m2-cell{background:var(--brand-soft-2);border:1px solid var(--brand);border-radius:6px;text-align:center;padding:10px 0;font-weight:700;color:var(--ink)}
@@ -794,9 +815,18 @@ const Stats = (() => {
   function wordSolidCount() {
     return ['wjoin', 'wcompare', 'wgroups', 'wshare'].filter(k => isMasteredState(skillState('word.' + k))).length;
   }
-  // Basic fraction sub-skills (naming, equivalence, comparing) that are solid.
+  // Basic fraction sub-skills (naming, equivalence, comparing, placing on the
+  // number line) that are solid.
+  const FRAC_BASICS = ['fnam', 'feq', 'fcmp', 'fpos'];
   function fracBasicSolid() {
-    return ['fnam', 'feq', 'fcmp'].filter(k => isMasteredState(skillState('frac.' + k))).length;
+    return FRAC_BASICS.filter(k => isMasteredState(skillState('frac.' + k))).length;
+  }
+  // Level 2 (adding, reading the line) builds on fractions as numbers on a
+  // line, so it waits for the number line plus one more basic.
+  function fracOpsProgress() {
+    const line = isMasteredState(skillState('frac.fpos'));
+    const others = ['fnam', 'feq', 'fcmp'].filter(k => isMasteredState(skillState('frac.' + k))).length;
+    return { line, others, have: (line ? 1 : 0) + Math.min(1, others), need: 2 };
   }
   function bigmulRecentRight() {
     const r = (data.skills.bigmul && data.skills.bigmul.recent) || '';
@@ -824,6 +854,22 @@ const Stats = (() => {
     save(data);
   }
   function skillState(name) { return factState(data.skills[name], Date.now(), skillFast(name)); }
+  // Number-line aim: how far each unaided placement landed from the fraction,
+  // as % of the line. Right/wrong hides progress here — 18% off becoming 6%
+  // off is real learning — so the size of the miss is kept too. Lives on the
+  // skill record, which sync merges as one unit.
+  function recordPlace(pct) {
+    const f = data.skills['frac.fpos'];
+    if (!f || !Number.isFinite(pct)) return;
+    f.pe = (f.pe || []).concat(Math.round(pct * 10) / 10).slice(-30);
+    save(data);
+  }
+  // Average miss of the last 5 unaided placements, and of the 5 before them.
+  function placeTrend() {
+    const pe = (data.skills['frac.fpos'] && data.skills['frac.fpos'].pe) || [];
+    const avg = a => a.length ? Math.round(10 * a.reduce((s, x) => s + x, 0) / a.length) / 10 : null;
+    return { n: pe.length, recent: avg(pe.slice(-5)), before: avg(pe.slice(-10, -5)) };
+  }
   // Mastery state for any question — drives expertise-adaptive scaffolding.
   function itemState(q) {
     const now = Date.now();
@@ -857,9 +903,10 @@ const Stats = (() => {
     if (!data.unlocked.mul2 && data.unlocked.bigmul && bigmulRecentRight() >= MUL2_UNLOCK_AT) {
       data.unlocked.mul2 = true; newly = newly || 'mul2'; save(data);
     }
-    // Fractions level 2 (adding, subtracting, the number line) opens inside
-    // the fractions domain once two of its three basics are solid.
-    if (!data.unlocked.fracops && data.unlocked.fractions && fracBasicSolid() >= 2) {
+    // Fractions level 2 (adding, subtracting, reading the number line) opens
+    // inside the fractions domain once placing fractions on the line and one
+    // more basic are solid.
+    if (!data.unlocked.fracops && data.unlocked.fractions && fracOpsProgress().have >= 2) {
       data.unlocked.fracops = true; newly = newly || 'fracops'; save(data);
     }
     if (!data.unlocked.geo && fluent >= GEO_UNLOCK_AT) {
@@ -906,7 +953,11 @@ const Stats = (() => {
     // After word problems the remaining domains open independently; show whichever is closest.
     const after = [];
     if (!data.unlocked.longdiv) after.push({ name: 'Long division', emoji: '🧩', have: divMasteredCount(), need: LDIV_UNLOCK_AT, unit: 'division facts' });
-    if (!data.unlocked.fracops) after.push({ name: 'Adding fractions & the number line', emoji: '🍕', have: fracBasicSolid(), need: 2, unit: 'basic fraction skills' });
+    if (!data.unlocked.fracops) {
+      const p = fracOpsProgress();
+      after.push({ name: 'Adding fractions & reading the line', emoji: '🍕', have: p.have, need: p.need,
+        text: `${p.line ? 'Number line solid ✓' : 'Number line not solid yet'} · ${p.others ? 'another fraction skill solid ✓' : 'one more fraction skill to go'}` });
+    }
     if (!data.unlocked.mul2) after.push({ name: '2-digit × 2-digit', emoji: '🧮', have: bigmulRecentRight(), need: MUL2_UNLOCK_AT,
       text: `${bigmulRecentRight()} of the last 8 two-digit × one-digit answers right, ${MUL2_UNLOCK_AT} needed` });
     if (!data.unlocked.multi) after.push({ name: 'Two-step problems', emoji: '🪜', have: wordSolidCount(), need: MULTI_UNLOCK_AT, unit: 'word-problem kinds' });
@@ -1196,6 +1247,14 @@ const Stats = (() => {
         const n = list.filter(e => e.ticks).length;
         if (n >= 2) { kind = 'misconception'; label = `Number line: counts the tick marks, not the spaces (${n}×) — the spaces from 0 to 1 are the pieces`; }
         else label = `Fractions on the number line: missed ${list.length}×`;
+      } else if (k === 'fpos') {
+        const big = list.filter(e => e.bigden).length, zero = list.filter(e => e.zero).length,
+              whole = list.filter(e => e.whole).length, side = list.filter(e => e.side).length;
+        if (big >= 2) { kind = 'misconception'; label = `Number line: puts 1/8-type fractions far along, as if a bigger bottom made them bigger (${big}×) — more pieces means smaller pieces, so 1/8 sits near 0`; }
+        else if (whole >= 2) { kind = 'misconception'; label = `Number line: treats the whole line as one whole (${whole}×) — one whole is 0 to 1, even on a longer line`; }
+        else if (zero >= 2) { kind = 'misconception'; label = `Number line: counts the 0 mark as the first jump (${zero}×) — count jumps of 1/b from 0, not marks`; }
+        else if (side >= 2) { kind = 'misconception'; label = `Number line: places fractions on the wrong side of 1/2 or 1 (${side}×) — first ask "more or less than a half? than one whole?"`; }
+        else label = `Placing fractions on the number line: missed ${list.length}×`;
       } else if (k === 'feq') {
         label = `Equivalent fractions: missed ${list.length}×`;
       } else if (k === 'bigmul' || k.indexOf('add:') === 0 || k.indexOf('sub:') === 0) {
@@ -1449,7 +1508,7 @@ const Stats = (() => {
     }
     return Object.values(byKey).sort((x, y) => (x[tsField] || 0) - (y[tsField] || 0));
   }
-  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery, mulSeenCount, recentAccuracy, nextUnlock, divMasteredCount, wordSolidCount, bigmulRecentRight, fracBasicSolid, skillP, isSlowFact, pickDueFacts, getHist, getErrlog, pickMasteredFact, dueBacklog, reviewQuota, getSnaps, repairSnaps, engineCheck, savePlan, getPlans, recordError, errorPatterns, getDaily, markDaily };
+  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery, mulSeenCount, recentAccuracy, nextUnlock, divMasteredCount, wordSolidCount, bigmulRecentRight, fracBasicSolid, fracOpsProgress, recordPlace, placeTrend, skillP, isSlowFact, pickDueFacts, getHist, getErrlog, pickMasteredFact, dueBacklog, reviewQuota, getSnaps, repairSnaps, engineCheck, savePlan, getPlans, recordError, errorPatterns, getDaily, markDaily };
 })();
 
 // Merge helpers for cross-device sync (keep the richer record, union history)
@@ -1873,7 +1932,7 @@ function mulQuestion(a, b) {
 }
 
 // ---------- Fractions (CC grade 3: denominators 2,3,4,6,8) ----------
-function isFracQ(q) { return ['fnam', 'feq', 'fcmp', 'fadd', 'fline'].includes(q.type); }
+function isFracQ(q) { return ['fnam', 'feq', 'fcmp', 'fpos', 'fadd', 'fline'].includes(q.type); }
 const FRAC_DENS = [2, 3, 4, 6, 8];
 const fracReview = () => Stats.skillState('fractions') !== 'fluent';
 function genFracName() {
@@ -1908,7 +1967,7 @@ function genFracCompare() {
 // Pick which fraction sub-skill to test, weighted by weakness (spaced-
 // repetition weight; unseen sub-skills weigh 2.5 so coverage is guaranteed).
 function pickFracType() {
-  const types = Stats.isUnlocked('fracops') ? ['fnam', 'feq', 'fcmp', 'fadd', 'fline'] : ['fnam', 'feq', 'fcmp'];
+  const types = Stats.isUnlocked('fracops') ? ['fnam', 'feq', 'fcmp', 'fpos', 'fadd', 'fline'] : ['fnam', 'feq', 'fcmp', 'fpos'];
   const ws = types.map(t => Stats.factWeight(Stats.getSkill('frac.' + t)));
   let r = Math.random() * ws.reduce((a, b) => a + b, 0);
   for (let i = 0; i < types.length; i++) { r -= ws[i]; if (r <= 0) return types[i]; }
@@ -1917,7 +1976,7 @@ function pickFracType() {
 function genFraction() {
   const t = pickFracType();
   return t === 'fnam' ? genFracName() : t === 'feq' ? genFracEquiv() : t === 'fcmp' ? genFracCompare()
-       : t === 'fadd' ? genFracAdd() : genFracLine();
+       : t === 'fpos' ? genFracPos() : t === 'fadd' ? genFracAdd() : genFracLine();
 }
 // Level 2 (CCSS 4.NF.B.3a, 3.NF.A.2). Adding like fractions: the classic error
 // adds the bottoms too (3/8 + 2/8 = 5/16). Any equivalent answer is accepted.
@@ -1956,6 +2015,104 @@ function numberLineEl(d, max, k, showAns) {
   fig.innerHTML = `<svg viewBox="0 0 ${W} 84" width="${W}" height="84" role="img" aria-label="A number line from 0 to ${max}, split into ${d * max} equal spaces, with a dot">${body}</svg>`;
   return fig;
 }
+// Placing a fraction on the number line (CCSS 3.NF.A.2): a/b is a jumps of
+// 1/b from 0. Programmes built around the number line beat part-whole
+// pictures on fraction size, comparison and transfer (Fuchs et al. 2013;
+// Hamdan & Gunderson 2017), so this is a basic skill, not a level-2 extra.
+// Kinds: a unit fraction, a/b below 1, and once a few placements are right a
+// 0-2 line: b/b = 1, past one whole, or below 1 (the whole is still 0 to 1).
+// Learners see the line cut into 1/b jumps on about half the problems, at
+// reduced mastery credit. Without the cuts it is an estimate, graded within
+// a tolerance, and the size of the miss is kept (Stats.recordPlace).
+// Kind codes: unit, below, one, past, below2.
+function genFracPos(kind) {
+  const f = Stats.getSkill('frac.fpos');
+  if (!kind) {
+    const wide = !!f && (f.right || 0) >= 4 && Math.random() < 0.35, r = Math.random();
+    kind = !wide ? (r < 0.45 ? 'unit' : 'below') : (r < 0.25 ? 'one' : r < 0.75 ? 'past' : 'below2');
+  }
+  const solid = ['accurate', 'fluent'].includes(Stats.skillState('frac.fpos'));
+  const ticks = !solid && Math.random() < 0.5;
+  const max = kind === 'unit' || kind === 'below' ? 1 : 2;
+  // Without the cuts a 0-2 line keeps to halves, thirds and quarters: finer
+  // pieces would ask for more precision than a finger has.
+  const dens = max === 1 ? (kind === 'unit' ? [2, 3, 4, 6, 8] : [3, 4, 6, 8]) : ticks ? [2, 3, 4, 6] : [2, 3, 4];
+  const d = dens[rint(0, dens.length - 1)];
+  const n = kind === 'unit' ? 1 : kind === 'below' ? rint(2, d - 1) : kind === 'below2' ? rint(1, d - 1)
+          : kind === 'one' ? d : rint(d + 1, 2 * d - 1);
+  return { type: 'fpos', fk: kind, n, d, max, ticks, ans: n / d, ansNum: n, ansDen: d,
+           scaffold: ticks ? { kind: 'ticks' } : null,
+           steps: [`${n}/${d} is ${n} jump${n > 1 ? 's' : ''} of 1/${d} from 0`],
+           label: 'Fractions · number line', isReview: fracReview() };
+}
+function pieceName(d, one) {
+  const p = { 2: ['half', 'halves'], 3: ['third', 'thirds'], 4: ['quarter', 'quarters'], 5: ['fifth', 'fifths'], 6: ['sixth', 'sixths'],
+              8: ['eighth', 'eighths'], 10: ['tenth', 'tenths'], 12: ['twelfth', 'twelfths'] }[d] || [`${d}th`, `${d}ths`];
+  return one ? p[0] : p[1];
+}
+// Where the marker is (NaN if not placed), and how close counts as right:
+// with the cuts it snaps to them, so only the right cut; without them about
+// 6% of the line, never as much as half a jump.
+function fposGiven(q) { const s = String(q.given == null ? '' : q.given).trim(); return s === '' ? NaN : Number(s); }
+function fposTol(q) { return q.ticks ? 0.25 / q.d : Math.min(0.06 * q.max, 0.45 / q.d); }
+function fposHit(q, g) { return Number.isFinite(g) && Math.abs(g - q.n / q.d) <= fposTol(q); }
+function fposErrPct(q) { const g = fposGiven(q); return Number.isFinite(g) ? 100 * Math.abs(g - q.n / q.d) / q.max : NaN; }
+// Why a placement missed. Each class needs different teaching: a unit
+// fraction put far along is the whole-number reading of its bottom number;
+// a mark one jump short counted the 0 mark; a 0-2 line read as one whole.
+function fposMiss(q) {
+  const g = fposGiven(q);
+  if (!Number.isFinite(g)) return 'blank';
+  const v = q.n / q.d, tol = fposTol(q), near = x => Math.abs(g - x) <= tol;
+  if (q.max === 2 && q.n < q.d && near(2 * v)) return 'wholeline';
+  if (q.n === 1 && q.d >= 3 && g > 0.5 + tol) return 'bigden';
+  if (near((q.n - 1) / q.d)) return 'countzero';
+  if (near(q.max - v) && Math.abs(q.max - 2 * v) > tol) return 'fromright';
+  if (q.n <= q.max && q.n !== v && near(q.n)) return 'numwhole';
+  if (q.max === 2 && v !== 1 && (v > 1) !== (g > 1) && Math.abs(g - 1) > tol) return 'side1';
+  if (v !== 0.5 && v < 1 && (v < 0.5) !== (g < 0.5) && Math.abs(g - 0.5) > tol) return 'half';
+  if (!q.ticks && Math.abs(g - v) <= 2.5 * tol) return 'close';
+  return 'other';
+}
+// The mark as a parent reads it: the cut it snapped to, or the point itself.
+function fposGivenText(q) {
+  const g = fposGiven(q);
+  if (!Number.isFinite(g)) return '';
+  return q.ticks ? `${Math.round(g * q.d)}/${q.d}` : g.toFixed(2);
+}
+// The miss in the child's own units: how many jumps of 1/b off, which way.
+function fposGap(q) {
+  const g = fposGiven(q);
+  if (!Number.isFinite(g)) return '';
+  const k = Math.round((g - q.n / q.d) * q.d);
+  if (k === 0) return g > q.n / q.d ? 'a little too far right' : 'a little too far left';
+  return `${Math.abs(k)} jump${Math.abs(k) > 1 ? 's' : ''} of 1/${q.d} too far ${k > 0 ? 'right' : 'left'}`;
+}
+function fposWhy(q, cls) {
+  const { n, d } = q, v = n / d, pcs = pieceName(d), jumps = `${n} jump${n > 1 ? 's' : ''} of 1/${d}`;
+  switch (cls) {
+    case 'blank': return 'You did not put a mark on the line.';
+    case 'bigden': return `1/${d} is one piece when the whole is cut into ${d}. More pieces means smaller pieces, so 1/${d} sits close to 0, less than half.`;
+    case 'wholeline': return `One whole is 0 to 1, not the whole line. ${n}/${d} is ${jumps}, and ${d} jumps reach 1.`;
+    case 'countzero': return `One jump short: 0 is where you start, not the first jump. Count the jumps: ${Array.from({ length: Math.min(n, 4) }, (_, i) => `${i + 1}/${d}`).join(', ')}${n > 4 ? ', …' : ''}.`;
+    case 'fromright': return `Fractions count from 0, on the left. ${n}/${d} is ${jumps} from 0.`;
+    case 'numwhole': return `${n}/${d} is not ${n}: it is ${n} ${n > 1 ? pcs : pieceName(d, true)}, ${v < 1 ? 'less than one whole' : v === 1 ? 'exactly one whole' : 'more than one whole'}.`;
+    case 'side1': return v > 1 ? `${n}/${d} is more than one whole: ${d}/${d} makes 1, and ${n} is more than ${d}.`
+                               : `${n}/${d} is less than one whole: it takes ${d}/${d} to make 1.`;
+    case 'half': return `${n}/${d} is ${v < 0.5 ? 'less' : 'more'} than half: ${d % 2 === 0 ? `half of ${d} ${pcs} is ${d / 2}/${d}` : `${n} of ${d} ${pcs} is ${v < 0.5 ? 'less' : 'more'} than half of them`}.`;
+    case 'close': return `Close! ${n}/${d} is ${fposGap(q).replace('too far right', 'further left').replace('too far left', 'further right')}.`;
+    default: return `${n}/${d} is ${jumps} from 0.`;
+  }
+}
+function fposWork(q) {
+  const { n, d } = q, g = fposGiven(q);
+  const sum = (n <= 6 ? Array(n).fill(`1/${d}`).join(' + ') : `${n} jumps of 1/${d}`) + ` = <b>${n}/${d}</b>`;
+  let w = `From 0 to 1: ${d} equal jumps, each 1/${d}.\n${sum}`;
+  if (n === d) w += `\n${d}/${d} lands exactly on 1.`;
+  if (n > d) w += `\n${d}/${d} reaches 1, then ${n - d} more jump${n - d > 1 ? 's' : ''} past it.`;
+  if (Number.isFinite(g)) w += `\nYour mark: ${fposGap(q)}.`;
+  return w;
+}
 // Given num/den as numbers; the answer matches if it is the same value.
 function fracGiven(q) {
   const gn = String(q.givenNum == null ? '' : q.givenNum).trim(), gd = String(q.givenDen == null ? '' : q.givenDen).trim();
@@ -1983,6 +2140,7 @@ function fracOpMiss(q) {
 function fracTip(q) {
   if (q.type === 'fadd') return 'Same-size pieces: add or take away the tops, keep the bottom.';
   if (q.type === 'fline') return 'Count the spaces between the marks from 0 to 1: that is the bottom number.';
+  if (q.type === 'fpos') return 'Bottom number: how many equal jumps make 1. Top number: how many jumps to take from 0.';
   if (q.type === 'fnam') return 'Top = shaded parts. Bottom = total equal parts.';
   if (q.type === 'feq') return `Multiply top and bottom by the same number (×${q.d2 / q.d1}).`;
   return 'Same top? More pieces means each is smaller. Same bottom? Bigger top wins.';
@@ -2765,7 +2923,7 @@ function fractionQuiz() {
   const qs = [];
   // One of each sub-skill guaranteed (coverage), then five more weighted
   // toward whichever sub-skill is weakest right now.
-  qs.push(genFracName()); qs.push(genFracEquiv()); qs.push(genFracCompare());
+  qs.push(genFracName()); qs.push(genFracEquiv()); qs.push(genFracCompare()); qs.push(genFracPos());
   if (Stats.isUnlocked('fracops')) { qs.push(genFracAdd()); qs.push(genFracLine()); }
   while (qs.length < 8) qs.push(genFraction());
   qs.push(genAdd(Stats.pickBucket('add')));
@@ -2838,9 +2996,13 @@ function focusQuiz(compact) {
 
 /* ---------- Diagnostic engine ---------- */
 function diagFraction(q) {
+  if (q.type === 'fpos') {
+    return { why: fposWhy(q, fposMiss(q)), work: fposWork(q),
+             tip: 'The bottom number is how many equal jumps make 1; the top number is how many jumps to take from 0.' };
+  }
   if (q.type === 'fadd') {
     const g = fracGiven(q), sum = `${q.n1}/${q.d} ${q.op} ${q.n2}/${q.d}`;
-    const name = { 2: 'halves', 3: 'thirds', 4: 'quarters', 5: 'fifths', 6: 'sixths', 8: 'eighths', 10: 'tenths', 12: 'twelfths' }[q.d] || `${q.d}ths`;
+    const name = pieceName(q.d);
     const work = `${sum}: ${q.n1} ${name} ${q.op === '+' ? 'plus' : 'take away'} ${q.n2} ${name} = ${q.ansNum} ${name}\nAnswer: ${q.ansNum}/${q.d}`;
     const tip = `The bottom number names the size of the pieces (${name}). Adding or taking away pieces never changes their size.`;
     switch (fracOpMiss(q)) {
@@ -3300,8 +3462,8 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v69';
-const APP_UPDATED = '2026-09-25';
+const APP_VERSION = 'v70';
+const APP_UPDATED = '2026-10-07';
 // In-progress quiz survives refreshes/crashes/SW updates: every answer
 // keystroke snapshots the session to localStorage; a fresh page load resumes
 // it (questions, typed answers, wall-clock timer) unless it's gone stale.
@@ -3429,6 +3591,7 @@ function qSig(q) {
   if (q.type === 'fcmp') return `fcmp:${q.n1}/${q.d1}v${q.n2}/${q.d2}`;
   if (q.type === 'fadd') return `fadd:${q.n1}${q.op}${q.n2}/${q.d}`;
   if (q.type === 'fline') return `fline:${q.k}/${q.d}:${q.max}`;
+  if (q.type === 'fpos') return `fpos:${q.n}/${q.d}:${q.max}`;
   return `${q.type}:${q.a},${q.b}`;
 }
 function startNew() {
@@ -3543,6 +3706,13 @@ function errEntry(q) {
              addden: miss === 'addden', ticks: miss === 'ticks' || miss === 'wholeline' };
   }
   if (q.type === 'feq') return { d, k: 'feq', g: String(q.given || ''), ans: String(q.ans), sc };
+  if (q.type === 'fpos') {
+    const miss = fposMiss(q), pe = fposErrPct(q);
+    return { d, k: 'fpos', x: [q.n, q.d, q.max], g: fposGivenText(q), ans: answerText(q), sc,
+             pe: Number.isFinite(pe) ? Math.round(pe) : null,
+             bigden: miss === 'bigden', zero: miss === 'countzero', whole: miss === 'wholeline',
+             side: miss === 'half' || miss === 'side1' };
+  }
   if (q.type === 'ldiv') {
     const g = ldivGiven(q), miss = ldivMiss(q);
     return { d, k: 'ldiv.' + q.ldk, x: [q.a, q.b], g: g.gq === '' && g.gr === '' ? '' : `${g.gq} R ${g.gr || 0}`, ans: answerText(q), sc,
@@ -3606,6 +3776,7 @@ function submit(fromTimeout) {
     else if (isFracQ(q)) {
       Stats.recordSkill('fractions', isRight, ms, sc);          // aggregate (drives unlock/summary)
       Stats.recordSkill('frac.' + q.type, isRight, ms, sc);     // sub-skill (drives adaptive selection)
+      if (q.type === 'fpos' && !q.ticks && answered(q)) Stats.recordPlace(fposErrPct(q)); // unaided aim
     }
     else if (q.type === 'word' && q.multi) {
       Stats.recordSkill('multi', isRight, ms, sc);
@@ -3842,11 +4013,12 @@ function answerCorrect(q) {
   if (q.type === 'fadd' || q.type === 'fline') return fracSame(q);
   if (q.type === 'fnam') return Number(q.givenNum) === q.ansNum && Number(q.givenDen) === q.ansDen;
   if (q.type === 'fcmp') return q.given === q.ans;
+  if (q.type === 'fpos') return fposHit(q, fposGiven(q));
   return Number(q.given) === q.ans;
 }
 function answerText(q) {
   if (q.type === 'ldiv') return `${q.ans} R ${q.rem}`;
-  if (q.type === 'fnam' || q.type === 'fadd' || q.type === 'fline') return q.ansNum + '/' + q.ansDen;
+  if (q.type === 'fnam' || q.type === 'fadd' || q.type === 'fline' || q.type === 'fpos') return q.ansNum + '/' + q.ansDen;
   return String(q.ans);
 }
 function wordKindLabel(k) {
@@ -3862,6 +4034,7 @@ function exprText(q) {
   if (q.type === 'fnam') return 'this fraction';
   if (q.type === 'fadd') return `${q.n1}/${q.d} ${q.op} ${q.n2}/${q.d}`;
   if (q.type === 'fline') return 'the dot';
+  if (q.type === 'fpos') return `${q.n}/${q.d} on the line`;
   if (q.type === 'ldiv') return `${q.a} ÷ ${q.b}`;
   if (q.type === 'mul2') return `${q.a} × ${q.b}`;
   if (q.type === 'word') return q.op || '';
@@ -3981,6 +4154,7 @@ function renderQuestion(q, idx) {
   }
 
   if (isFracQ(q)) {
+    if (state.immediate && !state.submitted && q._imm) card.classList.add({ right: 'imm-good', fixing: 'imm-fixing', fixed: 'imm-fixed' }[q._imm]);
     card.appendChild(renderFractionRow(q, idx, right, wrong));
     if (!state.submitted && q.isReview) {
       const tip = el('div', 'pretip');
@@ -4183,6 +4357,17 @@ function renderFractionRow(q, idx, right, wrong) {
     return fin;
   };
   const ansPill = () => { const pill = el('div', 'correct-pill'); pill.appendChild(spanTxt('Answer', 'ar')); pill.appendChild(spanTxt(answerText(q), 'tabular')); return pill; };
+  if (q.type === 'fpos') {
+    const left = el('div', 'frac-q fpos-q');
+    const prompt = el('div', 'frac-prompt fpos-prompt');
+    prompt.appendChild(spanTxt('Put ', null));
+    prompt.appendChild(fracMini(q.n, q.d, 'fpos-target'));
+    prompt.appendChild(spanTxt(' on the number line', null));
+    left.appendChild(prompt);
+    left.appendChild(fposLine(q, idx));
+    row.appendChild(left);
+    return row;
+  }
   if (q.type === 'fadd') {
     const expr = el('div', 'expr frac-expr');
     expr.appendChild(fracMini(q.n1, q.d));
@@ -4266,6 +4451,166 @@ function renderFractionRow(q, idx, right, wrong) {
   return row;
 }
 
+// The placement line: tap the line or drag the marker (arrow keys work too).
+// With the cuts shown the marker stops on them. Once graded, or checked in
+// practice, it shows the answer, the jumps of 1/b that reach it ("3/4 is
+// three 1/4s"), and the child's own mark. A practice miss is fixed by
+// counting: the cuts appear and the child places it again; after a second
+// miss the answer is shown to copy.
+function fposLine(q, idx) {
+  const W = 600, L = 30, R = 570, Y = 64, H = 112, span = R - L;
+  const toX = v => L + span * v / q.max;
+  const imm = state.immediate && !state.submitted;
+  const fixing = imm && q._imm === 'fixing';
+  const locked = state.submitted || (imm && (q._imm === 'right' || q._imm === 'fixed'));
+  const cuts = q.ticks || fixing;
+  const g = fposGiven(q);
+  const retry = fixing ? fposGiven({ given: q._retype }) : NaN;
+  const showAns = locked || (fixing && Number.isFinite(retry) && !fposHit(q, retry));
+  const fixedNow = imm && q._imm === 'fixed';   // practice miss, then placed right
+  const jumps = `${q.n} jump${q.n > 1 ? 's' : ''} of 1/${q.d}`;
+  const pin = (val, cls) => `<g class="fpos-pin ${cls}" transform="translate(${Number.isFinite(val) ? toX(val) : L} 0)"${Number.isFinite(val) ? '' : ' visibility="hidden"'}>` +
+    `<line x1="0" y1="${Y - 24}" x2="0" y2="${Y}" class="fpos-stem"/><circle cx="0" cy="${Y - 32}" r="12" class="fpos-head"/></g>`;
+  let body = `<rect class="fpos-hit" x="0" y="0" width="${W}" height="${H}"/>`;
+  body += `<line x1="${L}" y1="${Y}" x2="${R}" y2="${Y}" class="nl-axis"/>`;
+  if (cuts) for (let i = 1; i < q.d * q.max; i++) if (i % q.d) {
+    const x = toX(i / q.d);
+    body += `<line x1="${x}" y1="${Y - 10}" x2="${x}" y2="${Y + 10}" class="nl-tick"/>`;
+  }
+  for (let w = 0; w <= q.max; w++) {
+    const x = toX(w);
+    body += `<line x1="${x}" y1="${Y - 14}" x2="${x}" y2="${Y + 14}" class="nl-major"/>`;
+    body += `<text x="${x}" y="${Y + 38}" text-anchor="middle" class="nl-lbl">${w}</text>`;
+  }
+  if (showAns) {
+    for (let i = 0; i < q.n; i++) {
+      const a = toX(i / q.d), b = toX((i + 1) / q.d);
+      body += `<path d="M${a} ${Y - 3} Q${(a + b) / 2} ${Y - 30} ${b} ${Y - 3}" class="fpos-jump"/>`;
+    }
+    const x = toX(q.n / q.d);
+    body += `<circle cx="${x}" cy="${Y}" r="8" class="fpos-ans"/>`;
+    body += `<text x="${x}" y="${Y - 48}" text-anchor="middle" class="fpos-ans-lbl">${q.n}/${q.d}</text>`;
+  }
+  if (Number.isFinite(g) && (locked || fixing)) body += pin(g, fixing || fixedNow ? 'bad ghost' : fposHit(q, g) ? 'ok' : 'bad');
+  if (fixedNow) body += pin(fposGiven({ given: q._retype }), 'ok');
+  if (!locked) body += pin(fixing ? retry : g, 'live');
+  const fig = el('div', 'fpos-fig');
+  fig.innerHTML = `<svg viewBox="0 0 ${W} ${H}" class="${locked ? 'locked' : ''}" role="img" ` +
+    `aria-label="A number line from 0 to ${q.max}${cuts ? `, cut into jumps of 1/${q.d}` : ''}">${body}</svg>`;
+  const svg = fig.firstChild;
+  const wrap = el('div', 'fpos-wrap');
+  wrap.appendChild(fig);
+  let checkBtn = null;
+  if (!locked) {
+    svg.setAttribute('tabindex', '0');
+    svg.setAttribute('role', 'slider');
+    svg.setAttribute('aria-label', `Question ${idx + 1}: put ${q.n}/${q.d} on the number line from 0 to ${q.max}`);
+    svg.setAttribute('aria-valuemin', '0');
+    svg.setAttribute('aria-valuemax', String(q.max));
+    const live = svg.querySelector('.fpos-pin.live');
+    const snap = v => cuts ? Math.round(v * q.d) / q.d : Math.round(v * 1000) / 1000;
+    let cur = fixing ? retry : g, dragging = false;
+    const announce = () => {
+      if (Number.isFinite(cur)) svg.setAttribute('aria-valuenow', String(cur));
+      svg.setAttribute('aria-valuetext', !Number.isFinite(cur) ? 'not placed yet' : cuts ? `${Math.round(cur * q.d)}/${q.d}` : cur.toFixed(2));
+    };
+    announce();
+    const move = v => {
+      cur = snap(Math.min(q.max, Math.max(0, v)));
+      live.setAttribute('transform', `translate(${toX(cur)} 0)`);
+      live.removeAttribute('visibility');
+      announce();
+    };
+    const valAt = clientX => {
+      const r = svg.getBoundingClientRect();
+      return ((clientX - r.left) / r.width * W - L) / span * q.max;
+    };
+    // check=false keeps a practice fix open while arrow keys step towards it.
+    const commit = (check = true) => {
+      if (!Number.isFinite(cur)) return;
+      const qq = state.quiz[idx], t = Date.now();
+      if (fixing) {
+        qq._retype = String(cur);
+        if (!check) { saveSession(); return; }
+        if (fposHit(qq, cur)) { qq._imm = 'fixed'; try { Sound.tick(); } catch {} }
+        else { try { Sound.soft(); } catch {} }
+        saveSession();
+        render();
+        return;
+      }
+      qq.given = String(cur);
+      qq._t1 = t;
+      saveSession();
+      const segs = document.querySelectorAll('.progress .seg');
+      if (segs[idx]) segs[idx].classList.add('filled');
+      if (checkBtn) checkBtn.disabled = false;
+    };
+    const touch = () => { const qq = state.quiz[idx]; if (qq._t0 == null) qq._t0 = Date.now(); };
+    svg.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      touch();
+      dragging = true;
+      try { svg.setPointerCapture(e.pointerId); } catch {}
+      move(valAt(e.clientX));
+    });
+    svg.addEventListener('pointermove', e => { if (dragging) move(valAt(e.clientX)); });
+    const end = () => { if (dragging) { dragging = false; commit(); } };
+    svg.addEventListener('pointerup', end);
+    svg.addEventListener('pointercancel', end);
+    svg.addEventListener('keydown', e => {
+      const step = cuts ? 1 / q.d : q.max / 100, has = Number.isFinite(cur);
+      let v = null;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowUp') v = has ? cur + step : 0;
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') v = has ? cur - step : 0;
+      else if (e.key === 'Home') v = 0;
+      else if (e.key === 'End') v = q.max;
+      else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (fixing) commit(true);
+        else if (checkBtn && !checkBtn.disabled) checkBtn.click();
+        return;
+      }
+      if (v == null) return;
+      e.preventDefault();
+      touch();
+      move(v);
+      commit(false);
+    });
+    if (!fixing) wrap.appendChild(el('div', 'fpos-hint', cuts ? 'Tap the line or drag the marker. It stops on the cuts.' : 'Tap the line where it goes, or drag the marker.'));
+  }
+  if (imm && !q._imm) {
+    checkBtn = el('button', 'btn btn-primary fpos-check', '✓ Check');
+    checkBtn.type = 'button';
+    checkBtn.disabled = !Number.isFinite(g);
+    checkBtn.onclick = () => immCheckPos(state.quiz[idx]);
+    wrap.appendChild(checkBtn);
+  }
+  if (fixing) {
+    const pill = el('div', 'fixpill');
+    pill.appendChild(el('div', 'fix-why', fposWhy(q, fposMiss(q))));
+    pill.appendChild(el('div', 'fix-do', showAns
+      ? `The green dot is ${q.n}/${q.d}. Put your marker on it to lock it in 💪`
+      : `Count ${jumps} from 0 and tap there 💪`));
+    wrap.appendChild(pill);
+  }
+  if (locked && Number.isFinite(g)) {
+    const pct = Math.round(fposErrPct(q));
+    wrap.appendChild(el('div', 'fpos-note', fixedNow ? `✓ Fixed: ${q.n}/${q.d} = ${jumps}`
+      : !fposHit(q, g) ? `Your mark: ${fposGap(q)}.`
+      : q.ticks ? `✓ ${q.n}/${q.d} = ${jumps}`
+      : `🎯 ${pct}% of the line off — ${pct <= 2 ? 'spot on!' : 'good aim!'}`));
+  }
+  return wrap;
+}
+// Practice-mode check for a placement (the mixed quiz grades at the end).
+function immCheckPos(q) {
+  if (q._imm || state.submitted || !Number.isFinite(fposGiven(q))) return;
+  if (fposHit(q, fposGiven(q))) { q._imm = 'right'; try { Sound.tick(); } catch {} }
+  else { q._imm = 'fixing'; q._retype = ''; try { Sound.soft(); } catch {} }
+  saveSession();
+  render();
+}
+
 function teachPayload(q) {
   if (q.type === 'geo') return { type: 'geo', text: q.desc, ans: q.ans, steps: q.steps };
   if (q.type === 'word' && q.multi) return { type: 'word', text: q.text, op: q.op, ans: q.ans, steps: q.steps };
@@ -4276,6 +4621,10 @@ function teachPayload(q) {
   if (q.type === 'fcmp') return { type: 'fcmp', n1: q.n1, d1: q.d1, n2: q.n2, d2: q.d2, ans: q.ans };
   if (q.type === 'fadd') return { type: 'fadd', n1: q.n1, n2: q.n2, d: q.d, op: q.op === '+' ? '+' : '-' };
   if (q.type === 'fline') return { type: 'fline', k: q.k, d: q.d, max: q.max };
+  if (q.type === 'fpos') {
+    const g = fposGiven(q);
+    return { type: 'fpos', n: q.n, d: q.d, max: q.max, placed: Number.isFinite(g) ? Math.round(g * 100) / 100 : null };
+  }
   return { type: q.type, a: q.a, b: q.b };
 }
 
@@ -4491,6 +4840,7 @@ function renderTimeoutModal() {
 
 function closeLesson() {
   if (state.showLesson) Stats.markSeen(state.showLesson + 'Lesson');
+  if (state.showLesson === 'fractions') Stats.markSeen('fracLineLesson');
   state.showLesson = null;
   pushIfSynced();
   render();
@@ -4498,7 +4848,7 @@ function closeLesson() {
 
 function startFocusedQuiz(seenKey, makeQuiz) {
   if (!confirmDiscardProgress()) return;
-  Stats.markSeen(seenKey);
+  [].concat(seenKey).forEach(k => Stats.markSeen(k));
   state.showLesson = null;
   state.showStats = false;
   state.showMine = false;
@@ -4518,7 +4868,7 @@ function startFocusedQuiz(seenKey, makeQuiz) {
 }
 function startDivisionPractice() { startFocusedQuiz('divisionLesson', divisionQuiz); }
 function startBigmulPractice() { startFocusedQuiz('bigmulLesson', bigmulQuiz); }
-function startFractionPractice() { startFocusedQuiz('fractionsLesson', fractionQuiz); }
+function startFractionPractice() { startFocusedQuiz(['fractionsLesson', 'fracLineLesson'], fractionQuiz); }
 function startWordPractice() { startFocusedQuiz('wordLesson', wordQuiz); }
 function startLongDivPractice() { startFocusedQuiz('longdivLesson', longDivQuiz); }
 function startMultiPractice() { startFocusedQuiz('multiLesson', multiQuiz); }
@@ -4629,8 +4979,8 @@ function renderLessonModal(domain) {
   } else if (domain === 'fracops') {
     const fresh = !Stats.hasSeen('fracopsLesson');
     m.appendChild(el('div', 'ico-big', '🍕'));
-    m.appendChild(el('h2', null, fresh ? '🎉 New in fractions: adding & the number line' : 'Adding fractions & the number line'));
-    m.appendChild(el('p', null, 'You can name and compare fractions. Now put pieces together, and find fractions on a line.'));
+    m.appendChild(el('h2', null, fresh ? '🎉 New in fractions: adding & reading the line' : 'Adding fractions & reading the line'));
+    m.appendChild(el('p', null, 'You can name, compare and place fractions. Now put pieces together, and read the fraction at a dot.'));
 
     m.appendChild(el('h3', 'lesson-h', '1) Same-size pieces: add the tops'));
     m.appendChild(barEl(8, 3));
@@ -4638,7 +4988,7 @@ function renderLessonModal(domain) {
     m.appendChild(barEl(8, 5));
     m.appendChild(el('p', 'lesson-p', 'The bottom stays 8, because the pieces are still eighths. 3/8 + 2/8 is NOT 5/16: sixteenths would be smaller pieces. Taking away works the same way: 7/8 − 3/8 = 4/8.'));
 
-    m.appendChild(el('h3', 'lesson-h', '2) Fractions live on the number line'));
+    m.appendChild(el('h3', 'lesson-h', '2) Read the line: which fraction is at the dot?'));
     m.appendChild(numberLineEl(4, 1, 3, true));
     m.appendChild(el('p', 'lesson-p', 'From 0 to 1 there are 4 equal spaces, so each jump is 1/4. The dot is 3 jumps from 0: 3/4.'));
 
@@ -4792,10 +5142,15 @@ function renderLessonModal(domain) {
     go.onclick = startWordPractice;
     m.appendChild(go);
   } else if (domain === 'fractions') {
+    // The number line is the centre of this lesson: a fraction is a NUMBER,
+    // a jumps of 1/b from 0 (measurement view, Fuchs et al. 2013). Children
+    // who already had fractions see it once as news (fracLineLesson).
     const fresh = !Stats.hasSeen('fractionsLesson');
+    const lineNews = !fresh && !Stats.hasSeen('fracLineLesson');
     m.appendChild(el('div', 'ico-big', '🍕'));
-    m.appendChild(el('h2', null, fresh ? '🎉 New skill unlocked: Fractions' : 'Fractions — equal parts of a whole'));
-    m.appendChild(el('p', null, 'A fraction names equal parts of a whole.'));
+    m.appendChild(el('h2', null, fresh ? '🎉 New skill unlocked: Fractions' : lineNews ? '🆕 New in fractions: the number line' : 'Fractions — numbers between the whole numbers'));
+    m.appendChild(el('p', null, lineNews ? 'Fractions are numbers, so they have a place on the number line. Here is how to find it.'
+      : 'A fraction names equal parts of a whole, and it is a number with its own place on the number line.'));
 
     m.appendChild(el('h3', 'lesson-h', '1) Picture it'));
     m.appendChild(el('p', 'lesson-p', 'This bar is split into 4 equal parts, and 3 are shaded:'));
@@ -4807,11 +5162,23 @@ function renderLessonModal(domain) {
     m.appendChild(eqn);
 
     m.appendChild(el('h3', 'lesson-h', '2) What the numbers mean'));
-    m.appendChild(el('p', 'lesson-p', 'Top number = how many parts you have. Bottom number = how many equal parts in the whole.'));
+    m.appendChild(el('p', 'lesson-p', 'Bottom number = how many equal parts make one whole. Top number = how many of those parts.'));
 
-    m.appendChild(el('h3', 'lesson-h', '3) Two handy tricks'));
-    m.appendChild(el('p', 'lesson-p', 'Equal fractions: split every piece the same way — 1/2 = 2/4 (multiply top and bottom by the same number).'));
-    m.appendChild(el('p', 'lesson-p', 'Comparing: with the same top, more pieces means each piece is smaller, so 1/4 < 1/3.'));
+    m.appendChild(el('h3', 'lesson-h', '3) A fraction is a place on the line'));
+    m.appendChild(numberLineEl(4, 1, 3, true));
+    m.appendChild(el('p', 'lesson-p', 'Cut 0 to 1 into 4 equal jumps: each jump is 1/4. 3/4 is 3 jumps from 0: 1/4 + 1/4 + 1/4. Count the jumps, not the marks.'));
+    m.appendChild(numberLineEl(4, 2, 5, true));
+    m.appendChild(el('p', 'lesson-p', '4 jumps land on 1, so 4/4 = 1. Keep jumping and you go past 1: 5/4 is one whole and one more quarter.'));
+
+    m.appendChild(el('h3', 'lesson-h', '4) More pieces, smaller pieces'));
+    m.appendChild(numberLineEl(3, 1, 1, true));
+    m.appendChild(numberLineEl(8, 1, 1, true));
+    m.appendChild(el('p', 'lesson-p', 'Cut the whole into 8 and each jump is tiny, so 1/8 sits close to 0. Cut it into 3 and each jump is big. So 1/8 < 1/3, even though 8 is bigger than 3.'));
+
+    m.appendChild(el('h3', 'lesson-h', '5) Same place, same number'));
+    m.appendChild(numberLineEl(4, 1, 2, true));
+    m.appendChild(el('p', 'lesson-p', '2/4 lands exactly halfway, where 1/2 is. So 1/2 = 2/4: cut each half into 2 and there are twice as many pieces, and twice as many taken. That is why multiplying the top and bottom by the same number keeps a fraction the same.'));
+    m.appendChild(el('p', 'lesson-note', 'To compare two fractions, ask first: is each one more or less than a half? More or less than 1?'));
 
     const actions = el('div', 'lesson-actions');
     const go = el('button', 'btn btn-primary btn-big', '✏️ Practice fractions');
@@ -4898,8 +5265,8 @@ function renderMineModal() {
     const stEmoji = { new: '⚪', learning: '🌱', accurate: '⭐', fluent: '🚀' };
     if (r.name === 'Fractions') {
       const chips = el('div', 'mine-chips');
-      [['frac.fnam', 'Naming'], ['frac.feq', 'Equal'], ['frac.fcmp', 'Compare']]
-        .concat(Stats.isUnlocked('fracops') ? [['frac.fadd', 'Add'], ['frac.fline', 'Number line']] : []).forEach(([k, label]) => {
+      [['frac.fnam', 'Naming'], ['frac.feq', 'Equal'], ['frac.fcmp', 'Compare'], ['frac.fpos', 'Number line']]
+        .concat(Stats.isUnlocked('fracops') ? [['frac.fadd', 'Add'], ['frac.fline', 'Read the line']] : []).forEach(([k, label]) => {
         chips.appendChild(el('span', 'mine-chip', `${stEmoji[Stats.skillState(k)] || '⚪'} ${label}`));
       });
       card.appendChild(chips);
@@ -5014,6 +5381,7 @@ function qLabel(q) {
   if (q.type === 'fcmp') return `${q.n1}/${q.d1} ? ${q.n2}/${q.d2}`;
   if (q.type === 'fadd') return `${q.n1}/${q.d} ${q.op} ${q.n2}/${q.d}`;
   if (q.type === 'fline') return `number line 0–${q.max}, dot at ${q.k}/${q.d}`;
+  if (q.type === 'fpos') return `number line 0–${q.max}: put ${q.n}/${q.d}${q.ticks ? '' : ' (no cuts)'}`;
   if (q.type === 'word') return q.multi ? `🪜 ${multiKindLabel(q.wkind)}` : `📖 ${wordKindLabel(q.wkind)}`;
   if (q.type === 'ldiv') return `${q.a} ÷ ${q.b} (with R)`;
   if (q.type === 'geo') return `📏 ${geoKindLabel(q.gk)}: ${geoDims(q)}`;
@@ -5024,6 +5392,7 @@ function sessionQuestions(quiz) {
   return quiz.map(q => {
     const given = (['fnam', 'fadd', 'fline'].includes(q.type) ? `${q.givenNum || ''}/${q.givenDen || ''}`
       : q.type === 'ldiv' ? (answered(q) ? `${q.givenQ || ''} R ${q.givenR || 0}` : '')
+      : q.type === 'fpos' ? fposGivenText(q)
       : String(q.given == null ? '' : q.given)).trim().slice(0, 16);
     const ok = answerCorrect(q) ? 1 : 0;
     const row = [qLabel(q), given === '/' ? '' : given, answerText(q), ok];
@@ -5045,6 +5414,7 @@ function errLabel(e) {
   if (k === 'fcmp') return 'comparing fractions';
   if (k === 'fadd' && e.x) return `${e.x[0]}/${e.x[3]} ${e.x[1]} ${e.x[2]}/${e.x[3]}`;
   if (k === 'fline' && e.x) return `number line, dot at ${e.x[0]}/${e.x[1]}`;
+  if (k === 'fpos' && e.x) return `number line 0–${e.x[2]}: put ${e.x[0]}/${e.x[1]}`;
   if (k.startsWith('word.')) return `📖 ${wordKindLabel(k.slice(5))}`;
   if (k.startsWith('multi.')) return `🪜 ${multiKindLabel(k.slice(6))}`;
   if (k.startsWith('mul2.') && e.x) return `${e.x[0]} × ${e.x[1]}`;
@@ -5298,12 +5668,15 @@ function renderStatsModal() {
       const stTxt = s.fractions.state === 'fluent' ? 'fluent 🌟' : s.fractions.state === 'accurate' ? 'accurate' : 'learning';
       domGroup.appendChild(el('p', 'stats-line', `${s.fractions.attempts} attempts · ${s.fractions.accuracy}% accurate · ${s.fractions.mastery}% mastery · ${stTxt}`));
       domGroup.appendChild(masteryMeter(s.fractions.mastery));
-      domGroup.appendChild(el('p', 'stats-line', [['fnam', 'Naming'], ['feq', 'Equal'], ['fcmp', 'Compare'], ['fadd', 'Add & subtract'], ['fline', 'Number line']].map(([k, nm]) => {
+      domGroup.appendChild(el('p', 'stats-line', [['fnam', 'Naming'], ['feq', 'Equal'], ['fcmp', 'Compare'], ['fpos', 'Number line'], ['fadd', 'Add & subtract'], ['fline', 'Reading the line']].map(([k, nm]) => {
         const f = Stats.getSkill('frac.' + k);
         const n = f ? (f.right || 0) + (f.wrong || 0) : 0;
         const locked = (k === 'fadd' || k === 'fline') && !Stats.isUnlocked('fracops');
-        return `${nm} ${n ? Math.round(100 * (f.right || 0) / n) + '%' : locked ? `opens at 2 of 3 basics solid (now ${Stats.fracBasicSolid()})` : '—'}`;
+        return `${nm} ${n ? Math.round(100 * (f.right || 0) / n) + '%' : locked ? 'opens once the number line and one more basic are solid' : '—'}`;
       }).join(' · ')));
+      const aim = Stats.placeTrend();
+      if (aim.n) domGroup.appendChild(el('p', 'stats-line', `🎯 Number-line aim (placed without the cuts): off by ${aim.recent}% of the line on average over the last ${Math.min(5, aim.n)}` +
+        (aim.before != null ? `, ${aim.recent < aim.before ? 'down' : aim.recent > aim.before ? 'up' : 'unchanged'} from ${aim.before}% before` : '') + ' — lower is better.'));
       const row3 = el('div', 'div-actions');
       const learn3 = el('button', 'btn btn-ghost', '📖 Lesson');
       learn3.onclick = () => { state.showLesson = 'fractions'; render(); };
@@ -5311,7 +5684,7 @@ function renderStatsModal() {
       prac3.onclick = startFractionPractice;
       row3.appendChild(learn3);
       if (Stats.isUnlocked('fracops')) {
-        const learnOps = el('button', 'btn btn-ghost', '📖 Adding & number line');
+        const learnOps = el('button', 'btn btn-ghost', '📖 Adding & reading the line');
         learnOps.onclick = () => { state.showLesson = 'fracops'; render(); };
         row3.appendChild(learnOps);
       }
@@ -5710,8 +6083,11 @@ async function generatePlan(container, btn) {
       fractions: s.fractions.unlocked
         ? { attempts: s.fractions.attempts, accuracyPct: s.fractions.accuracy, masteryPct: s.fractions.mastery,
             subSkills: { naming: Stats.skillState('frac.fnam'), equivalence: Stats.skillState('frac.feq'), comparison: Stats.skillState('frac.fcmp'),
+                         placingOnNumberLine: Stats.skillState('frac.fpos'),
                          addSubtract: Stats.isUnlocked('fracops') ? Stats.skillState('frac.fadd') : 'locked',
-                         numberLine: Stats.isUnlocked('fracops') ? Stats.skillState('frac.fline') : 'locked' } }
+                         readingNumberLine: Stats.isUnlocked('fracops') ? Stats.skillState('frac.fline') : 'locked' },
+            numberLineAim: (() => { const t = Stats.placeTrend();
+              return t.n ? { avgMissPctOfLineLast5: t.recent, avgMissPctOfLineBefore: t.before, placementsMeasured: t.n } : 'no unaided placements yet'; })() }
         : 'locked',
       // Systematic error patterns from the raw wrong-answer log — the most
       // actionable input for a targeted plan.
@@ -5977,6 +6353,11 @@ setTimeout(focusFirstBox, 100);
 (function initCheckUnlocks() {
   const unlocked = _newlyUnlocked || Stats.checkUnlocks();
   if (unlocked) { state.showLesson = unlocked; render(); }
+  // Fractions were already open before the number line joined the basics:
+  // show the fractions lesson once more, so the first placement is not cold.
+  else if (Stats.isUnlocked('fractions') && Stats.hasSeen('fractionsLesson') && !Stats.hasSeen('fracLineLesson')) {
+    state.showLesson = 'fractions'; render();
+  }
 })();
 
 // On load, if a family code is set, pull + merge cloud progress
