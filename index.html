@@ -828,6 +828,12 @@ const Stats = (() => {
     const others = ['fnam', 'feq', 'fcmp'].filter(k => isMasteredState(skillState('frac.' + k))).length;
     return { line, others, have: (line ? 1 : 0) + Math.min(1, others), need: 2 };
   }
+  // Every fraction sub-skill open to the child is solid. Until then the quiz
+  // treats fractions as a domain still being learned, not one in rotation.
+  function fracSolid() {
+    const kinds = isUnlocked('fracops') ? FRAC_BASICS.concat(['fadd', 'fline']) : FRAC_BASICS;
+    return kinds.every(k => isMasteredState(skillState('frac.' + k)));
+  }
   function bigmulRecentRight() {
     const r = (data.skills.bigmul && data.skills.bigmul.recent) || '';
     return r.length < 8 ? Math.min(r.split('1').length - 1, MUL2_UNLOCK_AT - 1) : r.split('1').length - 1;
@@ -1508,7 +1514,7 @@ const Stats = (() => {
     }
     return Object.values(byKey).sort((x, y) => (x[tsField] || 0) - (y[tsField] || 0));
   }
-  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery, mulSeenCount, recentAccuracy, nextUnlock, divMasteredCount, wordSolidCount, bigmulRecentRight, fracBasicSolid, fracOpsProgress, recordPlace, placeTrend, skillP, isSlowFact, pickDueFacts, getHist, getErrlog, pickMasteredFact, dueBacklog, reviewQuota, getSnaps, repairSnaps, engineCheck, savePlan, getPlans, recordError, errorPatterns, getDaily, markDaily };
+  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery, mulSeenCount, recentAccuracy, nextUnlock, divMasteredCount, wordSolidCount, bigmulRecentRight, fracBasicSolid, fracOpsProgress, fracSolid, recordPlace, placeTrend, skillP, isSlowFact, pickDueFacts, getHist, getErrlog, pickMasteredFact, dueBacklog, reviewQuota, getSnaps, repairSnaps, engineCheck, savePlan, getPlans, recordError, errorPatterns, getDaily, markDaily };
 })();
 
 // Merge helpers for cross-device sync (keep the richer record, union history)
@@ -2802,12 +2808,19 @@ function newQuiz() {
   // of 3-digit + and − (long mastered by then) instead of two each.
   const lean = band === 'expert' && (wordOn || longOn || multiOn || geoOn || mul2On);
   const target = lean ? 8 : 6, asEach = lean ? 1 : 2;
+  // Fractions count as near-mastered only once every open fraction sub-skill
+  // is solid. Until then they are a domain being learned, in every band: a
+  // slot in every quiz, never the first one trimmed. (Assuming mastery here
+  // left a child who did not yet understand fractions one fraction question
+  // every few days.)
+  const fracLearn = fracOn && !Stats.fracSolid();
 
   // Allocate 6 non-add/sub slots by band — more mul-fact reps for novices
   // (easier, builds confidence), more challenge slots for experts.
   let mul, big, div, frac, rev = 0, word = 0, longdiv = 0, multi = 0, geo = 0, mul2 = 0;
   if (band === 'novice') {
-    mul = 6 - (divOn ? 1 : 0); big = 0; div = divOn ? 1 : 0; frac = 0;
+    frac = fracLearn ? 1 : 0;
+    mul = 6 - (divOn ? 1 : 0) - frac; big = 0; div = divOn ? 1 : 0;
   } else if (band === 'developing') {
     mul = 4 - (fracOn ? 1 : 0) - (geoOn ? 1 : 0); big = bigOn ? 1 : 0; div = divOn ? 1 : 0; frac = fracOn ? 1 : 0;
     geo = geoOn ? 1 : 0;
@@ -2817,10 +2830,10 @@ function newQuiz() {
     longdiv = longOn ? 1 : 0; multi = multiOn ? 1 : 0; geo = geoOn ? 1 : 0; mul2 = mul2On ? 1 : 0;
   } else if (lean) { // expert with learning domains open
     // The domains still being learned (word problems, long division, two-step
-    // problems) each
-    // get a slot and the weaker of them one more; the near-mastered domains
-    // (division, 2-digit ×, fractions) share what is left in rotation, so
-    // none of them is dropped for good.
+    // problems, area, 2-digit × 2-digit, and fractions until every fraction
+    // skill is solid) each get a slot and the weakest of them one more; the
+    // near-mastered domains (division, 2-digit ×, solid fractions) share what
+    // is left in rotation, so none of them is dropped for good.
     rev = Stats.reviewQuota(band); mul = 0;
     let budget = target - rev;
     // Once two-step problems are open, one-step word problems (their
@@ -2831,21 +2844,23 @@ function newQuiz() {
     if (multiOn) learning.push('multi');
     if (geoOn) learning.push('geo');
     if (mul2On) learning.push('mul2');
-    const give = { word: 0, longdiv: 0, multi: 0, geo: 0, mul2: 0 };
+    if (fracLearn) learning.push('frac');
+    const give = { word: 0, longdiv: 0, multi: 0, geo: 0, mul2: 0, frac: 0 };
     for (const d of learning) if (budget > 0) { give[d]++; budget--; }
     if (budget > 1) {
-      const weakest = learning.slice().sort((x, y) => Stats.skillP(x) - Stats.skillP(y))[0];
+      const p = d => Stats.skillP(d === 'frac' ? 'fractions' : d);
+      const weakest = learning.slice().sort((x, y) => p(x) - p(y))[0];
       give[weakest]++; budget--;
     }
     const pool = [];
     if (divOn) pool.push('div');
     if (bigOn) pool.push('big');
-    if (fracOn) pool.push('frac');
+    if (fracOn && !fracLearn) pool.push('frac');
     if (wordOn && multiOn) pool.push('word');
     for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
     const take = { div: 0, big: 0, frac: 0, word: 0 };
     for (let i = 0; i < budget && pool.length; i++) take[pool[i % pool.length]]++;
-    word = give.word + take.word; longdiv = give.longdiv; multi = give.multi; geo = give.geo; mul2 = give.mul2; div = take.div; big = take.big; frac = take.frac;
+    word = give.word + take.word; longdiv = give.longdiv; multi = give.multi; geo = give.geo; mul2 = give.mul2; div = take.div; big = take.big; frac = give.frac + take.frac;
   } else { // expert
     // Six slots for five demands, so the two near-mastered domains (2-digit ×
     // and fractions) alternate rather than one of them always being trimmed
@@ -2860,10 +2875,11 @@ function newQuiz() {
   // Backfill into mul if some domains are still locked.
   let used = mul + big + div + frac + rev + word + longdiv + multi + geo + mul2;
   if (used < target) mul += (target - used);
-  // Trim to exactly 6 by dropping from the hardest available domain.
+  // Trim to exactly 6 by dropping from the hardest available domain — but
+  // never the fractions slot while fractions are still being learned.
   used = mul + big + div + frac + rev + word + longdiv + multi + geo + mul2;
   while (used > target) {
-    if (frac > 0 && band !== 'expert') frac--;
+    if (frac > 0 && band !== 'expert' && !fracLearn) frac--;
     else if (big > 0) big--;
     else if (div > 0) div--;
     else if (mul > 1) mul--;
@@ -2873,6 +2889,11 @@ function newQuiz() {
     else if (geo > 1) geo--;
     else if (mul2 > 1) mul2--;
     else if (rev > 1) rev--;
+    // Every domain down to one slot and still over (practicing with most
+    // domains open): one-step word problems give way once two-step ones are
+    // open, then the fresh-fact slot. Without this the quiz ran to 11.
+    else if (word > 0 && multiOn) word--;
+    else if (mul > 0) mul--;
     else break;
     used = mul + big + div + frac + rev + word + longdiv + multi + geo + mul2;
   }
@@ -2946,8 +2967,12 @@ function wordQuiz() {
 function focusQuiz(compact) {
   const s = Stats.summary();
   const qs = [];
-  const factCap = compact ? 4 : 6;
-  const totalCap = compact ? 5 : 8;
+  // While fractions are still being learned the warm-up carries one, picked
+  // by weakness: the warm-up is where a miss gets fixed on the spot. It takes
+  // a fact slot, so the warm-up stays at 5-6 questions.
+  const fracItem = compact && Stats.isUnlocked('fractions') && !Stats.fracSolid();
+  const factCap = compact ? (fracItem ? 3 : 4) : 6;
+  const totalCap = compact ? (fracItem ? 4 : 5) : 8;
   let facts = s.weak.slice(0, factCap).map(w => ({ a: w.a, b: w.b }));
   if (facts.length < factCap) {
     const extra = Stats.pickMulFacts(factCap - facts.length);
@@ -2983,6 +3008,7 @@ function focusQuiz(compact) {
     const wSub = ws ? Stats.bucketWeight(`sub:${ws.k}`) : 1;
     if (wAdd >= wSub) qs.push(genAdd(wa ? wa.k : null));
     else qs.push(genSub(ws ? ws.k : null));
+    if (fracItem) qs.push(genFraction());
   } else {
     for (let i = 0; i < 2; i++) qs.push(genAdd(wa ? wa.k : null));
     for (let i = 0; i < 2; i++) qs.push(genSub(ws ? ws.k : null));
@@ -3462,7 +3488,7 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v70';
+const APP_VERSION = 'v71';
 const APP_UPDATED = '2026-10-07';
 // In-progress quiz survives refreshes/crashes/SW updates: every answer
 // keystroke snapshots the session to localStorage; a fresh page load resumes
