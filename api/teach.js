@@ -27,6 +27,10 @@ function validProblem(p) {
   if (p.type === 'fadd') return isNum(p.n1) && isNum(p.n2) && isNum(p.d) && p.d > 0 && p.d <= 12 && (p.op === '+' || p.op === '-') &&
                                 (p.op === '+' ? p.n1 + p.n2 <= p.d : p.n1 > p.n2);
   if (p.type === 'fline') return isNum(p.k) && isNum(p.d) && isNum(p.max) && p.d > 0 && p.d <= 12 && (p.max === 1 || p.max === 2) && p.k > 0 && p.k < p.d * p.max;
+  // A point that is on the line, and where the child put it, if anywhere.
+  if (p.type === 'fpos') return isNum(p.n) && isNum(p.d) && isNum(p.max) && Number.isInteger(p.n) && Number.isInteger(p.d) &&
+                                p.d >= 2 && p.d <= 12 && (p.max === 1 || p.max === 2) && p.n >= 1 && p.n <= p.d * p.max &&
+                                (p.placed == null || (isNum(p.placed) && p.placed >= 0 && p.placed <= p.max));
   if (p.type === 'ldiv') return isNum(p.a) && isNum(p.b) && isNum(p.q) && isNum(p.r) && p.b > 0 && p.a < 10000 &&
                                 p.r >= 0 && p.r < p.b && p.b * p.q + p.r === p.a;
   // Word problems carry their own story; bounded so the endpoint cannot be
@@ -63,6 +67,13 @@ function describe(p) {
   if (p.type === 'fline') {
     return `finding the fraction at a dot on a number line from 0 to ${p.max}, with each whole split into ${p.d} equal spaces; the dot is ${p.k} spaces from 0, so the answer is ${p.k}/${p.d}. ` +
       `Children often count the tick marks (${p.d + 1} from 0 to 1) instead of the spaces (${p.d}), so explain why the spaces are the pieces`;
+  }
+  if (p.type === 'fpos') {
+    const where = p.n < p.d ? 'less than one whole' : p.n === p.d ? 'exactly one whole' : 'more than one whole';
+    return `putting the fraction ${p.n}/${p.d} on a number line from 0 to ${p.max}. The answer: cut 0 to 1 into ${p.d} equal jumps, each 1/${p.d}; ` +
+      `${p.n}/${p.d} is ${p.n} of those jumps from 0, which is ${where}` + (p.placed != null ? `. The child put it at about ${p.placed}` : '') +
+      '. Teach it as counting jumps of one unit fraction from 0. Children often think a bigger bottom number makes a bigger fraction, ' +
+      'count the tick marks instead of the jumps, or treat a longer line as one whole, so make clear that 0 to 1 is one whole';
   }
   if (p.type === 'ldiv') {
     return `${p.a} ÷ ${p.b} with a remainder — the answer is ${p.q} remainder ${p.r}, because ${p.b} × ${p.q} = ${p.b * p.q} and ` +
