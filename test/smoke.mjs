@@ -85,6 +85,18 @@ async function placeAt(card, v, max) {
   await page.mouse.click(b.x + b.width * (30 + 540 * v / max) / 600, b.y + b.height * 64 / 112);
   await page.waitForTimeout(80);
 }
+// Answer a comparing or spot-the-mistake card through its buttons (the right
+// answer unless pick says otherwise). Picking a sign re-renders, so the card
+// is looked up again for each click.
+async function answerChoice(i, q, pick = {}) {
+  const card = async () => (await page.$$('.qcard'))[i];
+  if (q.type === 'fcmp') {
+    await (await (await card()).$(`.fcmp-btn:text-is("${pick.sign || q.ans}")`)).click();
+    await page.waitForTimeout(60);
+    if (q.ck) await (await (await card()).$(`.fcmp-why[data-key="${pick.why || q.ck}"]`)).click();
+  } else await (await (await card()).$(`.ferr-opt[data-key="${pick.key || q.ans}"]`)).click();
+  await page.waitForTimeout(60);
+}
 
 console.log('1. plain mixed quiz grades (via ready screen)');
 await page.goto(base);
@@ -817,7 +829,7 @@ const fr = await page.evaluate(() => {
            practice: fractionQuiz().filter(q => q.type === 'fadd' || q.type === 'fline').length };
 });
 check('adding and reading the line open once the number line and one more basic are solid (two other basics are not enough)',
-  fr.before === 'fcmp,feq,fnam,fpos' && !fr.at1 && !fr.at2 && fr.at3 === 'fracops' && fr.after === 'fadd,fcmp,feq,fline,fnam,fpos', JSON.stringify(fr));
+  fr.before === 'fcmp,feq,ferr,fnam,fpos' && !fr.at1 && !fr.at2 && fr.at3 === 'fracops' && fr.after === 'fadd,fcmp,feq,ferr,fline,fnam,fpos', JSON.stringify(fr));
 check('1500 of each: sums in range, equivalent answers accepted, added bottoms and counted ticks caught', fr.badCount === 0, fr.bad.join('; '));
 check('fraction practice covers both new kinds', fr.practice >= 2, `${fr.practice}`);
 
@@ -838,7 +850,7 @@ for (let i = 0; i < nFr; i++) {
     const [a, b] = await card.$$('input.frac-in');
     const v = frIn[i] || [String(q.ansNum), String(q.ansDen)];
     await a.fill(v[0]); await b.fill(v[1]);
-  } else if (q.type === 'fcmp') await (await card.$(`.fcmp-btn:text-is("${q.ans}")`)).click();
+  } else if (q.type === 'fcmp' || q.type === 'ferr') await answerChoice(i, q);
   else if (q.type === 'fpos') await placeAt(card, q.n / q.d, q.max);
   else await (await card.$('input')).fill(String(q.ans));
 }
@@ -881,7 +893,7 @@ const al = await page.evaluate(() => {
   const t0 = Date.now() - 3600000;
   Stats.importMerge({ hist: [0, 1, 2].map(i => ({ d: t0 + i * 60000, n: 10, c: 6, t: 300, k: 'quiz' })) });
   const lowBand = difficultyBand(), practQ = stat(many(60, () => newQuiz()));
-  for (const k of ['fnam', 'feq', 'fcmp', 'fpos']) for (let i = 0; i < 6; i++) { Stats.recordSkill('fractions', true, 9000); Stats.recordSkill('frac.' + k, true, 9000); }
+  for (const k of ['fnam', 'feq', 'fcmp', 'fpos', 'ferr']) for (let i = 0; i < 6; i++) { Stats.recordSkill('fractions', true, 9000); Stats.recordSkill('frac.' + k, true, 9000); }
   const newly = Stats.checkUnlocks();
   const opsOpenLearning = !Stats.fracSolid();          // level 2 just opened: still learning
   for (const k of ['fadd', 'fline']) for (let i = 0; i < 6; i++) { Stats.recordSkill('fractions', true, 9000); Stats.recordSkill('frac.' + k, true, 9000); }
@@ -963,7 +975,7 @@ for (let i = 0; i < nNp; i++) {
   const card = (await page.$$('.qcard'))[i];
   if (q.type === 'fpos') await placeAt(card, i in npAt ? npAt[i] : q.n / q.d, q.max);
   else if (q.type === 'fnam') { const [a, b] = await card.$$('input.frac-in'); await a.fill(String(q.ansNum)); await b.fill(String(q.ansDen)); }
-  else if (q.type === 'fcmp') await (await card.$(`.fcmp-btn:text-is("${q.ans}")`)).click();
+  else if (q.type === 'fcmp' || q.type === 'ferr') await answerChoice(i, q);
   else await (await card.$('input')).fill(String(q.ans));
 }
 await page.click('button:has-text("Check answers")');
@@ -1047,6 +1059,131 @@ await page.reload();
 await page.waitForSelector('.ready-start, .qcard');
 check('…and only once', !(await page.$('.modal')) && await page.evaluate(() => Stats.hasSeen('fracLineLesson')));
 await page.evaluate(() => { localStorage.clear(); });
+
+console.log('22. fractions: compare with a reason, spot the mistake, pictures beyond the bar');
+await page.goto(base);
+await page.waitForSelector('.ready-start, .qcard');
+const f3 = await page.evaluate(() => {
+  localStorage.clear(); Stats.reset(); Stats.importMerge({ unlocked: { fractions: true } });
+  const bad = [], kinds = new Set(), shapes = new Set(), ekinds = new Set();
+  let trueClaims = 0;
+  for (let i = 0; i < 1500; i++) {
+    const q = genFracCompare(), v1 = q.n1 / q.d1, v2 = q.n2 / q.d2;
+    kinds.add(q.ck);
+    if (q.ans !== (v1 < v2 ? '<' : v1 > v2 ? '>' : '=')) bad.push(`sign ${q.n1}/${q.d1} ${q.ans} ${q.n2}/${q.d2}`);
+    if ({ den: q.d1 !== q.d2 || q.n1 === q.n2, num: q.n1 !== q.n2 || q.d1 === q.d2, eq: v1 !== v2,
+          half: !((v1 < 0.5 && v2 > 0.5) || (v1 > 0.5 && v2 < 0.5)) || q.d1 === q.d2 || q.n1 === q.n2,
+          one: q.n1 !== q.d1 - 1 || q.n2 !== q.d2 - 1 || q.d1 === q.d2 }[q.ck]) bad.push(`kind ${q.ck}: ${q.n1}/${q.d1} vs ${q.n2}/${q.d2}`);
+    if (q.whys.length !== 3 || new Set(q.whys).size !== 3 || !q.whys.includes(q.ck) || !q.whys.includes('big')) bad.push('reasons ' + q.whys);
+    if (q.ck === 'den' && q.whys.includes('top')) bad.push('a true reason offered as a decoy');
+    const g = (sign, why) => answerCorrect({ ...q, given: sign, givenWhy: why });
+    if (!g(q.ans, q.ck) || g(q.ans, q.whys.find(k => k !== q.ck)) || g(q.ans === '<' ? '>' : '<', q.ck)) bad.push('grading ' + q.ck);
+    if (/undefined|NaN/.test(fcmpExplain(q))) bad.push('explanation ' + q.ck);
+    const e = genFracErr();
+    ekinds.add(e.ek); if (e.right) trueClaims++;
+    if (e.opts.map(o => o.k).sort().join(',') !== 'agree,decoy,fix' || e.ans !== (e.right ? 'agree' : 'fix')) bad.push('claim options ' + e.ek);
+    if (/undefined|NaN/.test(e.claim + e.explain + e.opts.map(o => o.text).join())) bad.push('claim text ' + e.ek);
+    if (e.pic && /undefined|NaN/.test(ferrPicEl(e.pic).outerHTML)) bad.push('claim picture ' + e.ek);
+    if (!answerCorrect({ ...e, given: e.ans }) || answerCorrect({ ...e, given: e.right ? 'fix' : 'agree' })) bad.push('claim grading ' + e.ek);
+    const n = genFracName(), fig = fracShapeEl(n);
+    shapes.add(n.shape);
+    const parts = fig.querySelectorAll('path, .frac-cell, .frac-dot').length, on = fig.querySelectorAll('path.on, .frac-cell.on, .frac-dot.on').length;
+    if (parts !== n.den || on !== n.shaded || n.cells.length !== n.shaded) bad.push(`picture ${n.shape} ${n.shaded}/${n.den}: ${on} of ${parts}`);
+  }
+  const legacyOk = answerCorrect({ type: 'fcmp', n1: 1, d1: 2, n2: 1, d2: 4, ans: '>', given: '>' });   // saved before reasons
+  Stats.importMerge({ unlocked: { fracops: true } });
+  const addLater = new Set(Array.from({ length: 600 }, () => genFracErr().ek)).has('addden');
+  return { bad: bad.slice(0, 4), badCount: bad.length, kinds: [...kinds].sort().join(','), shapes: [...shapes].sort().join(','),
+           ekinds: [...ekinds].sort().join(','), trueShare: trueClaims / 1500, legacyOk, addLater };
+});
+check('comparing: five kinds (same bottom, same top, equal, either side of a half, near 1), three reasons including the big-bottom decoy',
+  f3.badCount === 0 && f3.kinds === 'den,eq,half,num,one', f3.bad.join('; ') || f3.kinds);
+check('a comparison needs the right sign AND the right reason; ones saved before reasons still grade on the sign', f3.badCount === 0 && f3.legacyOk);
+check('spot the mistake: each misconception plus true claims (about a third); the adding one waits for level 2',
+  f3.ekinds === 'bigden,eq,flip,over1,past1,ticks,unequal,unit' && f3.trueShare > 0.25 && f3.trueShare < 0.42 && f3.addLater,
+  `${f3.ekinds} true=${f3.trueShare.toFixed(2)} adding later=${f3.addLater}`);
+check('naming pictures: bar, circle, grid and counters, shaded anywhere, every part drawn', f3.shapes === 'bar,circle,grid,set' && f3.badCount === 0, f3.shapes);
+
+// graded set through the real buttons: the right sign for the big-bottom
+// reason, and agreeing with a big-bottom claim
+await page.evaluate(() => {
+  localStorage.clear(); Stats.reset(); Stats.importMerge({ unlocked: { fractions: true }, seen: { fractionsLesson: true, fracLineLesson: true } });
+  startFractionPractice(); state.immediate = false;
+  state.quiz[0] = { ...genFracCompare('one'), n1: 7, d1: 8, n2: 5, d2: 6, ans: '>', id: 0, given: '' };
+  state.quiz[1] = { ...genFracErr('bigden'), id: 1, given: '' };
+  state.quiz[2] = { ...genFracName(), shape: 'circle', den: 6, cells: [0, 2, 3], shaded: 3, ansNum: 3, ansDen: 6, id: 2, given: '' };
+  render();
+});
+const f3n = await page.evaluate(() => state.quiz.length);
+for (let i = 0; i < f3n; i++) {
+  const q = await page.evaluate(i => state.quiz[i], i);
+  const card = (await page.$$('.qcard'))[i];
+  if (i === 0) await answerChoice(0, q, { sign: '>', why: 'big' });
+  else if (i === 1) await answerChoice(1, q, { key: 'agree' });
+  else if (q.type === 'fcmp' || q.type === 'ferr') await answerChoice(i, q);
+  else if (q.type === 'fpos') await placeAt(card, q.n / q.d, q.max);
+  else if (q.type === 'fnam') { const [a, b] = await card.$$('input.frac-in'); await a.fill(String(q.ansNum)); await b.fill(String(q.ansDen)); }
+  else await (await card.$('input')).fill(String(q.ans));
+}
+await page.click('button:has-text("Check answers")');
+await page.waitForTimeout(400);
+const f3r = await page.evaluate(() => {
+  const raw = Stats.exportRaw(), cards = [...document.querySelectorAll('.qcard')];
+  return { wrong: state.quiz.map((q, i) => answerCorrect(q) ? null : i).filter(x => x !== null).join(','),
+    errs: raw.errlog.slice(-2), rows: raw.hist.slice(-1)[0].q.slice(0, 3).map(r => r.slice(1, 4).join('|')),
+    diag0: (cards[0].querySelector('.diag') || {}).textContent || '', diag1: (cards[1].querySelector('.diag') || {}).textContent || '',
+    teach: [teachPayload(state.quiz[0]), teachPayload(state.quiz[1])] };
+});
+check('graded through the real buttons: the right sign for a wrong reason is wrong, so is agreeing with the claim, the circle is right',
+  f3r.wrong === '0,1', `wrong=${f3r.wrong}`);
+check('logged as right-sign-wrong-reason with the big-bottom idea, and as fooled by a big-bottom claim',
+  f3r.errs[0].k === 'fcmp' && f3r.errs[0].rw && f3r.errs[0].bigden && f3r.errs[0].g === '> · big bottom' && f3r.errs[1].k === 'ferr' && f3r.errs[1].fooled && f3r.errs[1].x[0] === 'bigden',
+  JSON.stringify(f3r.errs));
+check('the daily log shows the sign with its reason, and the answer to the claim', f3r.rows[0] === '> · big bottom|> · near 1|0' && f3r.rows[1] === 'agreed|no (real why)|0' && f3r.rows[2] === '3/6|3/6|1', JSON.stringify(f3r.rows));
+check('the cards say "right sign, wrong reason" with the gap to 1, and name the claim\'s mistake',
+  /Right sign, wrong reason/.test(f3r.diag0) && /1\/8 is the smaller gap/.test(f3r.diag0) && /made a mistake/.test(f3r.diag1) && /More pieces means smaller pieces/.test(f3r.diag1));
+check('"Teach me this" sends the reason kind and the claim', f3r.teach[0].how === 'one' && f3r.teach[1].type === 'ferr' && f3r.teach[1].right === false && /bigger than/.test(f3r.teach[1].text), JSON.stringify(f3r.teach));
+const f3pat = await page.evaluate(() => {
+  Stats.recordError({ d: Date.now() + 5, k: 'fcmp', x: [5, 6, 3, 4], g: '> · big bottom', ans: '> · near 1', rw: true, bigden: true });
+  Stats.recordError({ d: Date.now() + 6, k: 'ferr', x: ['bigden', '1 9 1 3 9 3'], g: 'agree', ans: 'fix', fooled: true });
+  return Stats.errorPatterns().filter(p => p.key === 'fcmp' || p.key === 'ferr').map(p => `${p.key}:${p.kind}: ${p.label}`);
+});
+check('both become named misconceptions for the parent', f3pat.some(t => /^fcmp:misconception: .*bigger bottom/.test(t)) &&
+  f3pat.some(t => /^ferr:misconception: .*a bigger bottom makes a bigger fraction/.test(t)), f3pat.join(' | '));
+
+// practice mode: picking the sign shows the reasons; the reason locks it
+await page.evaluate(() => {
+  startFractionPractice();
+  state.quiz[0] = { ...genFracCompare('half'), n1: 3, d1: 8, n2: 4, d2: 6, ans: '<', whys: ['half', 'big', 'top'], id: 0, given: '' };
+  state.quiz[1] = { ...genFracErr('over1'), id: 1, given: '' };
+  render();
+});
+const p0 = await page.evaluate(() => state.quiz[0]);
+await (await (await page.$$('.qcard'))[0].$('.fcmp-btn:text-is("<")')).click();
+await page.waitForTimeout(80);
+const mid = await page.evaluate(() => ({ imm: state.quiz[0]._imm || null, reasons: document.querySelectorAll('.qcard')[0].querySelectorAll('.fcmp-why').length }));
+await answerChoice(0, p0, { sign: '<', why: 'half' });
+const done0 = await page.evaluate(() => ({ cls: document.querySelectorAll('.qcard')[0].className, note: (document.querySelectorAll('.qcard')[0].querySelector('.fcmp-note') || {}).textContent || '' }));
+check('practice: the sign alone does not lock; the reason does, with the explanation',
+  mid.imm === null && mid.reasons === 3 && /imm-good/.test(done0.cls) && /3\/8 is less than a half/.test(done0.note), JSON.stringify({ mid, done0 }));
+await answerChoice(1, await page.evaluate(() => state.quiz[1]), { key: 'agree' });
+const done1 = await page.evaluate(() => ({ cls: document.querySelectorAll('.qcard')[1].className, note: (document.querySelectorAll('.qcard')[1].querySelector('.fcmp-note') || {}).textContent || '' }));
+check('practice: agreeing with a wrong claim locks it and says what the mistake was', /imm-fixed/.test(done1.cls) && /mistake: .* < 1/.test(done1.note), JSON.stringify(done1));
+
+// the hands-on strip in the fractions lesson
+await page.evaluate(() => { state.showLesson = 'fractions'; render(); });
+await page.waitForSelector('.lab');
+for (let i = 0; i < 3; i++) await page.click('.lab-plus');
+for (const i of [0, 2, 3]) await (await page.$$('.lab-cell'))[i].click();   // any 3 parts: the line measures the amount
+const labState = () => page.evaluate(() => ({ label: document.querySelector('.lab-label').textContent, dot: document.querySelector('.lab-dot').getBoundingClientRect().x,
+  done: document.querySelectorAll('.lab-task.done').length, note: document.querySelector('.lab-note').textContent }));
+const lab1 = await labState();
+await page.click('.lab-cut');
+const lab2 = await labState();
+check('the lesson strip: 4 parts with 3 coloured reads 3/4; cutting every part in 2 reads 6/8 at the same place, and all three tasks tick',
+  /3 of 4 equal parts/.test(lab1.label) && lab1.done === 2 && /6 of 8 equal parts/.test(lab2.label) && Math.abs(lab1.dot - lab2.dot) < 0.5 &&
+  lab2.done === 3 && /same number/.test(lab2.note), JSON.stringify({ lab1, lab2 }));
+await page.evaluate(() => { state.showLesson = null; localStorage.clear(); });
 
 console.log('13. a release is announced when the app is resumed, not only on reload');
 await page.goto(base);

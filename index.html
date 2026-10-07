@@ -391,6 +391,42 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .fpos-hint{font-size:12px;color:var(--ink-3);margin-top:2px}
 .fpos-note{font-size:13px;font-weight:600;color:var(--ink-2);margin-top:4px}
 .fpos-check{margin-top:6px;padding:8px 16px;font-size:15px}
+.frac-shape{display:inline-block}
+.frac-pie{display:block;width:120px;height:120px}
+.frac-pie path{fill:#fff;stroke:var(--brand-deep);stroke-width:2}
+.frac-pie path.on{fill:var(--brand)}
+.frac-grid{display:inline-grid;border:2px solid var(--brand-deep);border-radius:6px;overflow:hidden;background:#fff}
+.frac-grid .frac-cell{height:40px;border-right:1px solid var(--brand-soft-2);border-bottom:1px solid var(--brand-soft-2)}
+.frac-set{display:flex;flex-wrap:wrap;gap:8px;max-width:260px}
+.frac-dot{width:30px;height:30px;border-radius:50%;border:2px solid var(--brand-deep);background:#fff}
+.frac-dot.on{background:var(--brand)}
+.fcmp-why-row{margin-top:8px;flex-basis:100%}
+.fcmp-why-q{font-size:13px;font-weight:700;color:var(--ink-2);margin:6px 0 4px}
+.choice-list{display:flex;flex-direction:column;gap:6px}
+.choice-btn{text-align:left;font:inherit;font-size:14px;line-height:1.35;padding:8px 12px;border:2px solid var(--border);border-radius:10px;background:#fff;color:var(--ink);cursor:pointer}
+.choice-btn.chosen{border-color:var(--brand);background:var(--brand-soft);color:var(--brand-deep)}
+.choice-btn.correct{border-color:var(--ok);background:var(--ok-soft);color:var(--ok-deep)}
+.choice-btn.wrongpick{border-color:var(--bad);background:var(--bad-soft);color:var(--bad-deep);text-decoration:line-through}
+.choice-btn:disabled{cursor:default}
+.fcmp-note{margin-top:6px;font-size:13px;color:var(--ink-2);line-height:1.45}
+.ferr-claim{line-height:1.45}
+.ferr-q .frac-vis,.ferr-q .nl-fig{margin:4px 0 6px}
+.lab{border:1px solid var(--brand-soft-2);border-radius:12px;padding:10px 12px;margin:6px 0 10px;background:#fff}
+.lab-tasks{margin:0 0 8px;padding-left:22px;font-size:14px;color:var(--ink-2);line-height:1.6}
+.lab-task.done{color:var(--ok-deep);text-decoration:line-through}
+.lab-task.done::marker{content:'✓ '}
+.lab-ctl{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.lab-ctl .btn{padding:6px 12px;font-size:14px}
+.lab-strip{display:flex;height:52px;border:2px solid var(--brand-deep);border-radius:6px;overflow:hidden}
+.lab-cell{flex:1;border:0;border-right:2px solid var(--brand-soft-2);background:#fff;cursor:pointer;padding:0}
+.lab-cell:last-child{border-right:0}
+.lab-cell.on{background:var(--brand)}
+.lab-line svg{display:block;width:100%;height:auto;overflow:visible}
+.lab-line .nl-lbl{font-size:24px}
+.lab-amount{stroke:var(--ok);stroke-width:6;stroke-linecap:round}
+.lab-dot{fill:var(--ok);stroke:#fff;stroke-width:2}
+.lab-label{display:flex;align-items:center;gap:8px;margin-top:4px;font-size:15px;color:var(--ink-2)}
+.lab-note{margin:6px 0 0;font-size:14px;line-height:1.5;color:var(--brand-deep)}
 .m2-grid{display:grid;grid-template-columns:repeat(3,64px);gap:4px;margin:6px 0 8px;font-variant-numeric:tabular-nums}
 .m2-head{font-weight:700;color:var(--ink-3);text-align:center;padding:6px 0}
 .m2-cell{background:var(--brand-soft-2);border:1px solid var(--brand);border-radius:6px;text-align:center;padding:10px 0;font-weight:700;color:var(--ink)}
@@ -816,8 +852,8 @@ const Stats = (() => {
     return ['wjoin', 'wcompare', 'wgroups', 'wshare'].filter(k => isMasteredState(skillState('word.' + k))).length;
   }
   // Basic fraction sub-skills (naming, equivalence, comparing, placing on the
-  // number line) that are solid.
-  const FRAC_BASICS = ['fnam', 'feq', 'fcmp', 'fpos'];
+  // number line, spotting the mistake) that are solid.
+  const FRAC_BASICS = ['fnam', 'feq', 'fcmp', 'fpos', 'ferr'];
   function fracBasicSolid() {
     return FRAC_BASICS.filter(k => isMasteredState(skillState('frac.' + k))).length;
   }
@@ -1164,8 +1200,11 @@ const Stats = (() => {
   function recordError(e) {
     if (!e || !e.k) return;
     const log = data.errlog || (data.errlog = []);
-    // Same item+answer within 90s is a duplicate (double submit, replay bug)
-    if (log.slice(-15).some(x => x.k === e.k && x.g === e.g && e.d - x.d < 90000)) return;
+    // Same item+answer within 90s is a duplicate (double submit, replay bug).
+    // The item is the kind plus its operands: two different comparisons both
+    // answered "> · big bottom" are two mistakes, not one.
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    if (log.slice(-15).some(x => x.k === e.k && x.g === e.g && same(x.x, e.x) && e.d - x.d < 90000)) return;
     log.push(e);
     if (log.length > 200) data.errlog = log.slice(-200);
     save(data);
@@ -1207,9 +1246,19 @@ const Stats = (() => {
         if (flips >= 2) { kind = 'misconception'; label = `Flips fractions top↔bottom (${flips}×) — writes total/shaded instead of shaded/total`; }
         else label = `Naming fractions: missed ${list.length}×`;
       } else if (k === 'fcmp') {
-        const bigden = list.filter(e => e.bigden).length;
+        const bigden = list.filter(e => e.bigden).length, rw = list.filter(e => e.rw).length;
         if (bigden >= 2) { kind = 'misconception'; label = `Thinks a bigger bottom number means a bigger fraction (${bigden}×) — more pieces = smaller pieces`; }
+        else if (rw >= 2) label = `Comparing fractions: the right sign for the wrong reason (${rw}×) — ask "how do you know?" before accepting an answer`;
         else label = `Comparing fractions: missed ${list.length}×`;
+      } else if (k === 'ferr') {
+        const fooled = list.filter(e => e.fooled);
+        if (fooled.length >= 2) {
+          const by = {};
+          for (const e of fooled) if (e.x && e.x[0]) by[e.x[0]] = (by[e.x[0]] || 0) + 1;
+          const top = Object.entries(by).sort((p, q) => q[1] - p[1])[0];
+          kind = 'misconception';
+          label = `Spot the mistake: agrees with wrong ideas (${fooled.length}×)${top ? ` — most often "${FERR_IDEA[top[0]] || top[0]}"` : ''}`;
+        } else label = `Spot the mistake: missed ${list.length}×`;
       } else if (k.indexOf('ldiv.') === 0) {
         const big = list.filter(e => e.bigrem).length, nor = list.filter(e => e.norem).length, zs = list.filter(e => e.zskip).length;
         const nm = { 'ldiv.rem': 'Remainders', 'ldiv.long2': '2-digit long division', 'ldiv.long3': '3-digit long division' }[k] || 'Long division';
@@ -1938,13 +1987,24 @@ function mulQuestion(a, b) {
 }
 
 // ---------- Fractions (CC grade 3: denominators 2,3,4,6,8) ----------
-function isFracQ(q) { return ['fnam', 'feq', 'fcmp', 'fpos', 'fadd', 'fline'].includes(q.type); }
+function isFracQ(q) { return ['fnam', 'feq', 'fcmp', 'fpos', 'ferr', 'fadd', 'fline'].includes(q.type); }
 const FRAC_DENS = [2, 3, 4, 6, 8];
 const fracReview = () => Stats.skillState('fractions') !== 'fluent';
+const pickOf = a => a[rint(0, a.length - 1)];
+function shuffled(a) {
+  const b = a.slice();
+  for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; }
+  return b;
+}
+// Naming a fraction from a picture. Not always a bar shaded from the left:
+// a circle, a grid or a set of counters, with the shaded parts anywhere, so
+// what carries over is "shaded parts out of equal parts", not a picture habit.
 function genFracName() {
   const den = FRAC_DENS[rint(0, FRAC_DENS.length - 1)];
   const shaded = rint(1, den - 1);
-  return { type: 'fnam', den, shaded, ansNum: shaded, ansDen: den, label: 'Fractions · name', isReview: fracReview() };
+  const shape = pickOf(['bar', 'circle', 'set'].concat(den >= 4 ? ['grid'] : []));
+  const cells = shuffled(Array.from({ length: den }, (_, i) => i)).slice(0, shaded).sort((a, b) => a - b);
+  return { type: 'fnam', den, shaded, shape, cells, ansNum: shaded, ansDen: den, label: 'Fractions · name', isReview: fracReview() };
 }
 function genFracEquiv() {
   const pairs = [[2, 4], [2, 6], [2, 8], [3, 6], [4, 8]];
@@ -1953,27 +2013,162 @@ function genFracEquiv() {
   const n1 = rint(1, d1 - 1);
   return { type: 'feq', n1, d1, d2, ans: n1 * m, label: 'Fractions · equal', isReview: fracReview() };
 }
-function genFracCompare() {
+// Comparing, and saying why. Picking the reason is a light self-explanation:
+// "right sign, wrong reason" exposes a rule or a guess (a child with the
+// whole-number bias gets 7/8 > 5/6 right because 8 > 6). Kinds: same bottom,
+// same top, equal, either side of a half, each one piece short of 1.
+const FCMP_WHY = {
+  den: { tag: 'same size', text: 'Same-size pieces: more pieces is more' },
+  num: { tag: 'big pieces', text: 'Same number of pieces: fewer cuts make bigger pieces' },
+  eq: { tag: 'same spot', text: 'They land on the same place on the number line' },
+  half: { tag: 'vs a half', text: 'One is less than a half, the other is more' },
+  one: { tag: 'near 1', text: 'Each is one piece short of 1, and the smaller missing piece is closer to 1' },
+  big: { tag: 'big bottom', text: 'The bigger bottom number makes the bigger fraction' },
+  top: { tag: 'big top', text: 'The bigger top number makes the bigger fraction' },
+};
+// Two wrong reasons per kind: the whole-number one, and a real reason that
+// does not apply to this pair.
+const FCMP_DECOYS = { den: ['big', 'eq'], num: ['big', 'den'], eq: ['big', 'den'], half: ['big', 'top'], one: ['big', 'half'] };
+const FCMP_KINDS = ['den', 'num', 'eq', 'half', 'one'];
+function genFracCompare(kind) {
+  kind = kind || pickOf(FCMP_KINDS);
   let n1, d1, n2, d2;
-  const c = rint(0, 2);
-  if (c === 0) { // same numerator, different denominator
-    const n = rint(1, 2); d1 = FRAC_DENS[rint(0, 4)]; do { d2 = FRAC_DENS[rint(0, 4)]; } while (d2 === d1);
-    n1 = Math.min(n, d1 - 1) || 1; n2 = Math.min(n, d2 - 1) || 1;
-  } else if (c === 1) { // same denominator, different numerator
-    d1 = d2 = FRAC_DENS[rint(1, 4)];
+  if (kind === 'den') {
+    d1 = d2 = pickOf([3, 4, 6, 8]);
     n1 = rint(1, d1 - 1); do { n2 = rint(1, d1 - 1); } while (n2 === n1);
-  } else { // equivalent → '='
-    const pairs = [[1, 2, 2, 4], [1, 2, 3, 6], [1, 3, 2, 6], [2, 4, 1, 2], [2, 8, 1, 4]];
-    [n1, d1, n2, d2] = pairs[rint(0, pairs.length - 1)];
+  } else if (kind === 'num') {
+    const n = rint(1, 2), dens = FRAC_DENS.filter(d => d > n);
+    d1 = pickOf(dens); do { d2 = pickOf(dens); } while (d2 === d1);
+    n1 = n2 = n;
+  } else if (kind === 'eq') {
+    [n1, d1, n2, d2] = pickOf([[1, 2, 2, 4], [1, 2, 3, 6], [1, 3, 2, 6], [2, 4, 1, 2], [2, 8, 1, 4], [3, 4, 6, 8], [2, 3, 4, 6], [4, 8, 1, 2]]);
+  } else if (kind === 'half') {
+    // one below a half, one above, not sharing a top or a bottom
+    do {
+      d1 = pickOf([3, 4, 6, 8]); n1 = rint(1, Math.ceil(d1 / 2) - 1);
+      d2 = pickOf([3, 4, 6, 8]); n2 = rint(Math.floor(d2 / 2) + 1, d2 - 1);
+    } while (d1 === d2 || n1 === n2);
+    if (Math.random() < 0.5) [n1, d1, n2, d2] = [n2, d2, n1, d1];
+  } else { // one: (d-1)/d against (e-1)/e
+    d1 = pickOf([3, 4, 6, 8]); do { d2 = pickOf([3, 4, 6, 8]); } while (d2 === d1);
+    n1 = d1 - 1; n2 = d2 - 1;
   }
   const lhs = n1 * d2, rhs = n2 * d1;
   const ans = lhs < rhs ? '<' : lhs > rhs ? '>' : '=';
-  return { type: 'fcmp', n1, d1, n2, d2, ans, label: 'Fractions · compare', isReview: fracReview() };
+  return { type: 'fcmp', ck: kind, n1, d1, n2, d2, ans, whys: shuffled([kind].concat(FCMP_DECOYS[kind])),
+           label: 'Fractions · compare', isReview: fracReview() };
 }
+// Why the comparison comes out the way it does, for this pair.
+function fcmpExplain(q) {
+  const a = `${q.n1}/${q.d1}`, b = `${q.n2}/${q.d2}`, s = `${a} ${q.ans} ${b}`;
+  if (q.ck === 'den') return `${s}: both are ${pieceName(q.d1)}, and ${Math.max(q.n1, q.n2)} of them is more than ${Math.min(q.n1, q.n2)}.`;
+  if (q.ck === 'num') {
+    const lo = Math.min(q.d1, q.d2), hi = Math.max(q.d1, q.d2);
+    return `${s}: both have ${q.n1} piece${q.n1 > 1 ? 's' : ''}, and ${pieceName(lo)} are bigger than ${pieceName(hi)}: fewer cuts, bigger pieces.`;
+  }
+  if (q.ck === 'eq') return `${s}: they land on the same place on the number line, so they are the same number.`;
+  if (q.ck === 'half') {
+    const [sm, lg] = q.n1 * q.d2 < q.n2 * q.d1 ? [[q.n1, q.d1], [q.n2, q.d2]] : [[q.n2, q.d2], [q.n1, q.d1]];
+    return `${s}: ${sm[0]}/${sm[1]} is less than a half (half of ${sm[1]} is ${sm[1] / 2}), and ${lg[0]}/${lg[1]} is more than a half.`;
+  }
+  if (q.ck === 'one') {
+    const hi = Math.max(q.d1, q.d2);
+    return `${s}: ${a} is 1/${q.d1} short of 1 and ${b} is 1/${q.d2} short. 1/${hi} is the smaller gap, so ${hi - 1}/${hi} is closer to 1.`;
+  }
+  return s;
+}
+// Spot the mistake: another child's claim about fractions, right or wrong,
+// and the child decides why. Each wrong claim is one of the misconceptions
+// the app already detects; about a third of the claims are right, so "wrong"
+// is never a safe guess. Comparing a wrong idea with the right one helped
+// children shed decimal misconceptions (Durkin & Rittle-Johnson 2012).
+// Option keys: 'agree' (the claim is right), 'fix' (wrong, for the real
+// reason), 'decoy' (wrong, for a wrong reason).
+const FERR_KINDS = ['bigden', 'flip', 'unequal', 'ticks', 'over1', 'addden', 'eq', 'unit', 'past1'];
+const FERR_TRUE = ['eq', 'unit', 'past1'];
+function genFracErr(kind) {
+  if (!kind) {
+    const wrong = FERR_KINDS.filter(k => !FERR_TRUE.includes(k) && (k !== 'addden' || Stats.isUnlocked('fracops')));
+    kind = Math.random() < 0.33 ? pickOf(FERR_TRUE) : pickOf(wrong);
+  }
+  const who = pickOf(W_NAMES);
+  let claim, fix, decoy, explain, pic = null;
+  if (kind === 'bigden') {
+    const a = pickOf([2, 3, 4, 6]); let b; do { b = pickOf([3, 4, 6, 8]); } while (b <= a);
+    claim = `${who} says 1/${b} is bigger than 1/${a}, because ${b} is bigger than ${a}.`;
+    fix = `No: cut into ${b}, the pieces are smaller than cut into ${a}`;
+    decoy = 'No: they are equal, both have 1 on top';
+    explain = `More pieces means smaller pieces, so 1/${b} < 1/${a}.`;
+  } else if (kind === 'flip') {
+    const d = pickOf([3, 4, 6, 8]), n = rint(1, d - 1);
+    pic = { kind: 'bar', den: d, shaded: n };
+    claim = `${who} says this shows ${d}/${n}.`;
+    fix = `No: top is the shaded parts, bottom is all the parts: ${n}/${d}`;
+    decoy = `No: it shows ${d - n}/${d}`;
+    explain = `${n} of ${d} equal parts are shaded: ${n}/${d}. The bottom number is how many parts make the whole.`;
+  } else if (kind === 'unequal') {
+    const d = pickOf([3, 4]);
+    pic = { kind: 'unequal', widths: shuffled(d === 3 ? [3, 2, 1] : [4, 3, 2, 1]), shaded: rint(0, d - 1) };
+    claim = `${who} says 1/${d} of this bar is shaded.`;
+    fix = `No: the ${d} parts are not equal, so they are not ${pieceName(d)}`;
+    decoy = `No: it shows 1/${d + 1}`;
+    explain = `Fractions need equal parts. These ${d} parts are different sizes, so one of them is not 1/${d}.`;
+  } else if (kind === 'ticks') {
+    const d = pickOf([3, 4, 5, 6]), k = rint(1, d - 1);
+    pic = { kind: 'line', d, k };
+    claim = `${who} says the dot is at ${k}/${d + 1}, because there are ${d + 1} marks.`;
+    fix = `No: count the ${d} spaces, not the ${d + 1} marks: ${k}/${d}`;
+    decoy = `No: the dot is at ${k}`;
+    explain = `From 0 to 1 there are ${d} equal spaces, so each is 1/${d}. The dot is ${k} spaces from 0: ${k}/${d}.`;
+  } else if (kind === 'over1') {
+    const b = pickOf([3, 4, 6, 8]), a = rint(2, b - 1);
+    claim = `${who} says ${a}/${b} is bigger than 1, because ${a} is bigger than 1.`;
+    fix = `No: ${b}/${b} make 1, and ${a}/${b} is less than that`;
+    decoy = `No: ${a}/${b} is exactly 1`;
+    explain = `${a}/${b} is ${a} ${pieceName(b)}. It takes ${b} ${pieceName(b)} to make 1, so ${a}/${b} < 1.`;
+  } else if (kind === 'addden') {
+    const d = pickOf([3, 4, 5, 6, 8]), n1 = rint(1, d - 2), n2 = rint(1, d - 1 - n1);
+    claim = `${who} says ${n1}/${d} + ${n2}/${d} = ${n1 + n2}/${2 * d}.`;
+    fix = `No: the pieces are still ${pieceName(d)}: ${n1 + n2}/${d}`;
+    decoy = `No: it is ${n1 + n2}/${d * d}`;
+    explain = `${n1} ${n1 > 1 ? pieceName(d) : pieceName(d, true)} and ${n2} more make ${n1 + n2} ${pieceName(d)}: ${n1 + n2}/${d}. The pieces do not get smaller.`;
+  } else if (kind === 'eq') {
+    const [n, d] = pickOf([[1, 2], [1, 3], [1, 4], [2, 3], [3, 4]]), m = pickOf([2, 3]);
+    claim = `${who} says ${n}/${d} = ${n * m}/${d * m}, because they land on the same place on the number line.`;
+    fix = `No: ${n * m}/${d * m} is bigger, its numbers are bigger`;
+    decoy = `No: ${n * m}/${d * m} is smaller, its pieces are smaller`;
+    explain = `Cut each ${pieceName(d, true)} into ${m}: there are ${m} times as many pieces, and ${m} times as many taken. Same place, same number.`;
+  } else if (kind === 'unit') {
+    const a = pickOf([2, 3, 4]); let b; do { b = pickOf([3, 4, 6, 8]); } while (b <= a);
+    claim = `${who} says 1/${a} is bigger than 1/${b}, because ${pieceName(a)} are bigger pieces than ${pieceName(b)}.`;
+    fix = `No: ${b} is bigger than ${a}, so 1/${b} is bigger`;
+    decoy = 'No: they are equal, both have 1 on top';
+    explain = `Cut into ${a}, each piece is bigger than cut into ${b}, so 1/${a} > 1/${b}.`;
+  } else { // past1
+    const b = pickOf([2, 3, 4]), a = rint(b + 1, 2 * b - 1);
+    claim = `${who} says ${a}/${b} is more than 1, because ${b}/${b} is already 1.`;
+    fix = 'No: a fraction is always less than 1';
+    decoy = 'No: the top number has to be smaller than the bottom';
+    explain = `${b}/${b} = 1, and ${a}/${b} is ${a - b} more ${a - b > 1 ? pieceName(b) : pieceName(b, true)}, so it is more than 1.`;
+  }
+  const right = FERR_TRUE.includes(kind);
+  const opts = shuffled([{ k: 'agree', text: `${who} is right` }, { k: 'fix', text: fix }, { k: 'decoy', text: decoy }]);
+  return { type: 'ferr', ek: kind, who, claim, opts, pic, right, ans: right ? 'agree' : 'fix', explain,
+           label: 'Fractions · spot the mistake', isReview: fracReview() };
+}
+// Short daily-log tags for an answer to a claim.
+function ferrTag(q, k) {
+  if (!k) return '';
+  if (k === 'agree') return 'agreed';
+  return q.right ? 'disagreed' : k === 'fix' ? 'no (real why)' : 'no (wrong why)';
+}
+// The misconception each wrong claim carries, for the parent's patterns.
+const FERR_IDEA = { bigden: 'a bigger bottom makes a bigger fraction', flip: 'top and bottom swapped', unequal: 'unequal parts can still be quarters',
+  ticks: 'count the marks on a number line', over1: 'a/b is more than 1 when a > 1', addden: 'add the bottoms too' };
 // Pick which fraction sub-skill to test, weighted by weakness (spaced-
 // repetition weight; unseen sub-skills weigh 2.5 so coverage is guaranteed).
 function pickFracType() {
-  const types = Stats.isUnlocked('fracops') ? ['fnam', 'feq', 'fcmp', 'fpos', 'fadd', 'fline'] : ['fnam', 'feq', 'fcmp', 'fpos'];
+  const types = Stats.isUnlocked('fracops') ? ['fnam', 'feq', 'fcmp', 'fpos', 'ferr', 'fadd', 'fline'] : ['fnam', 'feq', 'fcmp', 'fpos', 'ferr'];
   const ws = types.map(t => Stats.factWeight(Stats.getSkill('frac.' + t)));
   let r = Math.random() * ws.reduce((a, b) => a + b, 0);
   for (let i = 0; i < types.length; i++) { r -= ws[i]; if (r <= 0) return types[i]; }
@@ -1982,7 +2177,7 @@ function pickFracType() {
 function genFraction() {
   const t = pickFracType();
   return t === 'fnam' ? genFracName() : t === 'feq' ? genFracEquiv() : t === 'fcmp' ? genFracCompare()
-       : t === 'fpos' ? genFracPos() : t === 'fadd' ? genFracAdd() : genFracLine();
+       : t === 'fpos' ? genFracPos() : t === 'ferr' ? genFracErr() : t === 'fadd' ? genFracAdd() : genFracLine();
 }
 // Level 2 (CCSS 4.NF.B.3a, 3.NF.A.2). Adding like fractions: the classic error
 // adds the bottoms too (3/8 + 2/8 = 5/16). Any equivalent answer is accepted.
@@ -2149,7 +2344,8 @@ function fracTip(q) {
   if (q.type === 'fpos') return 'Bottom number: how many equal jumps make 1. Top number: how many jumps to take from 0.';
   if (q.type === 'fnam') return 'Top = shaded parts. Bottom = total equal parts.';
   if (q.type === 'feq') return `Multiply top and bottom by the same number (×${q.d2 / q.d1}).`;
-  return 'Same top? More pieces means each is smaller. Same bottom? Bigger top wins.';
+  if (q.type === 'ferr') return 'Check the claim yourself first: picture it, or put the fractions on a number line.';
+  return 'Picture both on a number line. Same-size pieces? Same number of pieces? More or less than a half? How close to 1?';
 }
 
 /* ---------- Word problems: applying the operations ---------- */
@@ -2942,9 +3138,9 @@ function bigmulQuiz() {
 }
 function fractionQuiz() {
   const qs = [];
-  // One of each sub-skill guaranteed (coverage), then five more weighted
+  // One of each open sub-skill guaranteed (coverage), the rest weighted
   // toward whichever sub-skill is weakest right now.
-  qs.push(genFracName()); qs.push(genFracEquiv()); qs.push(genFracCompare()); qs.push(genFracPos());
+  qs.push(genFracName()); qs.push(genFracEquiv()); qs.push(genFracCompare()); qs.push(genFracPos()); qs.push(genFracErr());
   if (Stats.isUnlocked('fracops')) { qs.push(genFracAdd()); qs.push(genFracLine()); }
   while (qs.length < 8) qs.push(genFraction());
   qs.push(genAdd(Stats.pickBucket('add')));
@@ -3069,14 +3265,33 @@ function diagFraction(q) {
     if (g === q.n1) return { why: `You kept the top the same. The bottom grew ${m}×, so the top must too.`, work, tip: `${q.n1} × ${m} = ${q.ans}.` };
     return { why: `To keep the same value, multiply top and bottom by the same number (${m}).`, work, tip: `${q.n1} × ${m} = ${q.ans}.` };
   }
-  // fcmp
-  const work = `Make the bottoms match: ${q.n1}/${q.d1} = ${q.n1 * q.d2}/${q.d1 * q.d2}, ${q.n2}/${q.d2} = ${q.n2 * q.d1}/${q.d1 * q.d2}. So ${q.n1}/${q.d1} <b>${q.ans}</b> ${q.n2}/${q.d2}.`;
+  if (q.type === 'ferr') {
+    const why = !q.given ? 'You did not pick an answer.'
+      : q.right ? `${q.who} was right. ${q.explain}`
+      : q.given === 'agree' ? `${q.who} made a mistake${FERR_IDEA[q.ek] ? `: "${FERR_IDEA[q.ek]}" is not true` : ''}. ${q.explain}`
+      : `${q.who} is wrong, but not for that reason. ${q.explain}`;
+    return { why, work: htmlEsc(`${q.claim}\n${q.right ? 'Right' : 'Wrong'}: ${q.explain}`),
+             tip: 'Test a claim yourself first: picture it, or put the fractions on a number line.' };
+  }
+  // fcmp: the sign, then the reason (questions saved before reasons existed
+  // have no q.ck and are judged on the sign alone)
+  const work = (q.ck ? htmlEsc(fcmpExplain(q)) + '\n' : '') +
+    `Check with the same bottom: ${q.n1}/${q.d1} = ${q.n1 * q.d2}/${q.d1 * q.d2}, ${q.n2}/${q.d2} = ${q.n2 * q.d1}/${q.d1 * q.d2}. So ${q.n1}/${q.d1} <b>${htmlEsc(q.ans)}</b> ${q.n2}/${q.d2}.`;
   let tip;
-  if (q.d1 === q.d2) tip = 'Same bottom — the bigger top is bigger.';
+  if (q.ck) tip = `The reason that fits: ${FCMP_WHY[q.ck].text}.`;
+  else if (q.d1 === q.d2) tip = 'Same bottom — the bigger top is bigger.';
   else if (q.n1 === q.n2) tip = 'Same top — more pieces means each piece is smaller.';
   else tip = 'Give both fractions the same bottom number, then compare the tops.';
-  return { why: q.given ? `Not quite — ${q.n1}/${q.d1} ${q.ans} ${q.n2}/${q.d2}.` : 'You didn\'t pick one.', work, tip };
+  const gw = q.givenWhy && FCMP_WHY[q.givenWhy];
+  let why;
+  if (!q.given) why = 'You didn\'t pick one.';
+  else if (!q.ck) why = `Not quite — ${q.n1}/${q.d1} ${q.ans} ${q.n2}/${q.d2}.`;
+  else if (q.given !== q.ans) why = `Not quite${q.givenWhy === 'big' ? ': a bigger bottom number means smaller pieces, not a bigger fraction' : ''}. ${fcmpExplain(q)}`;
+  else if (!gw) why = `Right sign, but which reason? ${fcmpExplain(q)}`;
+  else why = `Right sign, wrong reason: "${gw.text}" is not why. ${fcmpExplain(q)}`;
+  return { why, work, tip };
 }
+const htmlEsc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 // Remainder and long-division mistakes each need different teaching: a
 // remainder as big as the divisor means another group still fits; a
@@ -3488,7 +3703,7 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v71';
+const APP_VERSION = 'v72';
 const APP_UPDATED = '2026-10-07';
 // In-progress quiz survives refreshes/crashes/SW updates: every answer
 // keystroke snapshots the session to localStorage; a fresh page load resumes
@@ -3618,6 +3833,7 @@ function qSig(q) {
   if (q.type === 'fadd') return `fadd:${q.n1}${q.op}${q.n2}/${q.d}`;
   if (q.type === 'fline') return `fline:${q.k}/${q.d}:${q.max}`;
   if (q.type === 'fpos') return `fpos:${q.n}/${q.d}:${q.max}`;
+  if (q.type === 'ferr') return `ferr:${q.claim}`;
   return `${q.type}:${q.a},${q.b}`;
 }
 function startNew() {
@@ -3629,7 +3845,7 @@ function startNew() {
   const isAS = q => q.type === 'add' || q.type === 'sub';
   const unanswered = (!state.submitted && Array.isArray(state.quiz))
     ? state.quiz.filter(q => !answered(q))
-        .map(q => ({ ...q, given: '', givenNum: '', givenDen: '', givenQ: '', givenR: '', _t0: undefined, _t1: undefined, _imm: undefined, _retype: undefined, _priorState: undefined }))
+        .map(q => ({ ...q, given: '', givenNum: '', givenDen: '', givenQ: '', givenR: '', givenWhy: '', _t0: undefined, _t1: undefined, _imm: undefined, _retype: undefined, _priorState: undefined }))
     : [];
   const stepInfo = composeDailyStep();
   let fresh = stepInfo.quiz;
@@ -3686,7 +3902,7 @@ function startFocus() {
 function retryWrong() {
   const wrong = state.quiz.filter(q => !answerCorrect(q));
   if (!wrong.length) { startNew(); return; }
-  state.quiz = wrong.map((q, i) => ({ ...q, id: i, given: '', givenNum: '', givenDen: '', givenQ: '', givenR: '', _imm: undefined, _retype: undefined, _t0: undefined, _t1: undefined }));
+  state.quiz = wrong.map((q, i) => ({ ...q, id: i, given: '', givenNum: '', givenDen: '', givenQ: '', givenR: '', givenWhy: '', _imm: undefined, _retype: undefined, _t0: undefined, _t1: undefined }));
   state.phase = 'quiz';
   state.immediate = true; // relearning missed items → immediate corrective feedback
   state.isPractice = true; // don't log a partial set to history/streak
@@ -3722,8 +3938,18 @@ function errEntry(q) {
              flip: num(q.givenNum) === q.den && num(q.givenDen) === q.shaded };
   }
   if (q.type === 'fcmp') {
-    return { d, k: 'fcmp', g: String(q.given || ''), ans: q.ans, sc,
-             bigden: q.n1 === q.n2 && ((q.given === '>' && q.d1 > q.d2) || (q.given === '<' && q.d2 > q.d1)) };
+    // bigden: the whole-number reading, by the sign on a same-top pair or by
+    // the reason picked; rw: the right sign for a wrong reason.
+    const why = q.givenWhy || '';
+    return { d, k: 'fcmp', x: [q.n1, q.d1, q.n2, q.d2], sc,
+             g: String(q.given || '') + (why && FCMP_WHY[why] ? ' · ' + FCMP_WHY[why].tag : ''),
+             ans: q.ans + (q.ck ? ' · ' + FCMP_WHY[q.ck].tag : ''),
+             bigden: (q.n1 === q.n2 && ((q.given === '>' && q.d1 > q.d2) || (q.given === '<' && q.d2 > q.d1))) || why === 'big',
+             rw: q.given === q.ans && !!q.ck && why !== q.ck };
+  }
+  if (q.type === 'ferr') {
+    return { d, k: 'ferr', x: [q.ek, q.claim.replace(/\D+/g, ' ').trim()], g: String(q.given || ''), ans: q.ans, sc,
+             fooled: !q.right && q.given === 'agree', doubted: q.right && !!q.given && q.given !== 'agree' };
   }
   if (q.type === 'fadd' || q.type === 'fline') {
     const miss = fracOpMiss(q);
@@ -4038,13 +4264,15 @@ function answerCorrect(q) {
   if (q.type === 'ldiv') { const g = ldivGiven(q); return g.q === q.ans && g.r === q.rem; }
   if (q.type === 'fadd' || q.type === 'fline') return fracSame(q);
   if (q.type === 'fnam') return Number(q.givenNum) === q.ansNum && Number(q.givenDen) === q.ansDen;
-  if (q.type === 'fcmp') return q.given === q.ans;
+  if (q.type === 'fcmp') return q.given === q.ans && (!q.ck || q.givenWhy === q.ck);
   if (q.type === 'fpos') return fposHit(q, fposGiven(q));
+  if (q.type === 'ferr') return q.given === q.ans;
   return Number(q.given) === q.ans;
 }
 function answerText(q) {
   if (q.type === 'ldiv') return `${q.ans} R ${q.rem}`;
   if (q.type === 'fnam' || q.type === 'fadd' || q.type === 'fline' || q.type === 'fpos') return q.ansNum + '/' + q.ansDen;
+  if (q.type === 'ferr') return (q.opts.find(o => o.k === q.ans) || {}).text || q.ans;
   return String(q.ans);
 }
 function wordKindLabel(k) {
@@ -4061,6 +4289,7 @@ function exprText(q) {
   if (q.type === 'fadd') return `${q.n1}/${q.d} ${q.op} ${q.n2}/${q.d}`;
   if (q.type === 'fline') return 'the dot';
   if (q.type === 'fpos') return `${q.n}/${q.d} on the line`;
+  if (q.type === 'ferr') return `${q.who}'s claim`;
   if (q.type === 'ldiv') return `${q.a} ÷ ${q.b}`;
   if (q.type === 'mul2') return `${q.a} × ${q.b}`;
   if (q.type === 'word') return q.op || '';
@@ -4348,9 +4577,46 @@ function fracMini(num, den, cls) {
   f.appendChild(el('span', 'frac-den', String(den)));
   return f;
 }
-function barEl(den, shaded) {
+function barEl(den, shaded, cells) {
   const bar = el('div', 'frac-vis');
-  for (let i = 0; i < den; i++) bar.appendChild(el('div', 'frac-cell' + (i < shaded ? ' on' : '')));
+  for (let i = 0; i < den; i++) bar.appendChild(el('div', 'frac-cell' + ((cells ? cells.includes(i) : i < shaded) ? ' on' : '')));
+  return bar;
+}
+// The naming picture: a bar, a circle cut into equal slices, a grid, or a
+// set of counters, shaded where q.cells says (older questions: from the left).
+function fracShapeEl(q) {
+  const on = i => q.cells ? q.cells.includes(i) : i < q.shaded;
+  if (q.shape === 'circle') {
+    const r = 54, c = 60;
+    let body = '';
+    for (let i = 0; i < q.den; i++) {
+      const a0 = (i / q.den) * 2 * Math.PI - Math.PI / 2, a1 = ((i + 1) / q.den) * 2 * Math.PI - Math.PI / 2;
+      const p = a => `${(c + r * Math.cos(a)).toFixed(2)} ${(c + r * Math.sin(a)).toFixed(2)}`;
+      body += `<path d="M${c} ${c} L${p(a0)} A${r} ${r} 0 0 1 ${p(a1)} Z"${on(i) ? ' class="on"' : ''}/>`;
+    }
+    const fig = el('div', 'frac-shape');
+    fig.innerHTML = `<svg class="frac-pie" viewBox="0 0 120 120" role="img" aria-label="A circle cut into ${q.den} equal slices">${body}</svg>`;
+    return fig;
+  }
+  if (q.shape === 'grid') {
+    const cols = q.den / 2, g = el('div', 'frac-grid');
+    g.style.gridTemplateColumns = `repeat(${cols}, 44px)`;
+    for (let i = 0; i < q.den; i++) g.appendChild(el('div', 'frac-cell' + (on(i) ? ' on' : '')));
+    return g;
+  }
+  if (q.shape === 'set') {
+    const set = el('div', 'frac-set');
+    for (let i = 0; i < q.den; i++) set.appendChild(el('div', 'frac-dot' + (on(i) ? ' on' : '')));
+    return set;
+  }
+  return barEl(q.den, q.shaded, q.cells);
+}
+// Spot-the-mistake pictures: a shaded bar, a bar of unequal parts, a dotted line.
+function ferrPicEl(pic) {
+  if (pic.kind === 'bar') return barEl(pic.den, pic.shaded);
+  if (pic.kind === 'line') return numberLineEl(pic.d, 1, pic.k, false);
+  const bar = el('div', 'frac-vis');
+  pic.widths.forEach((w, i) => { const c = el('div', 'frac-cell' + (i === pic.shaded ? ' on' : '')); c.style.flex = String(w); bar.appendChild(c); });
   return bar;
 }
 function fracInput(q, idx, field, ph) {
@@ -4383,6 +4649,16 @@ function renderFractionRow(q, idx, right, wrong) {
     return fin;
   };
   const ansPill = () => { const pill = el('div', 'correct-pill'); pill.appendChild(spanTxt('Answer', 'ar')); pill.appendChild(spanTxt(answerText(q), 'tabular')); return pill; };
+  if (q.type === 'ferr') {
+    const left = el('div', 'frac-q ferr-q');
+    left.appendChild(el('div', 'frac-prompt ferr-claim', '🧐 ' + q.claim));
+    if (q.pic) left.appendChild(ferrPicEl(q.pic));
+    left.appendChild(el('div', 'fcmp-why-q', `Is ${q.who} right?`));
+    left.appendChild(choiceList(q, idx, q.opts, q.ans, 'given', 'ferr-opt', qq => qq.given === qq.ans));
+    if (state.immediate && !state.submitted && q._imm) left.appendChild(el('div', 'fcmp-note', (q.right ? `${q.who} was right. ` : `${q.who}'s mistake: `) + q.explain));
+    row.appendChild(left);
+    return row;
+  }
   if (q.type === 'fpos') {
     const left = el('div', 'frac-q fpos-q');
     const prompt = el('div', 'frac-prompt fpos-prompt');
@@ -4417,7 +4693,7 @@ function renderFractionRow(q, idx, right, wrong) {
   if (q.type === 'fnam') {
     const left = el('div', 'frac-q');
     left.appendChild(el('div', 'frac-prompt', 'What fraction is shaded?'));
-    left.appendChild(barEl(q.den, q.shaded));
+    left.appendChild(fracShapeEl(q));
     row.appendChild(left);
     const fin = el('div', 'frac-answer');
     const numI = fracInput(q, idx, 'givenNum', '▢');
@@ -4437,35 +4713,31 @@ function renderFractionRow(q, idx, right, wrong) {
     expr.appendChild(target);
     row.appendChild(expr);
     if (wrong) { const pill = el('div', 'correct-pill'); pill.appendChild(spanTxt('Answer', 'ar')); pill.appendChild(spanTxt(String(q.ans), 'tabular')); row.appendChild(pill); }
-  } else { // fcmp
+  } else { // fcmp: the sign, then why (q.ck/q.whys absent on questions saved before reasons)
+    const locked = state.submitted || (state.immediate && q._imm);
     const expr = el('div', 'expr frac-expr');
     expr.appendChild(fracMini(q.n1, q.d1));
     const choices = el('div', 'fcmp');
     ['<', '=', '>'].forEach(sym => {
       const b = el('button', 'fcmp-btn', sym);
-      if (state.submitted || (state.immediate && q._imm)) {
+      b.type = 'button';
+      if (locked) {
         b.disabled = true;
         if (sym === q.ans) b.classList.add('correct');
         if (q.given === sym && sym !== q.ans) b.classList.add('wrongpick');
       } else {
         if (q.given === sym) b.classList.add('chosen');
         b.onclick = () => {
-          state.quiz[idx].given = sym;
-          const t = Date.now(); if (state.quiz[idx]._t0 == null) state.quiz[idx]._t0 = t; state.quiz[idx]._t1 = t;
-          if (state.immediate) {
-            // Buttons can't be retyped — immediate feedback is shown by
-            // locking the group with the correct choice highlighted.
-            state.quiz[idx]._imm = sym === q.ans ? 'right' : 'fixed';
-            try { (sym === q.ans ? Sound.tick : Sound.soft)(); } catch {}
-            saveSession();
-            render();
-            return;
+          const qq = state.quiz[idx];
+          qq.given = sym;
+          const t = Date.now(); if (qq._t0 == null) qq._t0 = t; qq._t1 = t;
+          if (state.immediate && !qq.ck) {
+            // No reason to give: lock the group with the right choice shown.
+            qq._imm = sym === qq.ans ? 'right' : 'fixed';
+            try { (sym === qq.ans ? Sound.tick : Sound.soft)(); } catch {}
           }
           saveSession();
-          choices.querySelectorAll('.fcmp-btn').forEach(x => x.classList.remove('chosen'));
-          b.classList.add('chosen');
-          const segs = document.querySelectorAll('.progress .seg');
-          if (segs[idx]) segs[idx].classList.add('filled');
+          render();   // shows the reasons once a sign is picked
         };
       }
       choices.appendChild(b);
@@ -4473,8 +4745,53 @@ function renderFractionRow(q, idx, right, wrong) {
     expr.appendChild(choices);
     expr.appendChild(fracMini(q.n2, q.d2));
     row.appendChild(expr);
+    if (q.ck && (q.given || locked)) {
+      const why = el('div', 'fcmp-why-row');
+      why.appendChild(el('div', 'fcmp-why-q', 'Why?'));
+      why.appendChild(choiceList(q, idx, (q.whys || []).map(k => ({ k, text: FCMP_WHY[k].text })), q.ck, 'givenWhy', 'fcmp-why',
+        qq => qq.given === qq.ans && qq.givenWhy === qq.ck));
+      if (state.immediate && !state.submitted && q._imm) why.appendChild(el('div', 'fcmp-note', fcmpExplain(q)));
+      row.appendChild(why);
+    }
   }
   return row;
+}
+// A column of answer buttons for one question (reasons, spot-the-mistake
+// options). Batch mode: pick, change, graded at the end. Practice mode: the
+// pick locks the question and shows the right one; ok(q) says if it is right.
+function choiceList(q, idx, items, correctKey, field, cls, ok) {
+  const locked = state.submitted || (state.immediate && q._imm);
+  const list = el('div', 'choice-list');
+  items.forEach(({ k, text }) => {
+    const b = el('button', 'choice-btn ' + cls, text);
+    b.type = 'button';
+    b.dataset.key = k;
+    if (locked) {
+      b.disabled = true;
+      if (k === correctKey) b.classList.add('correct');
+      if (q[field] === k && k !== correctKey) b.classList.add('wrongpick');
+    } else {
+      if (q[field] === k) b.classList.add('chosen');
+      b.onclick = () => {
+        const qq = state.quiz[idx];
+        qq[field] = k;
+        const t = Date.now(); if (qq._t0 == null) qq._t0 = t; qq._t1 = t;
+        if (state.immediate) {
+          const good = ok(qq);
+          qq._imm = good ? 'right' : 'fixed';
+          try { (good ? Sound.tick : Sound.soft)(); } catch {}
+          saveSession(); render();
+          return;
+        }
+        saveSession();
+        list.querySelectorAll('.choice-btn').forEach(x => x.classList.toggle('chosen', x === b));
+        const segs = document.querySelectorAll('.progress .seg');
+        if (segs[idx]) segs[idx].classList.toggle('filled', answered(qq));
+      };
+    }
+    list.appendChild(b);
+  });
+  return list;
 }
 
 // The placement line: tap the line or drag the marker (arrow keys work too).
@@ -4644,7 +4961,8 @@ function teachPayload(q) {
   if (q.type === 'ldiv') return { type: 'ldiv', a: q.a, b: q.b, q: q.ans, r: q.rem };
   if (q.type === 'fnam') return { type: 'fnam', shaded: q.shaded, den: q.den };
   if (q.type === 'feq') return { type: 'feq', n1: q.n1, d1: q.d1, d2: q.d2, ans: q.ans };
-  if (q.type === 'fcmp') return { type: 'fcmp', n1: q.n1, d1: q.d1, n2: q.n2, d2: q.d2, ans: q.ans };
+  if (q.type === 'fcmp') return { type: 'fcmp', n1: q.n1, d1: q.d1, n2: q.n2, d2: q.d2, ans: q.ans, ...(q.ck ? { how: q.ck } : {}) };
+  if (q.type === 'ferr') return { type: 'ferr', text: q.claim, right: q.right, why: q.explain };
   if (q.type === 'fadd') return { type: 'fadd', n1: q.n1, n2: q.n2, d: q.d, op: q.op === '+' ? '+' : '-' };
   if (q.type === 'fline') return { type: 'fline', k: q.k, d: q.d, max: q.max };
   if (q.type === 'fpos') {
@@ -4900,6 +5218,66 @@ function startLongDivPractice() { startFocusedQuiz('longdivLesson', longDivQuiz)
 function startMultiPractice() { startFocusedQuiz('multiLesson', multiQuiz); }
 function startGeoPractice() { startFocusedQuiz('geoLesson', geoQuiz); }
 function startMul2Practice() { startFocusedQuiz('mul2Lesson', mul2Quiz); }
+
+// The hands-on strip in the fractions lesson: the concrete step before the
+// picture, the line and the symbols (concreteness fading). Cut the strip into
+// equal parts, colour some, and the coloured length is measured on a 0-1
+// line drawn the same width; cutting every part in 2 turns 3/4 into 6/8 at
+// the same place, which is where "multiply top and bottom" comes from.
+// Three small tasks tick themselves off as the child does them.
+function fracStripLab() {
+  const st = { parts: 1, on: new Set(), done: [false, false, false] };
+  const wrap = el('div', 'lab');
+  const tasks = el('ol', 'lab-tasks');
+  const TASKS = ['Cut the strip into 4 equal parts', 'Colour 3 of the parts', 'Cut every part in 2. What happens to the fraction?'];
+  const taskEls = TASKS.map(t => { const li = el('li', 'lab-task', t); tasks.appendChild(li); return li; });
+  const ctl = el('div', 'lab-ctl');
+  const btn = (cls, txt, fn) => { const b = el('button', 'btn btn-ghost ' + cls, txt); b.type = 'button'; b.onclick = fn; ctl.appendChild(b); return b; };
+  const strip = el('div', 'lab-strip'), line = el('div', 'lab-line'), label = el('div', 'lab-label'), note = el('p', 'lab-note');
+  const setParts = n => { st.parts = Math.max(1, Math.min(12, n)); st.on.clear(); draw(); };
+  btn('lab-minus', '− fewer parts', () => setParts(st.parts - 1));
+  btn('lab-plus', '+ more parts', () => setParts(st.parts + 1));
+  const cut = btn('lab-cut', '✂️ Cut every part in 2', () => {
+    if (st.parts * 2 > 12) return;
+    const was = [st.on.size, st.parts];
+    st.on = new Set([...st.on].flatMap(i => [2 * i, 2 * i + 1]));
+    st.parts *= 2;
+    if (st.done[1] && was[0] === 3 && was[1] === 4) st.done[2] = true;
+    draw();
+  });
+  function draw() {
+    if (st.parts === 4) st.done[0] = true;
+    if (st.done[0] && st.parts === 4 && st.on.size === 3) st.done[1] = true;
+    taskEls.forEach((li, i) => li.classList.toggle('done', st.done[i]));
+    strip.innerHTML = '';
+    for (let i = 0; i < st.parts; i++) {
+      const c = el('button', 'lab-cell' + (st.on.has(i) ? ' on' : ''));
+      c.type = 'button';
+      c.setAttribute('aria-label', `Part ${i + 1} of ${st.parts}${st.on.has(i) ? ', coloured' : ''}`);
+      c.onclick = () => { st.on.has(i) ? st.on.delete(i) : st.on.add(i); draw(); };
+      strip.appendChild(c);
+    }
+    // The coloured amount measured from 0, on a line exactly as wide as the strip.
+    const W = 600, v = st.on.size / st.parts, x = W * v;
+    let body = `<line x1="0" y1="20" x2="${W}" y2="20" class="nl-axis"/>`;
+    for (let k = 0; k <= st.parts; k++) body += `<line x1="${W * k / st.parts}" y1="12" x2="${W * k / st.parts}" y2="28" class="${k % st.parts ? 'nl-tick' : 'nl-major'}"/>`;
+    if (st.on.size) body += `<line x1="0" y1="20" x2="${x}" y2="20" class="lab-amount"/><circle cx="${x}" cy="20" r="9" class="lab-dot"/>`;
+    body += `<text x="2" y="56" class="nl-lbl">0</text><text x="${W - 2}" y="56" text-anchor="end" class="nl-lbl">1</text>`;
+    line.innerHTML = `<svg viewBox="0 0 ${W} 60" role="img" aria-label="Number line from 0 to 1 under the strip, marking ${st.on.size}/${st.parts}">${body}</svg>`;
+    label.innerHTML = '';
+    label.appendChild(fracMini(st.on.size, st.parts));
+    label.appendChild(spanTxt(` ${st.on.size} of ${st.parts} equal part${st.parts > 1 ? 's' : ''} coloured`, 'lab-words'));
+    cut.disabled = st.parts * 2 > 12;
+    note.textContent = st.done[2]
+      ? '3/4 and 6/8 land on the same place, so they are the same number. Cutting every part in 2 made twice as many parts (4 → 8) and twice as many coloured (3 → 6). That is why multiplying the top and bottom by the same number keeps a fraction the same.'
+      : !st.done[0] ? 'Tap + until the strip has 4 equal parts.'
+      : !st.done[1] ? 'Tap 3 parts to colour them. The dot shows how far along the line they reach.'
+      : 'Now tap ✂️ and watch the dot.';
+  }
+  wrap.appendChild(tasks); wrap.appendChild(ctl); wrap.appendChild(strip); wrap.appendChild(line); wrap.appendChild(label); wrap.appendChild(note);
+  draw();
+  return wrap;
+}
 
 // Concrete → Representational → Abstract lesson for a domain.
 function renderLessonModal(domain) {
@@ -5178,14 +5556,9 @@ function renderLessonModal(domain) {
     m.appendChild(el('p', null, lineNews ? 'Fractions are numbers, so they have a place on the number line. Here is how to find it.'
       : 'A fraction names equal parts of a whole, and it is a number with its own place on the number line.'));
 
-    m.appendChild(el('h3', 'lesson-h', '1) Picture it'));
-    m.appendChild(el('p', 'lesson-p', 'This bar is split into 4 equal parts, and 3 are shaded:'));
-    m.appendChild(barEl(4, 3));
-    const eqn = el('div', 'lesson-eqn');
-    eqn.appendChild(spanTxt('= ', null));
-    eqn.appendChild(fracMini(3, 4));
-    eqn.appendChild(spanTxt(' (three quarters)', null));
-    m.appendChild(eqn);
+    m.appendChild(el('h3', 'lesson-h', '1) Make one yourself'));
+    m.appendChild(el('p', 'lesson-p', 'A paper strip is one whole. Cut it, colour it, and watch where it lands on the number line underneath.'));
+    m.appendChild(fracStripLab());
 
     m.appendChild(el('h3', 'lesson-h', '2) What the numbers mean'));
     m.appendChild(el('p', 'lesson-p', 'Bottom number = how many equal parts make one whole. Top number = how many of those parts.'));
@@ -5291,7 +5664,7 @@ function renderMineModal() {
     const stEmoji = { new: '⚪', learning: '🌱', accurate: '⭐', fluent: '🚀' };
     if (r.name === 'Fractions') {
       const chips = el('div', 'mine-chips');
-      [['frac.fnam', 'Naming'], ['frac.feq', 'Equal'], ['frac.fcmp', 'Compare'], ['frac.fpos', 'Number line']]
+      [['frac.fnam', 'Naming'], ['frac.feq', 'Equal'], ['frac.fcmp', 'Compare'], ['frac.fpos', 'Number line'], ['frac.ferr', 'Spot the mistake']]
         .concat(Stats.isUnlocked('fracops') ? [['frac.fadd', 'Add'], ['frac.fline', 'Read the line']] : []).forEach(([k, label]) => {
         chips.appendChild(el('span', 'mine-chip', `${stEmoji[Stats.skillState(k)] || '⚪'} ${label}`));
       });
@@ -5408,6 +5781,7 @@ function qLabel(q) {
   if (q.type === 'fadd') return `${q.n1}/${q.d} ${q.op} ${q.n2}/${q.d}`;
   if (q.type === 'fline') return `number line 0–${q.max}, dot at ${q.k}/${q.d}`;
   if (q.type === 'fpos') return `number line 0–${q.max}: put ${q.n}/${q.d}${q.ticks ? '' : ' (no cuts)'}`;
+  if (q.type === 'ferr') return `🧐 ${q.claim}`;
   if (q.type === 'word') return q.multi ? `🪜 ${multiKindLabel(q.wkind)}` : `📖 ${wordKindLabel(q.wkind)}`;
   if (q.type === 'ldiv') return `${q.a} ÷ ${q.b} (with R)`;
   if (q.type === 'geo') return `📏 ${geoKindLabel(q.gk)}: ${geoDims(q)}`;
@@ -5419,9 +5793,12 @@ function sessionQuestions(quiz) {
     const given = (['fnam', 'fadd', 'fline'].includes(q.type) ? `${q.givenNum || ''}/${q.givenDen || ''}`
       : q.type === 'ldiv' ? (answered(q) ? `${q.givenQ || ''} R ${q.givenR || 0}` : '')
       : q.type === 'fpos' ? fposGivenText(q)
+      : q.type === 'fcmp' ? (q.given || '') + (q.givenWhy && FCMP_WHY[q.givenWhy] ? ' · ' + FCMP_WHY[q.givenWhy].tag : '')
+      : q.type === 'ferr' ? ferrTag(q, q.given)
       : String(q.given == null ? '' : q.given)).trim().slice(0, 16);
     const ok = answerCorrect(q) ? 1 : 0;
-    const row = [qLabel(q), given === '/' ? '' : given, answerText(q), ok];
+    const ans = q.type === 'fcmp' && q.ck ? `${q.ans} · ${FCMP_WHY[q.ck].tag}` : q.type === 'ferr' ? ferrTag(q, q.ans) : answerText(q);
+    const row = [qLabel(q).slice(0, 120), given === '/' ? '' : given, ans, ok];
     if (!ok && q.type === 'word' && q.text) row.push(String(q.text).slice(0, 240));
     if (!ok && q.type === 'geo') row.push(String(q.desc).slice(0, 240));
     return row;
@@ -5437,7 +5814,8 @@ function errLabel(e) {
   if (k.startsWith('sub:')) { const n = Number(k.slice(4)); return `subtraction, ${n} borrow${n === 1 ? '' : 's'}`; }
   if (k === 'fnam') return 'naming a fraction';
   if (k === 'feq') return 'equal fractions';
-  if (k === 'fcmp') return 'comparing fractions';
+  if (k === 'fcmp') return e.x ? `${e.x[0]}/${e.x[1]} vs ${e.x[2]}/${e.x[3]}` : 'comparing fractions';
+  if (k === 'ferr') return `spot the mistake: ${(e.x && FERR_IDEA[e.x[0]]) || 'a true claim'}`;
   if (k === 'fadd' && e.x) return `${e.x[0]}/${e.x[3]} ${e.x[1]} ${e.x[2]}/${e.x[3]}`;
   if (k === 'fline' && e.x) return `number line, dot at ${e.x[0]}/${e.x[1]}`;
   if (k === 'fpos' && e.x) return `number line 0–${e.x[2]}: put ${e.x[0]}/${e.x[1]}`;
@@ -5694,7 +6072,7 @@ function renderStatsModal() {
       const stTxt = s.fractions.state === 'fluent' ? 'fluent 🌟' : s.fractions.state === 'accurate' ? 'accurate' : 'learning';
       domGroup.appendChild(el('p', 'stats-line', `${s.fractions.attempts} attempts · ${s.fractions.accuracy}% accurate · ${s.fractions.mastery}% mastery · ${stTxt}`));
       domGroup.appendChild(masteryMeter(s.fractions.mastery));
-      domGroup.appendChild(el('p', 'stats-line', [['fnam', 'Naming'], ['feq', 'Equal'], ['fcmp', 'Compare'], ['fpos', 'Number line'], ['fadd', 'Add & subtract'], ['fline', 'Reading the line']].map(([k, nm]) => {
+      domGroup.appendChild(el('p', 'stats-line', [['fnam', 'Naming'], ['feq', 'Equal'], ['fcmp', 'Compare (with why)'], ['fpos', 'Number line'], ['ferr', 'Spot the mistake'], ['fadd', 'Add & subtract'], ['fline', 'Reading the line']].map(([k, nm]) => {
         const f = Stats.getSkill('frac.' + k);
         const n = f ? (f.right || 0) + (f.wrong || 0) : 0;
         const locked = (k === 'fadd' || k === 'fline') && !Stats.isUnlocked('fracops');
@@ -6109,7 +6487,7 @@ async function generatePlan(container, btn) {
       fractions: s.fractions.unlocked
         ? { attempts: s.fractions.attempts, accuracyPct: s.fractions.accuracy, masteryPct: s.fractions.mastery,
             subSkills: { naming: Stats.skillState('frac.fnam'), equivalence: Stats.skillState('frac.feq'), comparison: Stats.skillState('frac.fcmp'),
-                         placingOnNumberLine: Stats.skillState('frac.fpos'),
+                         placingOnNumberLine: Stats.skillState('frac.fpos'), spotTheMistake: Stats.skillState('frac.ferr'),
                          addSubtract: Stats.isUnlocked('fracops') ? Stats.skillState('frac.fadd') : 'locked',
                          readingNumberLine: Stats.isUnlocked('fracops') ? Stats.skillState('frac.fline') : 'locked' },
             numberLineAim: (() => { const t = Stats.placeTrend();
