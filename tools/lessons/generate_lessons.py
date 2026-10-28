@@ -106,7 +106,7 @@ Write each lesson the way the research on learning from errors says works:
 
 Style: plain short sentences, common words, British/Hong Kong English spelling is fine. Numbers as digits. Use × ÷ − + and "R" for remainders (7 R 5). Use units where the problem has them (cm, sq cm). No markdown, no emoji, no headings inside fields.
 
-Accuracy rules (they are checked by a program): in the correct working ("right" and "steps") every "=" must be exactly true. For an estimate write "about" or "≈", never "=". The "wrong" lines must show the actual mistake described, with its real wrong result. Keep every field short: the whole lesson must fit on a tablet screen with little scrolling.
+Accuracy rules (they are checked by a program): in the correct working ("right" and "steps") every "=" must be exactly true. For an estimate write "about" or "≈", never "=". The "wrong" lines must show the actual mistake described, with its real wrong result. Keep every field short: the whole lesson must fit on a tablet screen with little scrolling (under about 300 words in all). Never invent a mistake the child made: describe only the mistake given. Plain words for a child still learning English: no idioms, and never 'say' to mean 'suppose'.
 
 Always deliver the lesson by calling the save_lesson tool, with no other text."""
 
@@ -446,7 +446,9 @@ def cmd_run(args):
     cl = client()
     usage = {"in": 0, "out": 0}
     passed, failed = one_round(cl, entries, usage, from_batch=args.from_batch)
-    if failed:
+    for _ in range(2):  # up to two rewrites, each with the reviewer's notes
+        if not failed:
+            break
         p2, failed = one_round(cl, entries, usage, feedback=failed)
         passed.update(p2)
     save(passed, entries)
@@ -456,7 +458,7 @@ def cmd_run(args):
     print(f"\nDone. {len(passed)} lesson versions passed; saved to {OUT.name}.")
     print(f"Tokens: {usage['in']:,} in, {usage['out']:,} out, about ${cost:.2f} (the Console has the exact figure).")
     if failed:
-        print(f"{len(failed)} versions still failed after one rewrite (details in {STATE.name}):")
+        print(f"{len(failed)} versions still failed after two rewrites (details in {STATE.name}):")
         for cid, issues in failed.items():
             print(f"  {cid}: {issues[0]}")
     missing = [e["key"] for e in entries if not any(c.startswith(e["key"] + "#") for c in passed)]
