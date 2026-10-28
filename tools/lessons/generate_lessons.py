@@ -106,11 +106,15 @@ Write each lesson the way the research on learning from errors says works:
 
 Style: plain short sentences, common words, British/Hong Kong English spelling is fine. Numbers as digits. Use × ÷ − + and "R" for remainders (7 R 5). Use units where the problem has them (cm, sq cm). No markdown, no emoji, no headings inside fields.
 
-Accuracy rules (they are checked by a program): in the correct working ("right" and "steps") every "=" must be exactly true. For an estimate write "about" or "≈", never "=". The "wrong" lines must show the actual mistake described, with its real wrong result. Keep every field short: the whole lesson must fit on a tablet screen with little scrolling."""
+Accuracy rules (they are checked by a program): in the correct working ("right" and "steps") every "=" must be exactly true. For an estimate write "about" or "≈", never "=". The "wrong" lines must show the actual mistake described, with its real wrong result. Keep every field short: the whole lesson must fit on a tablet screen with little scrolling.
+
+Always deliver the lesson by calling the save_lesson tool, with no other text."""
 
 REVIEWER_SYSTEM = """You review mini-lessons for a children's maths app before a child sees them. You are an experienced primary maths teacher who knows the research on worked examples, learning from errors and self-explanation. Be strict: a lesson that is unclear, too long, slightly wrong, off-target or confusing for an 8-year-old must fail, with each problem stated concretely so a writer can fix it.
 
-Check every statement and every number yourself, including the mistaken working (it must show the described mistake faithfully). Check that the correct working and the steps use the method described, that the check question has exactly one defensible correct option and does not need new arithmetic, that each option's feedback is correct and kind, and that nothing says "easy", "simple" or "obviously"."""
+Check every statement and every number yourself, including the mistaken working (it must show the described mistake faithfully). Check that the correct working and the steps use the method described, that the check question has exactly one defensible correct option and does not need new arithmetic, that each option's feedback is correct and kind, and that nothing says "easy", "simple" or "obviously".
+
+Always deliver the verdict by calling the save_review tool, with no other text."""
 
 
 def lesson_prompt(entry, variant, feedback=None):
@@ -255,8 +259,21 @@ def results(cl, batch_id, usage):
         msg = item.result.message
         usage["in"] += msg.usage.input_tokens
         usage["out"] += msg.usage.output_tokens
+        # Newer models do not accept a forced tool choice, so the tool is
+        # offered and the prompt asks for it; a reply that wrote the JSON as
+        # text instead is accepted too.
         tool = next((blk for blk in msg.content if blk.type == "tool_use"), None)
-        out[item.custom_id] = tool.input if tool else None
+        if tool:
+            out[item.custom_id] = tool.input
+            continue
+        text = "".join(getattr(blk, "text", "") for blk in msg.content)
+        m = re.search(r"\{.*\}", text, re.S)
+        try:
+            out[item.custom_id] = json.loads(m.group(0)) if m else None
+        except ValueError:
+            out[item.custom_id] = None
+        if out[item.custom_id] is None:
+            ERRORS.append("the reply did not contain the lesson")
     return out
 
 
@@ -269,7 +286,7 @@ def write_requests(entries, feedback=None):
                 continue
             reqs.append({"custom_id": cid.replace(".", "_").replace("#", "__"), "params": {
                 "model": MODEL, "max_tokens": 4000, "system": WRITER_SYSTEM,
-                "tools": [WRITE_TOOL], "tool_choice": {"type": "tool", "name": "save_lesson"},
+                "tools": [WRITE_TOOL], "tool_choice": {"type": "auto"},
                 "messages": [{"role": "user", "content": lesson_prompt(e, v, feedback and feedback.get(cid))}]}})
     return reqs
 
@@ -281,7 +298,7 @@ def review_requests(entries, lessons):
         e = by_key[cid.split("#")[0]]
         reqs.append({"custom_id": cid.replace(".", "_").replace("#", "__"), "params": {
             "model": MODEL, "max_tokens": 2000, "system": REVIEWER_SYSTEM,
-            "tools": [REVIEW_TOOL], "tool_choice": {"type": "tool", "name": "save_review"},
+            "tools": [REVIEW_TOOL], "tool_choice": {"type": "auto"},
             "messages": [{"role": "user", "content": review_prompt(e, lesson)}]}})
     return reqs
 
