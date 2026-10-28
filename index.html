@@ -248,6 +248,7 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .stat-val{font-size:22px;font-weight:800;color:var(--brand-deep);font-variant-numeric:tabular-nums;line-height:1.1}
 .stat-label{font-size:11px;color:var(--ink-3);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-top:2px}
 .stats-line{margin:6px 0 4px;font-size:13px;color:var(--ink-3)}
+.reteach-note{background:var(--border-soft);border-radius:10px;padding:10px 12px;margin:0 0 12px;line-height:1.45}
 .mastery-meter{height:8px;background:var(--border-soft);border-radius:5px;overflow:hidden;margin:0 0 10px}
 .mastery-fill{height:100%;background:var(--brand);border-radius:5px;transition:width .4s ease}
 .mastery-fill.high{background:var(--ok)}
@@ -589,6 +590,21 @@ const Stats = (() => {
       : (prior * BKT.S) / (prior * BKT.S + (1 - prior) * (1 - BKT.G));
     return cond + (1 - cond) * BKT.T; // account for learning this opportunity
   }
+  // P(known), held to what the child has actually done lately. With a
+  // learning step on every attempt, BKT climbs back to ~0.85 after one or two
+  // right answers, so an aggregate record (one record for every long-division
+  // question) mostly reported the LAST answer: in the field a child at 3 right
+  // out of 20 showed 87% mastery, and the engine stopped treating the domain
+  // as one he was still learning. Cap it by the smoothed hit rate of the last
+  // 8 answers; a record with a clean recent run is unchanged.
+  function knownP(f) {
+    if (!f) return BKT.L0;
+    const p = f.pL != null ? f.pL : BKT.L0;
+    const rec = f.recent || '';
+    if (rec.length < 3) return p;
+    const hits = rec.split('1').length - 1;
+    return Math.min(p, (hits + 0.5) / (rec.length + 0.5));
+  }
 
   // Migrate an old {right,wrong,lastSeen} fact to the FSRS-lite shape.
   function migrateFact(f) {
@@ -918,7 +934,29 @@ const Stats = (() => {
     return n;
   }
   // P(known) of an aggregate skill, for weighing domains against each other.
-  function skillP(name) { const f = data.skills[name]; return f && f.pL != null ? f.pL : BKT.L0; }
+  function skillP(name) { return knownP(data.skills[name]); }
+  // A domain the child is not getting yet: fewer than half right over the
+  // last 5-8 answers. Mastery and the band can both look fine while one open
+  // domain keeps failing (field data: 3 of 20 long-division questions right),
+  // and one more hard question per quiz does not fix it. While a domain
+  // struggles the app re-teaches it, starts from its easiest sub-skill and
+  // shows the help it gives beginners.
+  const STRUGGLE_DOMAINS = ['longdiv', 'mul2', 'geo', 'multi', 'word', 'bigmul', 'fractions'];
+  function recentRate(name) {
+    const rec = (data.skills[name] && data.skills[name].recent) || '';
+    if (rec.length < 5) return null;
+    return { hits: rec.split('1').length - 1, n: rec.length };
+  }
+  function struggling(name) {
+    if (!isUnlocked(name)) return false;
+    const r = recentRate(name);
+    return !!r && r.hits / r.n < 0.5;
+  }
+  function strugglingDomains() {
+    return STRUGGLE_DOMAINS.filter(struggling)
+      .map(name => ({ name, ...recentRate(name) }))
+      .sort((x, y) => x.hits / x.n - y.hits / y.n);
+  }
   function mulFluentCount() {
     const now = Date.now();
     let m = 0;
@@ -1138,6 +1176,11 @@ const Stats = (() => {
   function recordQuiz(total, correct, elapsedSec, kind, qs) {
     const entry = { d: Date.now(), n: total, c: correct, t: elapsedSec, k: kind || 'quiz' };
     if (Array.isArray(qs) && qs.length) entry.q = qs;
+    // History keeps only the last 100 sessions, so its length stopped counting
+    // at 100 and every weekly snapshot read "100 quizzes". Keep a running
+    // total; a profile that was already at the cap starts from a floor.
+    if (data.quizTotal == null) { data.quizTotal = data.hist.length; data.quizTotalFloor = data.hist.length >= 100; }
+    data.quizTotal++;
     data.hist.push(entry);
     // Keep question-level detail for the most recent 60 sessions only (about
     // a month of daily practice); older sessions keep their summary. Bounds
@@ -1170,7 +1213,8 @@ const Stats = (() => {
     const snap = {
       week: w,
       ts: Date.now(),
-      quizzes: data.hist.length,
+      quizzes: Math.max(data.quizTotal || 0, data.hist.length),
+      ...weekStats(w),
       mulMastery: mul.mastery,
       mulAccuracy: mul.accuracy,
       mulMastered: mul.mastered,
@@ -1182,6 +1226,21 @@ const Stats = (() => {
     if (last && last.week === w) list[list.length - 1] = snap; // update current
     else list.push(snap);
     if (list.length > 26) data.snaps = list.slice(-26);
+  }
+  // This week's own numbers, from the session history: how many sessions and
+  // the share of questions right. The lifetime figures barely move once
+  // hundreds of answers are in, so they cannot show a week's progress.
+  function weekStats(w) {
+    // The history only goes back 100 sessions: a week at or before its first
+    // entry may be cut short once the history is full, so it reads unknown.
+    const first = data.hist.length ? isoWeekKey(new Date(data.hist[0].d)) : null;
+    if (first && (w < first || (w === first && data.hist.length >= 100))) return { weekQuizzes: null, weekScore: null };
+    let quizzes = 0, c = 0, n = 0;
+    for (const h of data.hist) {
+      if (isoWeekKey(new Date(h.d)) !== w) continue;
+      quizzes++; c += h.c || 0; n += h.n || 0;
+    }
+    return { weekQuizzes: quizzes, weekScore: n ? Math.round(100 * c / n) : null };
   }
   function getSnaps() { return (data.snaps || []).slice(); }
   function getHist() { return (data.hist || []).slice(); }
@@ -1259,6 +1318,12 @@ const Stats = (() => {
     }
     const weak = summary().weak.slice(0, 3).map(w => `${w.a}×${w.b}`);
     if (weak.length) add('ok', `Currently targeting ${weak.join(', ')}`, 'these lead the warm-up');
+    const DOM_NAME = { longdiv: 'Long division', mul2: '2-digit × 2-digit', geo: 'Area & perimeter', multi: 'Two-step problems',
+                       word: 'Word problems', bigmul: '2-digit ×', fractions: 'Fractions' };
+    for (const s of strugglingDomains()) {
+      add('bad', `${DOM_NAME[s.name] || s.name}: ${s.hits} of the last ${s.n} right`,
+          'not solid yet — the app re-teaches it, starts from the easiest kind and shows a hint on each one until it improves');
+    }
     return out;
   }
   // ---- Daily session: the system decides, the child just presses start ----
@@ -1288,12 +1353,32 @@ const Stats = (() => {
     if (log.length > 200) data.errlog = log.slice(-200);
     save(data);
   }
+  // A fact the child keeps missing the SAME way (7×8 answered 76 ten times in
+  // the field) is a wrong answer he has stored, not one he forgot, and more
+  // spaced review only rehearses it. Returns that wrong answer while it is
+  // still live: given at least 3 times, and the fact missed within its last
+  // 8 answers, so it goes quiet once he has fixed it.
+  function stubbornAnswer(a, b) {
+    const k = mulKey(a, b), f = data.facts[k];
+    if (!f || (f.recent || '').indexOf('0') < 0) return null;
+    const cnt = {};
+    for (const e of data.errlog || []) if (e.k === 'mul:' + k && e.g !== '' && e.g != null) cnt[e.g] = (cnt[e.g] || 0) + 1;
+    const top = Object.entries(cnt).sort((p, q) => q[1] - p[1])[0];
+    const v = top ? Number(top[0]) : NaN;
+    return top && top[1] >= 3 && Number.isFinite(v) && v !== a * b ? v : null;
+  }
   // Cross-domain pattern detection over the error log. Returns parent-readable
   // findings, misconceptions first. Entries carry per-type flags computed at
   // record time (flip / bigden / ten) plus the presented operands in x.
   function errorPatterns() {
     const by = {};
-    for (const e of data.errlog || []) (by[e.k] = by[e.k] || []).push(e);
+    // Addition and subtraction are logged per difficulty bucket (add:0..2),
+    // and each bucket printed its own identical "off in the tens place" line:
+    // one finding per operation is what the parent needs.
+    for (const e of data.errlog || []) {
+      const k = /^(add|sub):/.test(e.k) ? e.k.slice(0, 4) + 'all' : e.k;
+      (by[k] = by[k] || []).push(e);
+    }
     const out = [];
     for (const k in by) {
       const list = by[k];
@@ -1440,7 +1525,7 @@ const Stats = (() => {
       for (let b = a; b <= 12; b++) {
         const f = getFact(a, b);
         const unseen = !f || (f.right || 0) + (f.wrong || 0) === 0;
-        const pL = f && f.pL != null ? f.pL : BKT.L0;
+        const pL = knownP(f);
         let w = mulWeight(f);
         if (bias === 'easy') {
           // Want items the child likely gets right. p^4 makes the bias steep.
@@ -1485,7 +1570,7 @@ const Stats = (() => {
     for (const k in data.facts) {
       const f = data.facts[k];
       if ((f.right || 0) + (f.wrong || 0) === 0) continue;
-      p += (f.pL != null ? f.pL : BKT.L0);
+      p += knownP(f);
       n++;
     }
     return n >= 5 ? p / n : 0.4; // tiny early sample → middle band
@@ -1514,7 +1599,7 @@ const Stats = (() => {
       const f = map[k];
       attempts += (f.right || 0) + (f.wrong || 0);
       right += (f.right || 0);
-      pSum += (f.pL != null ? f.pL : BKT.L0);
+      pSum += knownP(f);
       seen++;
       if (isMasteredState(factState(f, now, fastMs))) mastered++;
       if ((f.wrong || 0) > 0) {
@@ -1540,7 +1625,7 @@ const Stats = (() => {
       unlocked: isUnlocked(name),
       attempts,
       accuracy: attempts ? Math.round(100 * (f.right || 0) / attempts) : 0,
-      mastery: Math.round(100 * (f && f.pL != null ? f.pL : BKT.L0)),
+      mastery: Math.round(100 * knownP(f)),
       state: f ? factState(f, Date.now(), skillFast(name)) : 'new',
     };
   }
@@ -1550,7 +1635,8 @@ const Stats = (() => {
     const last = data.hist[data.hist.length - 1];
     const avgScore = data.hist.length ? data.hist.reduce((s, h) => s + h.c, 0) / data.hist.length : 0;
     return {
-      quizzesDone: data.hist.length,
+      quizzesDone: Math.max(data.quizTotal || 0, data.hist.length),
+      quizzesLabel: Math.max(data.quizTotal || 0, data.hist.length) + (data.quizTotal == null ? (data.hist.length >= 100 ? '+' : '') : (data.quizTotalFloor ? '+' : '')),
       lastScore: last ? `${last.c}/${last.n}` : '—',
       avgScore: data.hist.length ? avgScore.toFixed(1) : '—',
       totalAttempts: mul.attempts,
@@ -1602,6 +1688,10 @@ const Stats = (() => {
     data.buckets = mergeCountMap(data.buckets, remote.buckets);
     data.hist = mergeHist(data.hist, remote.hist);
     data.streak = mergeStreak(data.streak, remote.streak, data.hist);
+    if (remote.quizTotal != null || data.quizTotal != null) {
+      data.quizTotal = Math.max(data.quizTotal || 0, remote.quizTotal || 0, data.hist.length);
+      data.quizTotalFloor = !!(data.quizTotalFloor || remote.quizTotalFloor);
+    }
     // unlocks and seen flags are sticky — OR across devices
     const ru = remote.unlocked || {}, rs = remote.seen || {};
     for (const k in ru) if (ru[k]) data.unlocked[k] = true;
@@ -1646,7 +1736,7 @@ const Stats = (() => {
     }
     return Object.values(byKey).sort((x, y) => (x[tsField] || 0) - (y[tsField] || 0));
   }
-  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery, mulSeenCount, recentAccuracy, nextUnlock, divMasteredCount, wordSolidCount, bigmulRecentRight, fracBasicSolid, fracOpsProgress, fracSolid, recordPlace, placeTrend, skillP, isSlowFact, automaticCount, sprintReady, sprintPool, recordSprint, getSprints, sprintGoal, pickDueFacts, pickDueDivFacts, getHist, getErrlog, pickMasteredFact, dueBacklog, reviewQuota, getSnaps, repairSnaps, engineCheck, savePlan, getPlans, recordError, errorPatterns, getDaily, markDaily };
+  return { recordMul, recordDiv, recordSkill, recordBucket, recordQuiz, pickMulFacts, pickDivFacts, pickBucket, getFact, getDivFact, getSkill, skillState, itemState, factWeight, bucketWeight, summary, streakStatus, reset, exportRaw, importMerge, getPinHash, setPin, isAdvanced, isUnlocked, checkUnlocks, markSeen, hasSeen, mulFluentCount, overallMulMastery, mulSeenCount, recentAccuracy, nextUnlock, divMasteredCount, wordSolidCount, bigmulRecentRight, fracBasicSolid, fracOpsProgress, fracSolid, recordPlace, placeTrend, skillP, struggling, strugglingDomains, stubbornAnswer, isSlowFact, automaticCount, sprintReady, sprintPool, recordSprint, getSprints, sprintGoal, pickDueFacts, pickDueDivFacts, getHist, getErrlog, pickMasteredFact, dueBacklog, reviewQuota, getSnaps, weekStats, repairSnaps, engineCheck, savePlan, getPlans, recordError, errorPatterns, getDaily, markDaily };
 })();
 
 // Merge helpers for cross-device sync (keep the richer record, union history)
@@ -2725,7 +2815,19 @@ function multiKindLabel(k) {
   return { mgroups: 'Groups, then more or less', mcompare: 'Compare, then total', mchange: 'Two changes', mrem: 'Leftovers' }[k] || k;
 }
 function multiKindShort(k) { return { mgroups: 'Groups', mcompare: 'Compare', mchange: 'Changes', mrem: 'Leftovers' }[k] || k; }
+// While a domain is a struggle, practise its sub-skills in order, easiest
+// first, instead of weighting toward the weakest. Weighting by weakness sent
+// a child who was missing remainders mostly the hardest kind (3-digit long
+// division with a zero inside) and he kept missing: build the prerequisite
+// first, and the harder kinds come back as each one becomes solid.
+function easiestUnsolid(domain, prefix, kinds) {
+  if (!Stats.struggling(domain)) return null;
+  for (const k of kinds) if (!['accurate', 'fluent'].includes(Stats.skillState(prefix + k))) return k;
+  return null;
+}
 function pickMultiKind() {
+  const back = easiestUnsolid('multi', 'multi.', mKinds());
+  if (back) return back;
   const ks = mKinds();
   const ws = ks.map(k => Stats.factWeight(Stats.getSkill('multi.' + k)));
   let r = Math.random() * ws.reduce((a, b) => a + b, 0);
@@ -2863,12 +2965,15 @@ function genMulti(kind) {
   // wrong answer, would be diagnosed wrongly: drop it.
   const seen = new Set([q.ans]);
   q.wrongs = q.wrongs.filter(w => w.v >= 0 && !seen.has(w.v) && seen.add(w.v));
+  // Beginners get the plan half the time; while the domain is a struggle,
+  // every time (assisted answers still earn only reduced credit).
   const fresh = ['new', 'learning'].includes(Stats.skillState('multi.' + kind));
+  const help = Stats.struggling('multi') || (fresh && Math.random() < 0.5);
   // The label does not say "two-step": noticing the hidden first step is
   // part of the skill (and mixed with one-step stories, choosing the
   // approach is what interleaving trains).
   return { type: 'word', multi: true, wkind: kind, label: 'Word problem · 📖', isReview, ...q,
-           scaffold: fresh && Math.random() < 0.5 ? { kind: 'plan' } : null };
+           scaffold: help ? { kind: 'plan' } : null };
 }
 function multiQuiz() {
   const qs = mKinds().map(k => genMulti(k));
@@ -2887,6 +2992,8 @@ function multiQuiz() {
 const M2_KINDS = ['tens', 'full'];
 function mul2KindLabel(k) { return { tens: '× a multiple of 10', full: '2-digit × 2-digit' }[k] || k; }
 function pickMul2Kind() {
+  const back = easiestUnsolid('mul2', 'mul2.', M2_KINDS);
+  if (back) return back;
   const ws = M2_KINDS.map(k => Stats.factWeight(Stats.getSkill('mul2.' + k)));
   return Math.random() * (ws[0] + ws[1]) < ws[0] ? 'tens' : 'full';
 }
@@ -2928,7 +3035,7 @@ function genMul2(kind) {
   // Learners get the completion scaffold: the rows are shown, they finish it.
   const fresh = ['new', 'learning'].includes(Stats.skillState('mul2.' + kind));
   return { type: 'mul2', mk: kind, label: 'Multiplication · 2-digit × 2-digit', isReview, ...q,
-           scaffold: fresh && Math.random() < 0.5 ? { kind: 'rows' } : null };
+           scaffold: Stats.struggling('mul2') || (fresh && Math.random() < 0.5) ? { kind: 'rows' } : null };
 }
 function mul2Scaffold(q) {
   if (q.mk === 'tens') return `${q.a} × ${q.b} = ${q.a} × ${q.b / 10} × 10 = ${q.a * q.b / 10} × 10 =`;
@@ -2984,6 +3091,8 @@ function gKinds() {
 }
 function geoKindLabel(k) { return { area: 'Area', perim: 'Perimeter', lshape: 'L-shapes', missing: 'Missing side', which: 'Which measure?' }[k] || k; }
 function pickGeoKind() {
+  const back = easiestUnsolid('geo', 'geo.', gKinds());
+  if (back) return back;
   const ks = gKinds();
   const ws = ks.map(k => Stats.factWeight(Stats.getSkill('geo.' + k)));
   let r = Math.random() * ws.reduce((a, b) => a + b, 0);
@@ -3099,7 +3208,7 @@ function genGeo(kind) {
   q.wrongs = q.wrongs.filter(w => Number.isInteger(w.v) && w.v > 0 && !seen.has(w.v) && seen.add(w.v));
   // Learners get the unit grid on basic shapes: count, then see why × works.
   const fresh = ['new', 'learning'].includes(Stats.skillState('geo.' + kind));
-  const grid = (kind === 'area' || kind === 'perim') && fresh && Math.random() < 0.5;
+  const grid = (kind === 'area' || kind === 'perim') && (Stats.struggling('geo') || (fresh && Math.random() < 0.5));
   return { type: 'geo', gk: kind, label: 'Area & perimeter · 📏', isReview, ...q, scaffold: grid ? { kind: 'grid' } : null };
 }
 function geoQuiz() {
@@ -3174,6 +3283,8 @@ function diagGeo(q, g) {
 const LD_KINDS = ['rem', 'long2', 'long3'];
 function ldKindLabel(k) { return { rem: 'Remainders', long2: '2-digit ÷', long3: '3-digit ÷' }[k] || k; }
 function pickLongDivKind() {
+  const back = easiestUnsolid('longdiv', 'ldiv.', LD_KINDS);
+  if (back) return back;
   const ws = LD_KINDS.map(k => Stats.factWeight(Stats.getSkill('ldiv.' + k)));
   let r = Math.random() * ws.reduce((a, b) => a + b, 0);
   for (let i = 0; i < LD_KINDS.length; i++) { r -= ws[i]; if (r <= 0) return LD_KINDS[i]; }
@@ -3196,8 +3307,21 @@ function genLongDiv(kind) {
     r = Math.random() < 0.5 ? 0 : rint(1, d - 1);
     if (d * q + r > 999) r = 0;
   }
-  return { type: 'ldiv', ldk: kind, a: d * q + r, b: d, ans: q, rem: r,
-           label: kind === 'rem' ? 'Division · remainders' : 'Long division', isReview };
+  const a = d * q + r;
+  // While long division is a struggle, a worked first step (or, for a
+  // one-digit answer, the question to ask) is shown before he answers; the
+  // rest he does himself, and the answer earns reduced credit.
+  let scaffold = null;
+  if (Stats.struggling('longdiv')) {
+    if (a < d * 10) scaffold = { kind: 'steps', text: `Ask: what is the biggest number in the ${d} times table that is not more than ${a}? What is left over?` };
+    else {
+      const lines = longDivSteps(a, d);
+      const first = /doesn't fit/.test(lines[0]) ? lines.slice(0, 2) : lines.slice(0, 1);
+      if (first.length < lines.length - 1) scaffold = { kind: 'steps', text: 'First step: ' + first.join('. Then ') + '. Now you keep going: divide, multiply, subtract, bring down.' };
+    }
+  }
+  return { type: 'ldiv', ldk: kind, a, b: d, ans: q, rem: r,
+           label: kind === 'rem' ? 'Division · remainders' : 'Long division', isReview, scaffold };
 }
 // The divide-multiply-subtract-bring-down trace, one line per step.
 function longDivSteps(a, b) {
@@ -3768,6 +3892,11 @@ function diagMul(q, g) {
   const { a, b, ans } = q;
   const diff = g - ans;
 
+  // A wrong answer given again and again is a stored one: say so, and
+  // rebuild the fact from easier facts instead of only repeating it.
+  const stuck = Stats.stubbornAnswer(a, b);
+  if (stuck != null && g === stuck) return { why: `${g} again — this one keeps coming out as ${g}, but ${a} × ${b} = ${ans}. The wrong answer has got stuck, so let's build the right one from facts you know.`, work: buildMulWork(a, b), tip: rebuildTip(a, b) };
+
   if (diff === a) return { why: `You answered ${a} × ${b + 1} = ${a*(b+1)}. Looks like you counted one extra group of ${a}.`, work: buildMulWork(a, b), tip: `Pause and ask: "How many groups of ${a}?" The answer is ${b}, not ${b+1}.` };
   if (diff === -a) return { why: `You answered ${a} × ${b - 1} = ${a*(b-1)}. You missed one group of ${a}.`, work: buildMulWork(a, b), tip: `${a} × ${b} is one more ${a} than ${a} × ${b-1}.` };
   if (diff === b) return { why: `You answered ${a + 1} × ${b} = ${(a+1)*b}. You added an extra group of ${b}.`, work: buildMulWork(a, b), tip: `${a} × ${b} is one less ${b} than ${a+1} × ${b}.` };
@@ -4030,8 +4159,8 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v73';
-const APP_UPDATED = '2026-10-07';
+const APP_VERSION = 'v74';
+const APP_UPDATED = '2026-10-28';
 // In-progress quiz survives refreshes/crashes/SW updates: every answer
 // keystroke snapshots the session to localStorage; a fresh page load resumes
 // it (questions, typed answers, wall-clock timer) unless it's gone stale.
@@ -4423,6 +4552,10 @@ function submit(fromTimeout) {
   const unlocked = state.isPractice ? null : Stats.checkUnlocks();
   pushIfSynced();
   if (unlocked) { state.showLesson = unlocked; }
+  else if (!state.isPractice && state.dailyStep !== 'warmup') {
+    const again = reteachDue();
+    if (again) { state.showLesson = again; state.reteach = again; }
+  }
   saveSession();
   render();
   // scroll to first wrong (or top if all correct), keeping context visible
@@ -4988,10 +5121,11 @@ function renderQuestion(q, idx) {
     row.appendChild(box);
     if (wrong) { const pill = el('div', 'correct-pill'); pill.appendChild(spanTxt('Answer', 'ar')); pill.appendChild(spanTxt(answerText(q), 'tabular')); row.appendChild(pill); }
     card.appendChild(row);
-    if (!state.submitted && q.isReview) {
+    if (!state.submitted && (q.scaffold || q.isReview)) {
       const tip = el('div', 'pretip');
       tip.appendChild(spanTxt('💡 ', null));
-      tip.appendChild(spanTxt(`Divide, multiply, subtract, bring down. The remainder must be smaller than ${q.b}.`, null));
+      tip.appendChild(spanTxt(q.scaffold && q.scaffold.text ? q.scaffold.text
+        : `Divide, multiply, subtract, bring down. The remainder must be smaller than ${q.b}.`, null));
       card.appendChild(tip);
     }
     if (wrong) card.appendChild(renderDiag(q));
@@ -5134,16 +5268,19 @@ function renderQuestion(q, idx) {
 
   // Pre-practice strategy card: review questions (learn, then try) and
   // correct-but-slow facts (the child is counting — teach the shortcut).
-  if (!state.submitted && (q.isReview || q.isSlow)) {
+  const stuck = !state.submitted && q.type === 'mul' && !q.big && q.a <= 12 && q.b <= 12 ? Stats.stubbornAnswer(q.a, q.b) : null;
+  if (!state.submitted && (q.isReview || q.isSlow || stuck != null)) {
     let tipText = '';
-    if (q.type === 'mul' && q.big) tipText = `Break ${Math.floor(q.a / 10) * 10} + ${q.a % 10}: multiply each by ${q.b}, then add.`;
+    if (stuck != null) tipText = `Careful: this one often comes out as ${stuck}, and that is not it. ` + factTip(q.a, q.b);
+    else if (q.type === 'mul' && q.big) tipText = `Break ${Math.floor(q.a / 10) * 10} + ${q.a % 10}: multiply each by ${q.b}, then add.`;
     else if (q.type === 'mul' && q.a <= 12 && q.b <= 12) tipText = factTip(q.a, q.b);
     else if (q.type === 'div') tipText = `Think: ${q.b} × ? = ${q.a}. Use the ${q.b} times table.`;
     else if (q.type === 'mul2' && !q.scaffold) tipText = q.plan;
     if (tipText) {
       const tip = el('div', 'pretip');
-      tip.appendChild(spanTxt(q.isSlow ? '⚡ ' : '💡 ', null));
-      if (q.isSlow) tip.appendChild(spanTxt('You know this one — here is a faster way: ', null));
+      const slow = q.isSlow && stuck == null;
+      tip.appendChild(spanTxt(slow ? '⚡ ' : '💡 ', null));
+      if (slow) tip.appendChild(spanTxt('You know this one — here is a faster way: ', null));
       tip.appendChild(spanTxt(tipText, null));
       card.appendChild(tip);
     }
@@ -5151,6 +5288,20 @@ function renderQuestion(q, idx) {
 
   if (wrong) card.appendChild(renderDiag(q));
   return card;
+}
+
+// Build a fact out of easier ones (derived-fact strategies: 5 + the rest, or
+// double a half). For facts with a stuck wrong answer, where seeing the right
+// answer again and again has not worked; it shows the answer, so it is used
+// after a miss, not before.
+function rebuildTip(a, b) {
+  const lo = Math.min(a, b), hi = Math.max(a, b), ans = a * b;
+  const parts = [];
+  if (lo > 5 && lo <= 10) parts.push(`${hi} × 5 = ${hi * 5}, and ${hi} × ${lo - 5} = ${hi * (lo - 5)}; together ${hi * 5} + ${hi * (lo - 5)} = ${ans}.`);
+  if (hi % 2 === 0 && hi > 2) parts.push(`Or double: ${lo} × ${hi / 2} = ${ans / 2}, and ${ans / 2} + ${ans / 2} = ${ans}.`);
+  if (ans === 56) parts.push('Or remember 5, 6, 7, 8: 56 = 7 × 8.');
+  if (!parts.length) parts.push(factTip(a, b));
+  return parts.join(' ');
 }
 
 // Short, kid-friendly multiplication strategy (without giving the answer away).
@@ -5779,7 +5930,26 @@ function renderTimeoutModal() {
   return bg;
 }
 
+// Re-teach a domain that keeps going wrong: after a graded quiz its lesson
+// opens again, headed as a second look rather than a new skill, and its
+// "Try some" starts focused practice with the beginner help switched on.
+// At most once every 3 days per domain (per device), so it stays a nudge.
+const RETEACH_KEY = 'mq-reteach-v1';
+function reteachDue() {
+  let last = {};
+  try { last = JSON.parse(localStorage.getItem(RETEACH_KEY) || '{}') || {}; } catch {}
+  const now = Date.now();
+  for (const s of Stats.strugglingDomains()) {
+    if (!Stats.hasSeen(s.name + 'Lesson')) continue; // never shown: the unlock flow owns it
+    if (now - (last[s.name] || 0) < 3 * 86400000) continue;
+    last[s.name] = now;
+    try { localStorage.setItem(RETEACH_KEY, JSON.stringify(last)); } catch {}
+    return s.name;
+  }
+  return null;
+}
 function closeLesson() {
+  state.reteach = null;
   if (state.showLesson) Stats.markSeen(state.showLesson + 'Lesson');
   if (state.showLesson === 'fractions') Stats.markSeen('fracLineLesson');
   state.showLesson = null;
@@ -5791,6 +5961,7 @@ function startFocusedQuiz(seenKey, makeQuiz) {
   if (!confirmDiscardProgress()) return;
   [].concat(seenKey).forEach(k => Stats.markSeen(k));
   state.showLesson = null;
+  state.reteach = null;
   state.showStats = false;
   state.showMine = false;
   state.quiz = makeQuiz();
@@ -5881,6 +6052,12 @@ function renderLessonModal(domain) {
   const bg = el('div', 'modal-bg');
   bg.addEventListener('click', e => { if (e.target === bg) closeLesson(); });
   const m = el('div', 'modal lesson-modal');
+  if (state.reteach === domain) {
+    const note = el('div', 'reteach-note');
+    note.appendChild(el('b', null, '🔁 Let\'s look at this one again.'));
+    note.appendChild(el('span', null, ' These have been tricky lately — that is normal while a skill is new. Read it through, then try some: you will get a hint on each one until it clicks.'));
+    m.appendChild(note);
+  }
 
   if (domain === 'division') {
     const fresh = !Stats.hasSeen('divisionLesson');
@@ -6534,7 +6711,7 @@ function renderStatsModal() {
       streakTile.querySelector('.stat-label').textContent = `Streak · best ${s.streak.best}`;
     }
     tiles.appendChild(streakTile);
-    tiles.appendChild(statTile('Quizzes', s.quizzesDone));
+    tiles.appendChild(statTile('Quizzes', s.quizzesLabel));
     tiles.appendChild(statTile('Last score', s.lastScore));
     tiles.appendChild(statTile('Mul mastery', s.mastery + '%'));
     m.appendChild(tiles);
@@ -6850,7 +7027,10 @@ function renderStatsModal() {
       const row = el('p', 'stats-line');
       row.innerHTML = `Mul mastery: <b>${last.mulMastery}%</b>${delta(last.mulMastery, prior && prior.mulMastery)} · ` +
                       `Mul accuracy: <b>${last.mulAccuracy}%</b>${delta(last.mulAccuracy, prior && prior.mulAccuracy)} · ` +
-                      `Quizzes: <b>${last.quizzes}</b>${delta(last.quizzes, prior && prior.quizzes)}`;
+                      (() => { const lw = Stats.weekStats(last.week), pw = prior ? Stats.weekStats(prior.week) : null;
+                        return lw.weekQuizzes == null ? '' : `This week: <b>${lw.weekQuizzes}</b> sessions` +
+                          (lw.weekScore == null ? '' : `, <b>${lw.weekScore}%</b> right`) +
+                          (pw && pw.weekScore != null && lw.weekScore != null ? delta(lw.weekScore, pw.weekScore) : ''); })();
       sect.appendChild(row);
       // tiny sparkline of mulMastery over recent snaps
       const spark = el('div', 'mini-chart');
@@ -6960,7 +7140,11 @@ function openPrintView() {
   const today = new Date().toLocaleDateString();
   const weak = s.weak.slice(0, 5).map(w => `${w.a}×${w.b} (${w.right}/${w.right + w.wrong})`).join(', ') || 'None right now — well done!';
   const dom = (label, m, acc) => `<tr><td>${label}</td><td>${m.unlocked === false ? 'Locked' : (m.attempts || 0) + ' attempts'}</td><td>${acc != null ? acc + '%' : '—'}</td><td>${m.mastery != null ? m.mastery + '%' : '—'}</td></tr>`;
-  const snapRows = snaps.slice(-8).map(x => `<tr><td>${x.week}</td><td>${x.quizzes}</td><td>${x.mulMastery}%</td><td>${x.mulAccuracy}%</td><td>${x.streakBest}</td></tr>`).join('') || '<tr><td colspan="5">No weekly snapshots yet.</td></tr>';
+  // Per-week numbers (sessions and score that week) rather than lifetime
+  // totals, which read the same every week; older snapshots are filled in
+  // from the history where it still reaches back.
+  const wk = x => x.weekQuizzes !== undefined ? x : { ...x, ...Stats.weekStats(x.week) };
+  const snapRows = snaps.slice(-8).map(wk).map(x => `<tr><td>${x.week}</td><td>${x.weekQuizzes == null ? '—' : x.weekQuizzes}</td><td>${x.weekScore == null ? '—' : x.weekScore + '%'}</td><td>${x.mulMastery}%</td><td>${x.streakBest}</td></tr>`).join('') || '<tr><td colspan="5">No weekly snapshots yet.</td></tr>';
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>Math Quiz · Progress · ${today}</title>
 <style>
   body{font-family:-apple-system,system-ui,Arial,sans-serif;color:#0f172a;max-width:760px;margin:24px auto;padding:0 18px;line-height:1.5}
@@ -6982,7 +7166,7 @@ function openPrintView() {
 </div>
 <h2>This week at a glance</h2>
 <div class="tiles">
-  <div class="tile"><b>${s.quizzesDone}</b>Quizzes done</div>
+  <div class="tile"><b>${s.quizzesLabel}</b>Quizzes done</div>
   <div class="tile"><b>${s.lastScore}</b>Last score</div>
   <div class="tile"><b>${s.totalAccuracy}%</b>Mul accuracy</div>
   <div class="tile"><b>${s.mastery}%</b>Mul mastery</div>
@@ -7010,7 +7194,7 @@ ${(() => {
     pats.map(p => `<li>${p.label}</li>`).join('') + '</ul>';
 })()}
 <h2>Weekly trend</h2>
-<table><thead><tr><th>Week</th><th>Quizzes</th><th>Mul mastery</th><th>Mul accuracy</th><th>Best streak</th></tr></thead>
+<table><thead><tr><th>Week</th><th>Sessions that week</th><th>Score that week</th><th>Mul mastery</th><th>Best streak</th></tr></thead>
 <tbody>${snapRows}</tbody></table>
 <p class="small" style="margin-top:24px">Generated by Math Quiz · localStorage data only; nothing was uploaded.</p>
 </body></html>`;
