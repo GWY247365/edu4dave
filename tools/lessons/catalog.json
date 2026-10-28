@@ -1,0 +1,230 @@
+{
+  "_about": "One mini-lesson per mistake the app can already tell apart (see lessonKeyFor in index.html). priority 1 = Dave's most frequent errors (progress report 2026-10-27), generated and reviewed first. 'method' is the way the app already teaches the skill, so a lesson uses the same words and pictures as the unlock lesson and the worked steps.",
+  "learner": "A boy of about 8-9 in Hong Kong who practises on an iPad in English (English is not his only language, so keep sentences short and words common). He knows his times tables well (98% mastery) and is learning long division, area and perimeter, 2-digit multiplication and fractions.",
+  "lessons": [
+    {
+      "key": "ldiv.bigrem",
+      "priority": 1,
+      "domain": "Remainders & long division",
+      "mistake": "Writes a remainder that is as big as, or bigger than, the divisor, e.g. 38 ÷ 6 = 5 R 8. Another group still fits.",
+      "method": "Share it out (cookies into equal groups). The remainder rule: the remainder is always smaller than the number you divide by; if it is not, everyone can get one more. Find the biggest number in the divisor's times table that is not more than the dividend.",
+      "example_rules": "Dividend 20-89, divisor 3-9, answer is a one-digit quotient with a non-zero remainder. Answers are written as 'q R r'."
+    },
+    {
+      "key": "ldiv.norem",
+      "priority": 1,
+      "domain": "Remainders & long division",
+      "mistake": "Finds the right number of groups but forgets the leftover, e.g. 47 ÷ 6 answered as 7 R 0 (the answer is 7 R 5).",
+      "method": "After dividing, multiply back and subtract to see what is left: 47 − 6 × 7 = 5. Check: groups × size + leftover = the starting number.",
+      "example_rules": "Dividend 20-89, divisor 3-9, non-zero remainder."
+    },
+    {
+      "key": "ldiv.remslip",
+      "priority": 1,
+      "domain": "Remainders & long division",
+      "mistake": "Gets the quotient right but the remainder wrong, usually by subtracting wrongly or using the wrong product.",
+      "method": "Leftover = the number − (divisor × answer). Then check: divisor × answer + leftover gives back the number, and the leftover is smaller than the divisor.",
+      "example_rules": "Dividend 20-99, divisor 3-9."
+    },
+    {
+      "key": "ldiv.zeroskip",
+      "priority": 1,
+      "domain": "Remainders & long division",
+      "mistake": "Drops a zero inside the answer, e.g. 624 ÷ 6 answered as 14 instead of 104. When the divisor does not fit into a step he writes nothing.",
+      "method": "Four steps, repeated: Divide, Multiply, Subtract, Bring down. Every digit you bring down gets a digit in the answer, even if it is 0: when the divisor does not fit, write 0 and bring down the next digit. Estimate first: 624 ÷ 6 is about 100, so 14 is far too small.",
+      "example_rules": "3-digit dividend ÷ 1-digit divisor (2-9) with a 0 in the tens place of the quotient, e.g. 624 ÷ 6 = 104, 816 ÷ 4 = 204."
+    },
+    {
+      "key": "ldiv.steps",
+      "priority": 1,
+      "domain": "Remainders & long division",
+      "mistake": "Gets a long division wrong somewhere in the middle: loses track of the steps (often forgets to bring down a digit, or subtracts wrongly).",
+      "method": "Divide, Multiply, Subtract, Bring down, one digit at a time, written as one line per step: '15 ÷ 6 = 2. 2 × 6 = 12. 15 − 12 = 3. Bring down 6.' Check at the end by multiplying back.",
+      "example_rules": "2- or 3-digit dividend ÷ 1-digit divisor (2-9), answer at least 10."
+    },
+    {
+      "key": "geo.mix",
+      "priority": 1,
+      "domain": "Area & perimeter",
+      "mistake": "Mixes up area and perimeter: gives the area when asked for the perimeter or the other way round, e.g. for a 6 cm by 4 cm rectangle answers 24 when asked for the perimeter (perimeter is 20 cm).",
+      "method": "Area covers the inside: count the unit squares, or rows × squares in each row, in square units (sq cm). Perimeter goes around the edge: walk around and add all four sides, in units (cm). Real things: carpet, grass, tiles = area; fence, ribbon, a walk around = perimeter.",
+      "example_rules": "Rectangles with whole-number sides 2-12 cm; name both numbers for the same rectangle so the contrast is clear."
+    },
+    {
+      "key": "geo.sides",
+      "priority": 1,
+      "domain": "Area & perimeter",
+      "mistake": "For perimeter adds only the two labelled sides (6 + 4 = 10) or forgets one side; a rectangle has four sides and opposite sides are equal.",
+      "method": "Walk all the way around: 6 + 4 + 6 + 4 = 20, or (6 + 4) × 2. Opposite sides of a rectangle are equal, so the two labels tell you all four sides.",
+      "example_rules": "Rectangles with whole-number sides 2-12 cm, only two sides labelled."
+    },
+    {
+      "key": "geo.bbox",
+      "priority": 2,
+      "domain": "Area & perimeter",
+      "mistake": "For an L-shape uses the whole big rectangle around it, forgetting the missing corner.",
+      "method": "Split the L-shape into two rectangles, find each area, and add. Or: big rectangle minus the missing corner. Check by imagining the unit squares.",
+      "example_rules": "L-shapes made of two rectangles with whole-number sides up to 10 cm; describe the shape in words carefully (which side is which)."
+    },
+    {
+      "key": "add.carry",
+      "priority": 1,
+      "domain": "3-digit addition",
+      "mistake": "Answer is off by 10 or 100: forgets to carry (regroup) a ten into the tens column, or carries twice, e.g. 368 + 275 answered as 533 or 633 instead of 643.",
+      "method": "Add one place at a time from the right. When a column makes 10 or more, trade 10 ones for 1 ten (or 10 tens for 1 hundred) and write the little 1 above the next column. Check by working backwards: answer − one number should give the other.",
+      "example_rules": "Two 3-digit numbers whose sum needs at least one carry and stays under 1000."
+    },
+    {
+      "key": "sub.borrow",
+      "priority": 1,
+      "domain": "3-digit subtraction",
+      "mistake": "Answer is off by 10 or 100: subtracts the smaller digit from the bigger in a column instead of trading (e.g. in 742 − 318 does 8 − 2 = 6), or forgets the ten he traded.",
+      "method": "Work from the right. If the top digit is smaller, trade 1 ten for 10 ones (regroup) and make the tens digit one less. Never flip the digits round. Check: answer + the number taken away = the top number.",
+      "example_rules": "3-digit minus 3-digit with one trade, no zeros in the top number."
+    },
+    {
+      "key": "sub.zero",
+      "priority": 1,
+      "domain": "3-digit subtraction",
+      "mistake": "Subtraction across a 0: a 0 in the tens has nothing to trade, e.g. 503 − 278.",
+      "method": "There are 0 tens, so trade 1 hundred for 10 tens first, then 1 ten for 10 ones: 503 becomes 4 hundreds, 9 tens, 13 ones. The 0 becomes 9, never -1. Check by adding back.",
+      "example_rules": "Top number with 0 in the tens place (e.g. 503, 704, 802), subtracting a 3-digit number that needs trades."
+    },
+    {
+      "key": "bigmul.carry",
+      "priority": 1,
+      "domain": "2-digit × 1-digit",
+      "mistake": "Answer is off by 10s: forgets to add the carried ten, or forgets the tens digit is worth ten, e.g. 47 × 6 answered as 242 (answer 282).",
+      "method": "Split the 2-digit number into tens and ones (area model): 47 × 6 = 40 × 6 + 7 × 6 = 240 + 42 = 282. Estimate first: 47 × 6 is about 50 × 6 = 300.",
+      "example_rules": "2-digit × 1-digit (3-9) where the ones product is 10 or more."
+    },
+    {
+      "key": "mul2.cross",
+      "priority": 1,
+      "domain": "2-digit × 2-digit",
+      "mistake": "Multiplies only tens × tens and ones × ones, missing the two cross products, e.g. 34 × 26 = 600 + 24 = 624 (answer 884).",
+      "method": "Area model: split both numbers into tens and ones (30 + 4 and 20 + 6), draw four boxes, multiply every part by every part: 30 × 20, 30 × 6, 4 × 20, 4 × 6, then add all four. Estimate: about 30 × 30 = 900.",
+      "example_rules": "Two 2-digit numbers 12-98, neither a multiple of 10."
+    },
+    {
+      "key": "mul2.place",
+      "priority": 1,
+      "domain": "2-digit × 2-digit",
+      "mistake": "Treats the tens digit as ones: 34 × 26 done as 34 × 6 + 34 × 2 = 204 + 68 = 272. The 2 in 26 is 2 tens, 20.",
+      "method": "The 2 in 26 is worth 20, so the second row is 34 × 20 = 680 (34 × 2, then × 10: add the zero). Then 204 + 680 = 884. Estimate first: about 30 × 30 = 900, so 272 is far too small.",
+      "example_rules": "Two 2-digit numbers 12-98; also multiplying by a multiple of ten (23 × 40 = 23 × 4 × 10)."
+    },
+    {
+      "key": "mul2.onerow",
+      "priority": 2,
+      "domain": "2-digit × 2-digit",
+      "mistake": "Stops after one row: 34 × 26 answered as 204 (only 34 × 6) or 680 (only 34 × 20).",
+      "method": "Multiply by the tens AND by the ones, then add the two rows: 34 × 26 = 34 × 20 + 34 × 6 = 680 + 204 = 884. Area model: every box must be filled.",
+      "example_rules": "Two 2-digit numbers 12-98."
+    },
+    {
+      "key": "mul.stuck",
+      "priority": 1,
+      "domain": "Times tables",
+      "mistake": "Keeps giving the same wrong answer to one times-table fact. The app shows this lesson for whichever fact is stuck, so the lesson must not claim which wrong answer HE gave. Use 7 × 8 = 56 as the worked example and show the stuck answer 76 only as 'a wrong answer that can get stuck', e.g. 'Some children keep saying 76 for 7 × 8.'",
+      "method": "When a wrong answer is stuck, seeing the right answer again is not enough; build the fact from facts he already knows (derived facts): split one number into 5 + the rest (8 × 7 = 8 × 5 + 8 × 2 = 40 + 16 = 56), or double a half (7 × 8 = 7 × 4 doubled = 28 + 28 = 56). Check against a neighbour (7 × 7 = 49, one more 7 is 56). The 'why' question asks why building the fact from known facts helps, or which way of building 7 × 8 is right; do not ask about a different fact he never saw. Use plain verbs like 'think of', never 'say' to mean 'suppose'.",
+      "example_rules": "Worked example 7 × 8 (or 8 × 7 in a later version, or 6 × 8 / 7 × 9 as the worked example in version 3). Never state a wrong answer the child gave."
+    },
+    {
+      "key": "frac.flip",
+      "priority": 1,
+      "domain": "Fractions: naming",
+      "mistake": "Writes the fraction upside down: for 3 shaded parts out of 8 writes 8/3 instead of 3/8.",
+      "method": "The bottom number says how many equal parts the whole is cut into; the top number says how many of those parts we have (are shaded). Read 3/8 as '3 of the 8 equal parts'. A fraction of one shape is never bigger than 1, so the top cannot be bigger than the bottom here.",
+      "example_rules": "Bars, circles or grids cut into 2, 3, 4, 6 or 8 equal parts, describe the picture in words."
+    },
+    {
+      "key": "frac.bigden",
+      "priority": 2,
+      "domain": "Fractions: comparing and the number line",
+      "mistake": "Thinks a bigger bottom number makes a bigger fraction: says 1/8 > 1/3, or places 1/8 far along the number line.",
+      "method": "More pieces means smaller pieces: a pizza cut into 8 has smaller slices than one cut into 3, so 1/8 < 1/3. On the number line from 0 to 1, 1/8 is the first of 8 small jumps, very close to 0.",
+      "example_rules": "Unit fractions and same-top fractions with denominators 2, 3, 4, 6, 8."
+    },
+    {
+      "key": "frac.rw",
+      "priority": 3,
+      "domain": "Fractions: comparing with a reason",
+      "mistake": "Picks the right sign for the wrong reason, e.g. says 7/8 > 5/6 'because 8 is bigger than 6'.",
+      "method": "Each is one piece short of a whole: 7/8 is missing 1/8 and 5/6 is missing 1/6. 1/8 is the smaller missing piece, so 7/8 is closer to 1 and bigger. A reason must work every time; 'bigger bottom number' would also say 1/8 > 1/6, which is wrong.",
+      "example_rules": "Pairs like 7/8 vs 5/6, 3/4 vs 2/3 (each one piece short of 1), or one less than a half and one more than a half."
+    },
+    {
+      "key": "frac.addden",
+      "priority": 2,
+      "domain": "Fractions: adding like fractions",
+      "mistake": "Adds the bottom numbers too: 3/8 + 2/8 = 5/16.",
+      "method": "The pieces are the same size (eighths), so you are just counting eighths: 3 eighths + 2 eighths = 5 eighths = 5/8. The size of the pieces does not change, so the bottom number stays 8. 5/16 is smaller than 3/8, but adding should make more.",
+      "example_rules": "Same denominator 3-12, sum not more than 1."
+    },
+    {
+      "key": "frac.ticks",
+      "priority": 2,
+      "domain": "Fractions: reading the number line",
+      "mistake": "Counts the tick marks instead of the spaces: from 0 to 1 there are 5 tick marks but only 4 spaces, so each space is 1/4, not 1/5.",
+      "method": "The spaces (jumps) are the pieces. Count jumps from 0: a dot 3 jumps along a line cut into 4 equal jumps is at 3/4. On a 0-to-2 line, one whole is still 0 to 1.",
+      "example_rules": "Number lines 0 to 1 (and some 0 to 2) cut into 2-8 equal spaces."
+    },
+    {
+      "key": "frac.fpos.zero",
+      "priority": 3,
+      "domain": "Fractions: placing on the number line",
+      "mistake": "Counts the 0 mark as the first jump, so places 3/4 at 2/4.",
+      "method": "Start at 0 and count jumps, not marks: 1/4 is where the first jump lands. 3/4 is 3 jumps of 1/4 from 0.",
+      "example_rules": "Number line 0 to 1 cut into 3-8 equal jumps."
+    },
+    {
+      "key": "frac.fpos.whole",
+      "priority": 3,
+      "domain": "Fractions: placing on the number line",
+      "mistake": "On a line from 0 to 2, treats the whole line as one whole, so puts 1/2 at the 1 mark.",
+      "method": "One whole is always 0 to 1, even when the line is longer. 1/2 is halfway between 0 and 1. 3/2 is past 1.",
+      "example_rules": "Number lines 0 to 2 with halves, thirds or quarters."
+    },
+    {
+      "key": "multi.early",
+      "priority": 1,
+      "domain": "Two-step word problems",
+      "mistake": "Stops after the first step and gives that number as the answer.",
+      "method": "Two steps: first find the hidden number, then use it to answer the question. After each step ask: 'Is this the number the question wants?' Underline the question sentence first.",
+      "example_rules": "Two-step stories with numbers he has mastered: groups then add/subtract, compare then total, two changes."
+    },
+    {
+      "key": "multi.onesum",
+      "priority": 2,
+      "domain": "Two-step word problems",
+      "mistake": "Uses one operation on every number (adds all the numbers, or multiplies them all) instead of choosing an operation for each step.",
+      "method": "Each step needs its own operation, chosen from the story: equal groups → ×, more/total → +, left/difference → −. Write step 1 and step 2 separately.",
+      "example_rules": "Two-step stories mixing × with + or −, small numbers."
+    },
+    {
+      "key": "multi.remx",
+      "priority": 2,
+      "domain": "Two-step word problems: leftovers",
+      "mistake": "Mishandles the leftover in a division story: 29 kids, 4 per car, answers 7 cars (one kid has no seat), or gives the remainder when the question asks for full bags.",
+      "method": "The question decides: if everyone needs a place, add one more group (8 cars); if it asks how many FULL groups, drop the leftover (7 bags); if it asks what is left over, the answer is the remainder itself.",
+      "example_rules": "Division stories with a remainder, divisor 3-9, totals under 60."
+    },
+    {
+      "key": "word.schema",
+      "priority": 2,
+      "domain": "Word problems",
+      "mistake": "Chooses the operation from a keyword: 'more' → add, even when the story needs subtraction (e.g. 'Sam has 12, that is 5 more than Mia. How many does Mia have?').",
+      "method": "Read the story, not the words: decide whether it asks for a total, a difference/change, a start, equal groups or a share. Draw a quick bar picture. 'More' can mean subtract.",
+      "example_rules": "One-step stories with a 'more'/'fewer'/'gave away' trap, numbers under 100."
+    },
+    {
+      "key": "word.extra",
+      "priority": 3,
+      "domain": "Word problems",
+      "mistake": "Uses a number the question does not need (e.g. 'The bus ride took 12 minutes').",
+      "method": "Read the question sentence first, then cross out any number the question does not ask about before you calculate.",
+      "example_rules": "One-step stories with one extra, unneeded number."
+    }
+  ]
+}

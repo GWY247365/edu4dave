@@ -1550,6 +1550,45 @@ const tot = await page.evaluate(() => ({ n: Stats.summary().quizzesDone, hist: S
 check('the quiz total keeps counting past the 100-session history, across a reload', tot.n === 103 && tot.hist === 100, JSON.stringify(tot));
 await page.evaluate(() => { localStorage.clear(); Stats.reset(); });
 
+console.log('28. mini-lessons: the named mistake opens its lesson, contrast + steps + a why question, versions rotate');
+const ml = await page.evaluate(() => {
+  const mk = i => ({ title: 'Every digit gets an answer digit ' + i, mistake: 'You wrote 14, but 624 ÷ 6 is 104.', example: '624 ÷ 6',
+    wrong: { label: 'The mix-up', lines: ['6 ÷ 6 = 1', '24 ÷ 6 = 4', 'Answer 14'] },
+    right: { label: 'The right way', lines: ['6 ÷ 6 = 1', '2: 6 does not fit, write 0', '24 ÷ 6 = 4', 'Answer 104'] },
+    steps: [{ goal: 'Divide', text: '6 ÷ 6 = 1.' }, { goal: 'Write the 0', text: '6 does not fit into 2, so write 0.' }],
+    check: { question: 'Why do we write the 0?', options: [
+      { text: 'It keeps the 1 in the hundreds place', correct: true, feedback: 'Yes: without it 104 becomes 14.' },
+      { text: 'Zeros do not matter', correct: false, feedback: 'They hold the place of a digit.' }] },
+    remember: 'Every digit you bring down gets a digit in the answer.' });
+  localStorage.removeItem('mq-lessons-seen-v1');
+  const q = { type: 'ldiv', ldk: 'long3', a: 624, b: 6, ans: 104, rem: 0, givenQ: '14', givenR: '0' };
+  LESSONS = null;
+  const none = !renderDiag(q).querySelector('.ml-btn');
+  LESSONS = { 'ldiv.zeroskip': [mk(1), mk(2)] };
+  const host = document.createElement('div'); document.body.appendChild(host);
+  const d = renderDiag(q); host.appendChild(d);
+  const btn = d.querySelector('.ml-btn'), card = d.querySelector('.ml');
+  const before = card.style.display, title = btn.textContent;
+  btn.click();
+  const opts = [...card.querySelectorAll('.ml-opt')];
+  opts[1].click(); const fbWrong = card.querySelector('.ml-fb').textContent, wrongMarked = opts[1].classList.contains('picked-wrong');
+  opts[0].click(); const fbRight = card.querySelector('.ml-fb').textContent;
+  const next = lessonFor(q).lesson.title;
+  const other = lessonKeyFor({ type: 'ldiv', ldk: 'rem', a: 38, b: 6, ans: 6, rem: 2, givenQ: '5', givenR: '8' });
+  host.remove();
+  return { none, title, hiddenFirst: before === 'none', shown: card.style.display === '',
+           sides: card.querySelectorAll('.ml-side').length, steps: card.querySelectorAll('.ml-steps li').length,
+           fbWrong, wrongMarked, fbRight, next, other };
+});
+check('no lesson file, no button; with one, the named mistake offers its lesson (closed until tapped)',
+  ml.none && /Mini-lesson: Every digit gets an answer digit 1/.test(ml.title) && ml.hiddenFirst && ml.shown, JSON.stringify(ml));
+check('the lesson shows the mix-up and the right way side by side, then labelled steps', ml.sides === 2 && ml.steps === 2, JSON.stringify(ml));
+check('the why question answers each choice with its own feedback', ml.wrongMarked && /hold the place/.test(ml.fbWrong) && /104 becomes 14/.test(ml.fbRight), JSON.stringify(ml));
+check('the next time the same mistake shows the next version, and other mistakes map to their own lesson',
+  /answer digit 2$/.test(ml.next) && ml.other === 'ldiv.bigrem', JSON.stringify(ml));
+const lj = await page.evaluate(() => fetch('lessons.json').then(r => r.json()));
+check('lessons.json is served and is valid', lj && typeof lj.lessons === 'object', JSON.stringify(lj).slice(0, 120));
+
 console.log('13. a release is announced when the app is resumed, not only on reload');
 await page.goto(base);
 await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 20000 });

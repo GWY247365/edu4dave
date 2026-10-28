@@ -21,7 +21,7 @@ const API = process.env.VERCEL_API || 'https://api.vercel.com';
 const POLL_MS = Number(process.env.VERCEL_POLL_MS || 5000);
 const TIMEOUT_MS = Number(process.env.VERCEL_DEPLOY_TIMEOUT_MS || 8 * 60 * 1000);
 // Not part of the site: tests, CI, and local tooling.
-const EXCLUDE = [/^test\//, /^\.github\//, /^node_modules\//, /^\.vercel\//];
+const EXCLUDE = [/^test\//, /^\.github\//, /^node_modules\//, /^\.vercel\//, /^tools\//];  // tools/: generators, not part of the site
 
 function fail(msg) {
   console.error(`::error::${msg}`);

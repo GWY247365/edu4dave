@@ -169,6 +169,27 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:v
 .review-badge{font-size:11px;font-weight:700;color:var(--warn-deep);background:var(--warn-soft);border:1px solid #fde68a;padding:2px 8px;border-radius:9999px;letter-spacing:.04em}
 .pretip{margin-top:8px;font-size:13px;color:var(--brand-deep);background:var(--brand-soft);border:1px solid var(--brand-soft-2);border-radius:10px;padding:8px 12px;line-height:1.45}
 .teach-wrap{margin-top:8px}
+.ml-btn{margin-top:10px;font-size:14px;padding:8px 14px;background:#fff;border:1px solid #fed7aa;color:var(--warn-deep);font-weight:700}
+.ml{margin-top:10px;background:#fff;border:1px solid #fed7aa;border-radius:12px;padding:12px 14px}
+.ml h4{margin:0 0 6px;font-size:16px;color:var(--ink)}
+.ml p{color:var(--ink-2)}
+.ml-cmp{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}
+@media (max-width:520px){.ml-cmp{grid-template-columns:1fr}}
+.ml-side{border-radius:10px;padding:8px 10px;font-size:14px}
+.ml-side b{display:block;margin-bottom:4px;font-size:13px}
+.ml-side.wrong{background:#fef2f2;border:1px solid #fecaca;color:#7f1d1d}
+.ml-side.right{background:var(--ok-soft);border:1px solid #bbf7d0;color:var(--ok-deep)}
+.ml-side .ml-lines{font-family:'JetBrains Mono','SF Mono',Menlo,monospace;white-space:pre-wrap;line-height:1.5;color:var(--ink)}
+.ml-steps{margin:8px 0 4px;padding-left:22px;font-size:14px;line-height:1.5;color:var(--ink-2)}
+.ml-steps li{margin:4px 0}
+.ml-steps b{color:var(--ink)}
+.ml-check{margin-top:10px;border-top:1px dashed #fed7aa;padding-top:10px}
+.ml-check .ml-q{font-weight:700;color:var(--ink);margin:0 0 6px}
+.ml-opt{display:block;width:100%;text-align:left;margin:6px 0;padding:9px 12px;border-radius:10px;border:1px solid var(--border);background:#fff;font-size:14px;color:var(--ink);cursor:pointer}
+.ml-opt.picked-right{border-color:var(--ok);background:var(--ok-soft)}
+.ml-opt.picked-wrong{border-color:#fca5a5;background:#fef2f2}
+.ml-fb{font-size:14px;margin:4px 0 0;padding:6px 10px;border-radius:8px;background:var(--border-soft);color:var(--ink-2)}
+.ml-rem{margin-top:10px;font-weight:700;color:var(--brand-deep);font-size:14px}
 .teach-btn{font-size:13px;padding:7px 12px}
 .teach-out{margin-top:8px;font-size:14px;line-height:1.55;color:var(--ink-2);background:#fff;border:1px dashed var(--brand-soft-2);border-radius:8px;padding:0;max-height:0;overflow:hidden;transition:max-height .2s,padding .2s}
 .teach-out:not(:empty){padding:10px 12px;max-height:600px}
@@ -4167,7 +4188,7 @@ function subAbsPerColumn(a, b) {
 // Keep in step with CACHE in sw.js — shown in the page footer so a stale
 // service-worker install is diagnosable from the device itself. Bump both
 // on every release, and stamp APP_UPDATED with the release date.
-const APP_VERSION = 'v74';
+const APP_VERSION = 'v75';
 const APP_UPDATED = '2026-10-28';
 // In-progress quiz survives refreshes/crashes/SW updates: every answer
 // keystroke snapshots the session to localStorage; a fresh page load resumes
@@ -5730,6 +5751,113 @@ function teachPayload(q) {
   return { type: q.type, a: q.a, b: q.b };
 }
 
+// ---- Mini-lessons for named mistakes (lessons.json) ----
+// Written ahead of time (tools/lessons: Claude writes them, a program checks
+// every sum, a second pass reviews them as a teacher would), so the app
+// itself never calls an AI for them: they work offline, cost nothing and say
+// the same correct thing every time. Each one: the mistake named kindly; the
+// mistaken and the correct working side by side on the same example
+// (learning from contrasting worked examples); the method as labelled steps
+// (subgoals); a "why" question whose wrong options are the beliefs behind
+// the mistake (self-explanation); and one rule to keep.
+let LESSONS = null;
+fetch('lessons.json').then(r => (r.ok ? r.json() : null)).then(d => { LESSONS = (d && d.lessons) || null; }).catch(() => {});
+const LESSON_SEEN_KEY = 'mq-lessons-seen-v1';
+function lessonKeyFor(q) {
+  let e;
+  try { e = errEntry(q); } catch { return null; }
+  if (q.type === 'ldiv') return { bigrem: 'ldiv.bigrem', norem: 'ldiv.norem', remslip: 'ldiv.remslip', zeroskip: 'ldiv.zeroskip', other: 'ldiv.steps' }[ldivMiss(q)] || null;
+  if (q.type === 'geo') return e.mix ? 'geo.mix' : e.sides ? 'geo.sides' : e.bbox ? 'geo.bbox' : null;
+  if (q.type === 'mul2') return e.cross ? 'mul2.cross' : e.shift ? 'mul2.place' : e.onerow ? 'mul2.onerow' : null;
+  if (q.type === 'mul' && q.big) return e.ten ? 'bigmul.carry' : null;
+  if (q.type === 'mul') return q.a <= 12 && q.b <= 12 && Stats.stubbornAnswer(q.a, q.b) != null ? 'mul.stuck' : null;
+  if (q.type === 'add') return e.ten ? 'add.carry' : null;
+  if (q.type === 'sub') return e.zero ? 'sub.zero' : e.ten ? 'sub.borrow' : null;
+  if (q.type === 'fnam') return e.flip ? 'frac.flip' : null;
+  if (q.type === 'fcmp') return e.bigden ? 'frac.bigden' : e.rw ? 'frac.rw' : null;
+  if (q.type === 'fadd') return e.addden ? 'frac.addden' : null;
+  if (q.type === 'fline') return e.ticks ? 'frac.ticks' : null;
+  if (q.type === 'fpos') return e.bigden ? 'frac.bigden' : e.zero ? 'frac.fpos.zero' : e.whole ? 'frac.fpos.whole' : null;
+  if (q.type === 'word' && q.multi) return e.early ? 'multi.early' : e.onesum ? 'multi.onesum' : e.remx ? 'multi.remx' : null;
+  if (q.type === 'word') return e.schema ? 'word.schema' : e.extra ? 'word.extra' : null;
+  return null;
+}
+// The next version of the lesson he has not seen most recently: a mistake
+// made again gets the idea from a different example.
+function lessonFor(q) {
+  const key = LESSONS && lessonKeyFor(q);
+  const list = key && Array.isArray(LESSONS[key]) ? LESSONS[key].filter(l => l && l.title && l.check) : [];
+  if (!list.length) return null;
+  let seen = {};
+  try { seen = JSON.parse(localStorage.getItem(LESSON_SEEN_KEY) || '{}') || {}; } catch {}
+  return { key, n: seen[key] || 0, lesson: list[(seen[key] || 0) % list.length] };
+}
+function renderMiniLesson({ key, n, lesson: L }) {
+  const box = el('div');
+  const btn = el('button', 'btn btn-ghost ml-btn', '📚 Mini-lesson: ' + L.title);
+  const card = el('div', 'ml');
+  card.style.display = 'none';
+  btn.onclick = () => {
+    const open = card.style.display === 'none';
+    card.style.display = open ? '' : 'none';
+    btn.textContent = (open ? '📚 Hide: ' : '📚 Mini-lesson: ') + L.title;
+    if (open && !card.dataset.counted) {
+      card.dataset.counted = '1';
+      try {
+        const seen = JSON.parse(localStorage.getItem(LESSON_SEEN_KEY) || '{}') || {};
+        seen[key] = n + 1;
+        localStorage.setItem(LESSON_SEEN_KEY, JSON.stringify(seen));
+      } catch {}
+    }
+  };
+  card.appendChild(el('h4', null, L.title));
+  // The lesson's own "mistake" line speaks about its example ("you wrote
+  // 38 ÷ 6 = 5 R 8"), but he made the mistake on different numbers, and the
+  // diagnosis above already names it with his. So the lesson is introduced
+  // as the same mistake on another example, and that line is not shown.
+  card.appendChild(el('p', null, 'The same kind of mistake, on another example' + (L.example ? ` (${L.example})` : '') + '. Spot the difference:'));
+  const side = (cls, part, fallback) => {
+    const d = el('div', 'ml-side ' + cls);
+    d.appendChild(el('b', null, (part && part.label) || fallback));
+    d.appendChild(el('div', 'ml-lines', ((part && part.lines) || []).join('\n')));
+    return d;
+  };
+  const cmp = el('div', 'ml-cmp');
+  cmp.appendChild(side('wrong', L.wrong, 'The mix-up'));
+  cmp.appendChild(side('right', L.right, 'The right way'));
+  card.appendChild(cmp);
+  if (Array.isArray(L.steps) && L.steps.length) {
+    const ol = el('ol', 'ml-steps');
+    L.steps.forEach(st => {
+      const li = el('li');
+      li.appendChild(el('b', null, st.goal + ': '));
+      li.appendChild(document.createTextNode(st.text));
+      ol.appendChild(li);
+    });
+    card.appendChild(ol);
+  }
+  const chk = el('div', 'ml-check');
+  chk.appendChild(el('p', 'ml-q', '🤔 ' + L.check.question));
+  const fb = el('p', 'ml-fb');
+  fb.style.display = 'none';
+  (L.check.options || []).forEach(o => {
+    const b = el('button', 'ml-opt', o.text);
+    b.onclick = () => {
+      chk.querySelectorAll('.ml-opt').forEach(x => x.classList.remove('picked-right', 'picked-wrong'));
+      b.classList.add(o.correct ? 'picked-right' : 'picked-wrong');
+      fb.textContent = (o.correct ? '✅ ' : '🤔 ') + o.feedback;
+      fb.style.display = '';
+    };
+    chk.appendChild(b);
+  });
+  chk.appendChild(fb);
+  card.appendChild(chk);
+  if (L.remember) card.appendChild(el('div', 'ml-rem', '⭐ ' + L.remember));
+  box.appendChild(btn);
+  box.appendChild(card);
+  return box;
+}
+
 function renderDiag(q) {
   const d = diagnose(q, q.given);
   const wrap = el('div', 'diag');
@@ -5746,6 +5874,9 @@ function renderDiag(q) {
   tip.appendChild(spanTxt('💡 ', null));
   tip.appendChild(spanTxt(d.tip, null));
   wrap.appendChild(tip);
+
+  const lesson = lessonFor(q);
+  if (lesson) wrap.appendChild(renderMiniLesson(lesson));
 
   // Progressive disclosure (cognitive load theory): the short why+tip is
   // always shown; the longer worked solution is one tap away. A child who
