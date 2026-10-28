@@ -234,11 +234,23 @@ def wait(cl, batch_id):
         time.sleep(60)
 
 
+ERRORS = []  # what the API said about failed requests, shown to the user
+
+
+def error_text(result):
+    err = getattr(result, "error", None)
+    inner = getattr(err, "error", None) or err
+    msg = getattr(inner, "message", None) or str(inner or result.type)
+    kind = getattr(inner, "type", None) or result.type
+    return f"{kind}: {msg}"
+
+
 def results(cl, batch_id, usage):
     out = {}
     for item in cl.messages.batches.results(batch_id):
         if item.result.type != "succeeded":
             out[item.custom_id] = None
+            ERRORS.append(error_text(item.result))
             continue
         msg = item.result.message
         usage["in"] += msg.usage.input_tokens
@@ -289,11 +301,19 @@ def one_round(cl, entries, usage, feedback=None):
     print("Writing lessons..." if feedback is None else f"Rewriting {len(feedback)} lessons with the reviewer's notes...")
     bid = submit(cl, write_requests(entries, feedback))
     wait(cl, bid)
+    ERRORS.clear()
     raw = {unmangle(k, entries): v for k, v in results(cl, bid, usage).items()}
+    if raw and all(v is None for v in raw.values()):
+        # Every request failed: the same API problem would fail the rewrite
+        # too, so stop and say what it was instead of spending a second round.
+        print("\nEvery request failed. The API said:")
+        for e in sorted(set(ERRORS)):
+            print("  " + e)
+        sys.exit("\nNothing was charged for failed requests. Send this message in the chat to get it fixed.")
     passed, failed, to_review = {}, {}, {}
     for cid, lesson in raw.items():
         if lesson is None:
-            failed[cid] = ["the request failed; write it again"]
+            failed[cid] = ["the request failed: " + (ERRORS[0] if ERRORS else "unknown error")]
             continue
         probs = validate(lesson)
         if probs:
@@ -319,6 +339,10 @@ def one_round(cl, entries, usage, feedback=None):
 
 
 def cmd_run(args):
+    global MODEL, PRICE_IN, PRICE_OUT
+    if args.model:
+        MODEL = args.model
+        PRICE_IN, PRICE_OUT = {"claude-sonnet-5-5": (1.0, 5.0), "claude-haiku-5-5": (0.05, 0.25)}.get(MODEL, (PRICE_IN, PRICE_OUT))
     entries = [e for e in CATALOG["lessons"] if args.priority is None or e["priority"] <= args.priority]
     entries.sort(key=lambda e: e["priority"])
     if args.pilot:
@@ -367,6 +391,19 @@ def save(passed, entries):
                                "lessons": lessons}, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
+def cmd_errors(args):
+    cl = client()
+    seen = {}
+    for item in cl.messages.batches.results(args.batch_id):
+        if item.result.type != "succeeded":
+            e = error_text(item.result)
+            seen[e] = seen.get(e, 0) + 1
+    if not seen:
+        print("No failed requests in that batch.")
+    for e, n in seen.items():
+        print(f"{n} × {e}")
+
+
 def cmd_status(args):
     if not STATE.exists():
         sys.exit("No finished run yet.")
@@ -383,9 +420,12 @@ def main():
     r.add_argument("--pilot", action="store_true", help="3 lessons only, to check quality and cost")
     r.add_argument("--priority", type=int, choices=[1, 2, 3], help="only lessons up to this priority")
     r.add_argument("--redo", action="store_true", help="write lessons again even if lessons.json has them")
+    r.add_argument("--model", help="use another model, e.g. claude-sonnet-5-5")
     sub.add_parser("status")
+    e = sub.add_parser("errors", help="show why the requests in a batch failed")
+    e.add_argument("batch_id")
     args = p.parse_args()
-    {"run": cmd_run, "status": cmd_status}[args.cmd](args)
+    {"run": cmd_run, "status": cmd_status, "errors": cmd_errors}[args.cmd](args)
 
 
 if __name__ == "__main__":
