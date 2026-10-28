@@ -1,0 +1,5 @@
+{
+ "version": 1,
+ "note": "Filled by tools/lessons/generate_lessons.py. Empty until the first run; the app shows no mini-lessons until then.",
+ "lessons": {}
+}
