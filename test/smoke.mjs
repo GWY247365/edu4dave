@@ -1360,7 +1360,7 @@ const sb = await page.evaluate(() => {
   for (const g of ['335', '325']) Stats.recordError({ ...errEntry({ ...q, bucket: 'sub:2', given: g }), d: Date.now() + Number(g) });
   return { steps, d, add: diagnose({ type: 'add', a: 368, b: 275, ans: 643 }, '533'),
            zero: errEntry({ ...q, given: '335' }).zero, plain: errEntry({ type: 'sub', a: 742, b: 318, ans: 424, given: '434', bucket: 'sub:1' }),
-           pat: Stats.errorPatterns().filter(p => p.key === 'sub:2').map(p => p.kind + ': ' + p.label)[0] || '' };
+           pat: Stats.errorPatterns().filter(p => p.key === 'sub:all').map(p => p.kind + ': ' + p.label)[0] || '' };
 });
 check('503 − 278 is worked in words: no tens to trade from, so a hundred first; the 0 becomes 9, never "-1"',
   /There are 0 tens, so trade 1 hundred for 10 tens first, then 1 ten for 10 ones → 13 − 8 = 5/.test(sb.steps['503-278']) &&
@@ -1511,6 +1511,44 @@ const spLine = await page.evaluate(() => {
 });
 check('the parent panel shows the sprints; a device that has not sprinted today cannot untick it',
   /⚡ 1-minute sprint: 4 done · last 15 right · usual 15 · best 20/.test(spLine.t) && spLine.kept === true, JSON.stringify(spLine));
+
+console.log('27. honest mastery: a struggling domain is re-taught easiest-first with help; stuck facts; totals survive reload');
+const hm = await page.evaluate(() => {
+  localStorage.clear(); Stats.reset();
+  Stats.importMerge({ unlocked: { longdiv: true }, seen: { longdivLesson: true } });
+  // 2 of the last 8 right, the last one right
+  for (const r of [0, 0, 0, 1, 0, 0, 0, 1]) { Stats.recordSkill('longdiv', !!r, 20000, false); Stats.recordSkill('ldiv.long3', !!r, 20000, false); }
+  const qs = Array.from({ length: 30 }, () => genLongDiv());
+  const first = reteachDue(), again = reteachDue();
+  return { mastery: Stats.summary().longdiv.mastery, rawP: Math.round(100 * Stats.getSkill('longdiv').pL),
+           struggling: Stats.struggling('longdiv'), kinds: [...new Set(qs.map(q => q.ldk))],
+           helped: qs.every(q => q.scaffold && q.scaffold.text && !new RegExp(`\\b${q.ans}\\s*R\\s*${q.rem}\\b`).test(q.scaffold.text)),
+           first, again, flagged: Stats.engineCheck().some(x => x.level === 'bad' && /Long division: 2 of the last 8 right/.test(x.label)) };
+});
+check('mastery follows what he actually did lately, not the last answer', hm.mastery <= 40 && hm.mastery < hm.rawP, JSON.stringify(hm));
+check('while it struggles: the easiest kind first, every question with a hint that keeps the answer back',
+  hm.struggling && hm.kinds.join() === 'rem' && hm.helped, JSON.stringify(hm));
+check('the lesson comes back as a second look, at most once every few days, and the parent panel says so',
+  hm.first === 'longdiv' && hm.again === null && hm.flagged, JSON.stringify(hm));
+await page.evaluate(() => { localStorage.removeItem('mq-reteach-v1'); localStorage.removeItem('mathquiz.session.v1'); startLongDivPractice(); });
+await page.waitForTimeout(150);
+await fillAll('1');
+await page.evaluate(() => submit(false));
+await page.waitForTimeout(150);
+const afterPractice = await page.evaluate(() => ({ lesson: state.showLesson, reteach: state.reteach || null }));
+check('focused practice does not pop the re-teach lesson up again', afterPractice.lesson !== 'longdiv' && !afterPractice.reteach, JSON.stringify(afterPractice));
+const stuck = await page.evaluate(() => {
+  for (let i = 0; i < 3; i++) { Stats.recordMul(7, 8, false, 4000); Stats.recordError({ d: Date.now() + i * 100000, k: 'mul:7x8', x: [7, 8], g: '76', ans: '56', sc: 0 }); }
+  return { v: Stats.stubbornAnswer(8, 7), again: diagnose({ type: 'mul', a: 8, b: 7, ans: 56 }, '76'), other: diagnose({ type: 'mul', a: 8, b: 7, ans: 56 }, '63').why };
+});
+check('a wrong answer given again and again is named, and the fact is rebuilt from easier ones',
+  stuck.v === 76 && /76 again/.test(stuck.again.why) && /8 × 5 = 40/.test(stuck.again.tip) && /56 = 7 × 8/.test(stuck.again.tip) && !/again/.test(stuck.other), JSON.stringify(stuck));
+await page.evaluate(() => { localStorage.clear(); Stats.reset(); for (let i = 0; i < 103; i++) Stats.recordQuiz(10, 8, 300, 'quiz', []); });
+await page.reload();
+await page.waitForTimeout(300);
+const tot = await page.evaluate(() => ({ n: Stats.summary().quizzesDone, hist: Stats.getHist().length, wk: Stats.weekStats(Stats.getSnaps().slice(-1)[0].week) }));
+check('the quiz total keeps counting past the 100-session history, across a reload', tot.n === 103 && tot.hist === 100, JSON.stringify(tot));
+await page.evaluate(() => { localStorage.clear(); Stats.reset(); });
 
 console.log('13. a release is announced when the app is resumed, not only on reload');
 await page.goto(base);

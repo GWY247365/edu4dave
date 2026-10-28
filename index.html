@@ -595,15 +595,16 @@ const Stats = (() => {
   // right answers, so an aggregate record (one record for every long-division
   // question) mostly reported the LAST answer: in the field a child at 3 right
   // out of 20 showed 87% mastery, and the engine stopped treating the domain
-  // as one he was still learning. Cap it by the smoothed hit rate of the last
-  // 8 answers; a record with a clean recent run is unchanged.
+  // as one he was still learning. Cap it just above the hit rate of the last
+  // 8 answers (one slip in 8 still allows 0.975, so a strong child's band is
+  // not knocked down; 3 in 8 caps at 0.475); a clean recent run is unchanged.
   function knownP(f) {
     if (!f) return BKT.L0;
     const p = f.pL != null ? f.pL : BKT.L0;
     const rec = f.recent || '';
     if (rec.length < 3) return p;
     const hits = rec.split('1').length - 1;
-    return Math.min(p, (hits + 0.5) / (rec.length + 0.5));
+    return Math.min(p, hits / rec.length + 0.1);
   }
 
   // Migrate an old {right,wrong,lastSeen} fact to the FSRS-lite shape.
@@ -670,6 +671,11 @@ const Stats = (() => {
         errlog: d.errlog || [],
         daily: d.daily || { day: null, warmup: false, quiz: false },
         pin: d.pin || null,
+        // Kept on reload: without these the running quiz total restarted at
+        // the 100-session history cap, and the 1-minute sprint history
+        // vanished unless cloud sync brought it back.
+        ...(d.quizTotal != null ? { quizTotal: d.quizTotal, quizTotalFloor: !!d.quizTotalFloor } : {}),
+        ...(Array.isArray(d.sprints) ? { sprints: d.sprints } : {}),
       };
     } catch { return blank(); }
   }
@@ -1238,7 +1244,9 @@ const Stats = (() => {
     let quizzes = 0, c = 0, n = 0;
     for (const h of data.hist) {
       if (isoWeekKey(new Date(h.d)) !== w) continue;
-      quizzes++; c += h.c || 0; n += h.n || 0;
+      quizzes++;
+      // The score counts quizzes only: warm-ups and practice score near 100%.
+      if (isMeasurement(h)) { c += h.c || 0; n += h.n || 0; }
     }
     return { weekQuizzes: quizzes, weekScore: n ? Math.round(100 * c / n) : null };
   }
@@ -1322,7 +1330,7 @@ const Stats = (() => {
                        word: 'Word problems', bigmul: '2-digit ×', fractions: 'Fractions' };
     for (const s of strugglingDomains()) {
       add('bad', `${DOM_NAME[s.name] || s.name}: ${s.hits} of the last ${s.n} right`,
-          'not solid yet — the app re-teaches it, starts from the easiest kind and shows a hint on each one until it improves');
+          'not solid yet — the app re-teaches it (lesson again every few days) and, where the skill has kinds and hints, starts from the easiest kind with the hint shown');
     }
     return out;
   }
@@ -4552,7 +4560,7 @@ function submit(fromTimeout) {
   const unlocked = state.isPractice ? null : Stats.checkUnlocks();
   pushIfSynced();
   if (unlocked) { state.showLesson = unlocked; }
-  else if (!state.isPractice && state.dailyStep !== 'warmup') {
+  else if (!state.isPractice && !state.immediate && state.dailyStep !== 'warmup') {
     const again = reteachDue();
     if (again) { state.showLesson = again; state.reteach = again; }
   }
@@ -5271,7 +5279,9 @@ function renderQuestion(q, idx) {
   const stuck = !state.submitted && q.type === 'mul' && !q.big && q.a <= 12 && q.b <= 12 ? Stats.stubbornAnswer(q.a, q.b) : null;
   if (!state.submitted && (q.isReview || q.isSlow || stuck != null)) {
     let tipText = '';
-    if (stuck != null) tipText = `Careful: this one often comes out as ${stuck}, and that is not it. ` + factTip(q.a, q.b);
+    // The stuck wrong answer is not named before he answers: seeing it again
+    // would rehearse it. After a miss the diagnosis names it.
+    if (stuck != null) tipText = 'This one has been tricky — work it out instead of guessing. ' + factTip(q.a, q.b);
     else if (q.type === 'mul' && q.big) tipText = `Break ${Math.floor(q.a / 10) * 10} + ${q.a % 10}: multiply each by ${q.b}, then add.`;
     else if (q.type === 'mul' && q.a <= 12 && q.b <= 12) tipText = factTip(q.a, q.b);
     else if (q.type === 'div') tipText = `Think: ${q.b} × ? = ${q.a}. Use the ${q.b} times table.`;
@@ -5301,6 +5311,7 @@ function rebuildTip(a, b) {
   if (hi % 2 === 0 && hi > 2) parts.push(`Or double: ${lo} × ${hi / 2} = ${ans / 2}, and ${ans / 2} + ${ans / 2} = ${ans}.`);
   if (ans === 56) parts.push('Or remember 5, 6, 7, 8: 56 = 7 × 8.');
   if (!parts.length) parts.push(factTip(a, b));
+  parts[0] = parts[0].replace(/^Or (\w)/, (m, c) => c.toUpperCase());
   return parts.join(' ');
 }
 
@@ -6055,7 +6066,7 @@ function renderLessonModal(domain) {
   if (state.reteach === domain) {
     const note = el('div', 'reteach-note');
     note.appendChild(el('b', null, '🔁 Let\'s look at this one again.'));
-    note.appendChild(el('span', null, ' These have been tricky lately — that is normal while a skill is new. Read it through, then try some: you will get a hint on each one until it clicks.'));
+    note.appendChild(el('span', null, ' These have been tricky lately — that is normal while a skill is new. Read it through, then try some: we will start with the easier ones, and you will see extra help while it clicks.'));
     m.appendChild(note);
   }
 
@@ -7025,12 +7036,16 @@ function renderStatsModal() {
       const prior = snaps.length >= 2 ? snaps[snaps.length - 2] : null;
       const delta = (a, b) => { if (b == null) return ''; const d = a - b; if (!d) return ' (—)'; return d > 0 ? ` (+${d})` : ` (${d})`; };
       const row = el('p', 'stats-line');
-      row.innerHTML = `Mul mastery: <b>${last.mulMastery}%</b>${delta(last.mulMastery, prior && prior.mulMastery)} · ` +
-                      `Mul accuracy: <b>${last.mulAccuracy}%</b>${delta(last.mulAccuracy, prior && prior.mulAccuracy)} · ` +
-                      (() => { const lw = Stats.weekStats(last.week), pw = prior ? Stats.weekStats(prior.week) : null;
-                        return lw.weekQuizzes == null ? '' : `This week: <b>${lw.weekQuizzes}</b> sessions` +
-                          (lw.weekScore == null ? '' : `, <b>${lw.weekScore}%</b> right`) +
-                          (pw && pw.weekScore != null && lw.weekScore != null ? delta(lw.weekScore, pw.weekScore) : ''); })();
+      // The week's own sessions and score: stored on the snapshot, or worked
+      // out from the history for snapshots taken before they were stored.
+      const wk = x => x && (x.weekQuizzes !== undefined ? x : Stats.weekStats(x.week));
+      const lw = wk(last), pw = wk(prior);
+      const parts = [`Mul mastery: <b>${last.mulMastery}%</b>${delta(last.mulMastery, prior && prior.mulMastery)}`,
+                     `Mul accuracy: <b>${last.mulAccuracy}%</b>${delta(last.mulAccuracy, prior && prior.mulAccuracy)}`];
+      if (lw.weekQuizzes != null) parts.push(`Week ${String(last.week).slice(-3)}: <b>${lw.weekQuizzes}</b> sessions` +
+        (lw.weekScore == null ? '' : `, <b>${lw.weekScore}%</b> right in quizzes` +
+          (pw && pw.weekScore != null ? delta(lw.weekScore, pw.weekScore) : '')));
+      row.innerHTML = parts.join(' · ');
       sect.appendChild(row);
       // tiny sparkline of mulMastery over recent snaps
       const spark = el('div', 'mini-chart');
@@ -7571,7 +7586,7 @@ setTimeout(focusFirstBox, 100);
   if (!code) return;
   cloudSync(code).then(() => {
     const unlocked = Stats.checkUnlocks();
-    if (unlocked) state.showLesson = unlocked;
+    if (unlocked) { state.showLesson = unlocked; state.reteach = null; }
     // Don't rebuild the DOM (and steal the cursor) if the child is mid-answer;
     // the merged stats will surface on the next natural render.
     const typing = document.activeElement && document.activeElement.classList &&
