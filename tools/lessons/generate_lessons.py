@@ -186,7 +186,65 @@ def check_line(line):
     return problems
 
 
+def _parse(v):
+    if isinstance(v, str):
+        t = v.strip()
+        if t[:1] in "[{":
+            try:
+                return json.loads(t)
+            except ValueError:
+                pass
+    return v
+
+
+def normalize(lesson):
+    """Put a lesson into the expected shape. Without a forced tool call some
+    replies send nested parts as JSON text ("right": "{\"label\": ...}") or
+    lines as one string; turn those back into objects and lists."""
+    if not isinstance(lesson, dict):
+        return lesson
+    L = {k: _parse(v) for k, v in lesson.items()}
+    for side in ("wrong", "right"):
+        part = L.get(side)
+        if isinstance(part, list):
+            part = {"label": "", "lines": part}
+        if isinstance(part, str):
+            part = {"label": "", "lines": [x for x in part.split("\n") if x.strip()]}
+        if isinstance(part, dict):
+            lines = _parse(part.get("lines", []))
+            if isinstance(lines, str):
+                lines = [x for x in lines.split("\n") if x.strip()]
+            part["lines"] = [str(x) for x in lines] if isinstance(lines, list) else []
+        L[side] = part
+    steps = L.get("steps")
+    if isinstance(steps, list):
+        fixed = []
+        for st in steps:
+            st = _parse(st)
+            if isinstance(st, str):
+                goal, _, text = st.partition(":")
+                st = {"goal": goal.strip(), "text": text.strip()} if text else {"goal": "", "text": st}
+            if isinstance(st, dict):
+                fixed.append({"goal": str(st.get("goal", "")), "text": str(st.get("text", ""))})
+        L["steps"] = fixed
+    chk = L.get("check")
+    if isinstance(chk, dict):
+        opts = _parse(chk.get("options", []))
+        chk["options"] = [o for o in (_parse(o) for o in opts) if isinstance(o, dict)] if isinstance(opts, list) else []
+        for o in chk["options"]:
+            if isinstance(o.get("correct"), str):
+                o["correct"] = o["correct"].strip().lower() == "true"
+    return L
+
+
 def validate(lesson):
+    try:
+        return _validate(lesson)
+    except Exception as e:  # a malformed lesson is a failed lesson, never a crash
+        return [f"the lesson is not in the expected shape ({type(e).__name__}: {e})"]
+
+
+def _validate(lesson):
     """Problems a program can see: arithmetic in the correct working, shape, length."""
     probs = []
     for line in lesson.get("right", {}).get("lines", []) + [s.get("text", "") for s in lesson.get("steps", [])]:
@@ -312,14 +370,20 @@ def unmangle(custom_id, entries):
     return custom_id
 
 
-def one_round(cl, entries, usage, feedback=None):
+def one_round(cl, entries, usage, feedback=None, from_batch=None):
     """Write (or rewrite) lessons, check them in code, review them. Returns
     (passed {cid: lesson}, failed {cid: [issues]})."""
-    print("Writing lessons..." if feedback is None else f"Rewriting {len(feedback)} lessons with the reviewer's notes...")
-    bid = submit(cl, write_requests(entries, feedback))
+    if from_batch:
+        print(f"Using the lessons already written in {from_batch} (no new writing cost)...")
+        bid = from_batch
+    else:
+        print("Writing lessons..." if feedback is None else f"Rewriting {len(feedback)} lessons with the reviewer's notes...")
+        bid = submit(cl, write_requests(entries, feedback))
     wait(cl, bid)
     ERRORS.clear()
-    raw = {unmangle(k, entries): v for k, v in results(cl, bid, usage).items()}
+    raw = {unmangle(k, entries): normalize(v) for k, v in results(cl, bid, usage).items()}
+    (ROOT / f"raw_{bid}.json").write_text(json.dumps(raw, ensure_ascii=False, indent=1), encoding="utf-8")
+    raw = {k: v for k, v in raw.items() if k.split("#")[0] in {e["key"] for e in entries}}
     if raw and all(v is None for v in raw.values()):
         # Every request failed: the same API problem would fail the rewrite
         # too, so stop and say what it was instead of spending a second round.
@@ -344,14 +408,18 @@ def one_round(cl, entries, usage, feedback=None):
         wait(cl, rid)
         verdicts = {unmangle(k, entries): v for k, v in results(cl, rid, usage).items()}
         for cid, lesson in to_review.items():
-            v = verdicts.get(cid)
-            scores = (v or {}).get("scores", {})
-            good = v and v.get("pass") and all(scores.get(s, 0) >= 4 for s in ("maths", "targets_mistake", "child_fit", "self_explanation"))
+            v = verdicts.get(cid) if isinstance(verdicts.get(cid), dict) else None
+            scores = _parse((v or {}).get("scores", {}))
+            scores = scores if isinstance(scores, dict) else {}
+            num = lambda x: int(x) if str(x).strip().isdigit() else 0
+            ok_pass = v and str(v.get("pass")).strip().lower() == "true"
+            good = ok_pass and all(num(scores.get(s, 0)) >= 4 for s in ("maths", "targets_mistake", "child_fit", "self_explanation"))
             if good:
                 lesson["_review"] = scores
                 passed[cid] = lesson
             else:
-                failed[cid] = (v or {}).get("issues") or ["the review did not pass it"]
+                issues = _parse((v or {}).get("issues"))
+                failed[cid] = (issues if isinstance(issues, list) else [str(issues)] if issues else []) or ["the review did not pass it"]
     return passed, failed
 
 
@@ -377,7 +445,7 @@ def cmd_run(args):
         sys.exit("Cancelled.")
     cl = client()
     usage = {"in": 0, "out": 0}
-    passed, failed = one_round(cl, entries, usage)
+    passed, failed = one_round(cl, entries, usage, from_batch=args.from_batch)
     if failed:
         p2, failed = one_round(cl, entries, usage, feedback=failed)
         passed.update(p2)
@@ -438,6 +506,7 @@ def main():
     r.add_argument("--priority", type=int, choices=[1, 2, 3], help="only lessons up to this priority")
     r.add_argument("--redo", action="store_true", help="write lessons again even if lessons.json has them")
     r.add_argument("--model", help="use another model, e.g. claude-sonnet-5-5")
+    r.add_argument("--from-batch", dest="from_batch", help="reuse lessons already written in this batch id")
     sub.add_parser("status")
     e = sub.add_parser("errors", help="show why the requests in a batch failed")
     e.add_argument("batch_id")
