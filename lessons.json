@@ -1,5 +1,4048 @@
 {
  "version": 1,
- "note": "Filled by tools/lessons/generate_lessons.py. Empty until the first run; the app shows no mini-lessons until then.",
- "lessons": {}
+ "generated": "2026-10-27",
+ "model": "claude-opus-5-5",
+ "note": "Mini-lessons for named mistakes, written by tools/lessons/generate_lessons.py: every sum checked by a program, each lesson reviewed by a second pass.",
+ "lessons": {
+  "add.carry": [
+   {
+    "title": "Trading 10 for a little 1",
+    "mistake": "You worked hard on 368 + 275. A little 1 was missed or added twice, so the answer was 10 or 100 (or more) away from 643, like 633 or 533. This mistake is normal while you learn.",
+    "example": "368 + 275",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "Ones: 8 + 5 = 13, write 3 (forgot the little 1)",
+      "Tens: 6 + 7 = 13, write 3, little 1 over hundreds",
+      "Hundreds: 1 + 3 + 2 = 6",
+      "Answer: 633"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "Ones: 8 + 5 = 13, write 3, little 1 over tens",
+      "Tens: 1 + 6 + 7 = 14, write 4, little 1 over hundreds",
+      "Hundreds: 1 + 3 + 2 = 6",
+      "Answer: 643"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Add the ones",
+      "text": "8 + 5 = 13. That is 10 or more, so trade 10 ones for 1 ten. Write 3 and a little 1 over the tens."
+     },
+     {
+      "goal": "Add the tens with the little 1",
+      "text": "1 + 6 + 7 = 14. Trade 10 tens for 1 hundred. Write 4 and a little 1 over the hundreds."
+     },
+     {
+      "goal": "Add the hundreds",
+      "text": "1 + 3 + 2 = 6. The answer is 643."
+     },
+     {
+      "goal": "Check backwards",
+      "text": "643 − 275 = 368, so 643 is right. Only one little 1 per column, and only if the column before made 10 or more."
+     }
+    ],
+    "check": {
+     "question": "Why do we write a little 1 over the tens after 8 + 5 = 13?",
+     "options": [
+      {
+       "text": "13 ones is 1 ten and 3 ones, so the ten moves to the tens column.",
+       "correct": true,
+       "feedback": "Yes. You traded 10 ones for 1 ten, and the little 1 shows that ten."
+      },
+      {
+       "text": "The 1 is not important, so we only write the 3.",
+       "correct": false,
+       "feedback": "The 1 is really 1 ten. If we drop it, the answer is 10 too small, like 633."
+      },
+      {
+       "text": "We write a little 1 over every column to be safe.",
+       "correct": false,
+       "feedback": "An extra little 1 makes the answer 10 or 100 too big. Only write it when the column before made 10 or more."
+      }
+     ]
+    },
+    "remember": "Column makes 10 or more? Trade, and write a little 1 above the next column."
+   },
+   {
+    "title": "Add the little 1 to the next column",
+    "mistake": "For 459 + 274 you wrote 723. You added the ones well, but the little 1 from the ones was not added to the tens. This is a common slip while learning, and we can fix it.",
+    "example": "459 + 274",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "Ones: 9 + 4 = 13, write 3 (the little 1 is left out)",
+      "Tens: 5 + 7 = 12, write 2, little 1 over hundreds",
+      "Hundreds: 1 + 4 + 2 = 7",
+      "Answer: 723"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "Ones: 9 + 4 = 13, write 3, little 1 over tens",
+      "Tens: 1 + 5 + 7 = 13, write 3, little 1 over hundreds",
+      "Hundreds: 1 + 4 + 2 = 7",
+      "Answer: 733"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Add the ones",
+      "text": "Start on the right. 9 + 4 = 13. That is 10 or more."
+     },
+     {
+      "goal": "Trade 10 ones",
+      "text": "Trade 10 ones for 1 ten. Write 3 in the ones and a little 1 over the tens."
+     },
+     {
+      "goal": "Add tens with little 1",
+      "text": "1 + 5 + 7 = 13. Trade 10 tens for 1 hundred. Write 3 and a little 1 over the hundreds."
+     },
+     {
+      "goal": "Add the hundreds",
+      "text": "1 + 4 + 2 = 7. The answer is 733."
+     },
+     {
+      "goal": "Check by working backwards",
+      "text": "733 − 274 = 459. That is the other number, so 733 is right."
+     }
+    ],
+    "check": {
+     "question": "In 459 + 274, why must the little 1 from the ones be added in the tens column?",
+     "options": [
+      {
+       "text": "Because 13 ones is 1 ten and 3 ones, so the 1 ten belongs with the tens.",
+       "correct": true,
+       "feedback": "Yes. We trade 10 ones for 1 ten, so the tens column must count it."
+      },
+      {
+       "text": "Because the tens column is already full, so the little 1 can wait.",
+       "correct": false,
+       "feedback": "The little 1 cannot wait. It is a real ten from the ones, and if we leave it out the answer is 10 too small."
+      },
+      {
+       "text": "Because the little 1 tells us the ones were hard.",
+       "correct": false,
+       "feedback": "The little 1 is not a note. It is 1 ten we got when we traded 10 ones, so we add it to the tens."
+      }
+     ]
+    },
+    "remember": "10 or more? Trade 10 for a little 1 in the next column."
+   },
+   {
+    "title": "Carry the ten to the next column",
+    "mistake": "You worked hard on 457 + 286 and got 733. The ones made 13, but the 1 ten was not carried to the tens column, so the answer is 10 too small. This is a very common mix-up while learning.",
+    "example": "457 + 286",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "Ones: 7 + 6 = 13, write 3 (no little 1)",
+      "Tens: 5 + 8 = 13, write 3, carry 1",
+      "Hundreds: 4 + 2 + 1 = 7",
+      "Answer: 733"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "Ones: 7 + 6 = 13, write 3, carry 1",
+      "Tens: 5 + 8 + 1 = 14, write 4, carry 1",
+      "Hundreds: 4 + 2 + 1 = 7",
+      "Answer: 743"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Add the ones",
+      "text": "7 + 6 = 13. That is 10 or more, so trade 10 ones for 1 ten. Write 3 and put a little 1 above the tens."
+     },
+     {
+      "goal": "Add the tens with the little 1",
+      "text": "5 + 8 + 1 = 14 tens. Trade 10 tens for 1 hundred. Write 4 and put a little 1 above the hundreds."
+     },
+     {
+      "goal": "Add the hundreds",
+      "text": "4 + 2 + 1 = 7. Write 7. The answer is 743."
+     },
+     {
+      "goal": "Check by working backwards",
+      "text": "743 − 286 = 457. We get the other number, so 743 is right."
+     }
+    ],
+    "check": {
+     "question": "In 457 + 286, the ones make 13. Why do we write a little 1 above the tens column?",
+     "options": [
+      {
+       "text": "Because 13 ones is 1 ten and 3 ones, and the ten belongs in the tens column.",
+       "correct": true,
+       "feedback": "Yes. The 1 in 13 is a real ten, so it must be added with the other tens."
+      },
+      {
+       "text": "We do not need it. We can just drop the 1 from 13.",
+       "correct": false,
+       "feedback": "If we drop it, we lose 10. That is why 733 is 10 less than 743."
+      },
+      {
+       "text": "Only the hundreds column needs a little 1.",
+       "correct": false,
+       "feedback": "Any column that makes 10 or more needs a trade. Here the ones and the tens both make 10 or more."
+      },
+      {
+       "text": "We only carry if the answer looks too small.",
+       "correct": false,
+       "feedback": "We carry every time a column makes 10 or more. Look at each column, not just the answer."
+      }
+     ]
+    },
+    "remember": "10 or more in a column? Trade it and write the little 1."
+   }
+  ],
+  "bigmul.carry": [
+   {
+    "title": "Keep Every Ten When You Multiply",
+    "mistake": "You answered 47 × 6 = 242, but the answer is 282. The 4 tens from 7 × 6 = 42 got lost. Lots of learners do this, and you can fix it.",
+    "example": "47 × 6",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "7 × 6 = 42, write 2, carry 4",
+      "4 × 6 = 24",
+      "The carried 4 is not added",
+      "Answer: 242"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "Estimate: 47 × 6 is about 50 × 6 = 300",
+      "40 × 6 = 240",
+      "7 × 6 = 42",
+      "240 + 42 = 282"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Estimate first",
+      "text": "47 is close to 50. 50 × 6 = 300, so the answer is about 300."
+     },
+     {
+      "goal": "Split into tens and ones",
+      "text": "47 is 40 and 7. The 4 is worth 40, not 4."
+     },
+     {
+      "goal": "Multiply each part",
+      "text": "40 × 6 = 240. 7 × 6 = 42."
+     },
+     {
+      "goal": "Add the parts",
+      "text": "240 + 42 = 282. The 4 tens in 42 are added here."
+     },
+     {
+      "goal": "Check with the estimate",
+      "text": "282 is close to 300. 242 is too far away."
+     }
+    ],
+    "check": {
+     "question": "Why is 242 not the right answer for 47 × 6?",
+     "options": [
+      {
+       "text": "The 4 tens from 42 were not added to 240.",
+       "correct": true,
+       "feedback": "Yes. 42 is 4 tens and 2 ones, so all of 42 must be added: 240 + 42 = 282."
+      },
+      {
+       "text": "Only the 2 from 42 is needed, so 242 is right.",
+       "correct": false,
+       "feedback": "Not quite. 42 means 4 tens and 2 ones. If you keep only the 2, you lose 40."
+      },
+      {
+       "text": "The 4 in 47 is worth 4, so 4 × 6 = 24 is the tens part.",
+       "correct": false,
+       "feedback": "Good try. The 4 in 47 is worth 40, so the tens part is 40 × 6 = 240. Then you still add all of 42."
+      }
+     ]
+    },
+    "remember": "Split into tens and ones, then add both whole parts."
+   },
+   {
+    "title": "Keep every ten when you multiply",
+    "mistake": "You answered 38 × 7 as 216. Good try. The 5 tens from 8 × 7 = 56 were left out, so the answer is 50 too small. This is a very common mix-up.",
+    "example": "38 × 7",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "8 × 7 is 56, write 6, carry 5",
+      "3 × 7 is 21, but the 5 is not added",
+      "Answer: 216"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "38 × 7 is about 40 × 7 = 280",
+      "38 = 30 + 8",
+      "30 × 7 = 210",
+      "8 × 7 = 56",
+      "210 + 56 = 266"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Estimate first",
+      "text": "38 is close to 40. 40 × 7 = 280, so the answer is about 280."
+     },
+     {
+      "goal": "Split into tens and ones",
+      "text": "38 = 30 + 8. The 3 is worth 30."
+     },
+     {
+      "goal": "Multiply each part",
+      "text": "30 × 7 = 210. 8 × 7 = 56."
+     },
+     {
+      "goal": "Add the parts",
+      "text": "210 + 56 = 266. The 5 tens in 56 are now in the answer."
+     },
+     {
+      "goal": "Check with the estimate",
+      "text": "266 is close to 280, so it makes sense. 216 is too far away."
+     }
+    ],
+    "check": {
+     "question": "Why must the 5 from 56 be added to the tens?",
+     "options": [
+      {
+       "text": "The 5 in 56 means 5 tens, which is 50, so it belongs in the answer.",
+       "correct": true,
+       "feedback": "Yes. 56 is 50 + 6. If you drop the 5 tens, the answer is 50 too small."
+      },
+      {
+       "text": "The 5 is a small number, so it can be left out.",
+       "correct": false,
+       "feedback": "Not quite. The 5 is in the tens place, so it is worth 50. That is a big part of the answer."
+      },
+      {
+       "text": "Only the ones digit of 56 goes into the answer.",
+       "correct": false,
+       "feedback": "Not quite. All of 56 goes in. The 6 goes in the ones and the 5 tens go in the tens."
+      },
+      {
+       "text": "3 × 7 = 21 already gives all the tens.",
+       "correct": false,
+       "feedback": "Not quite. 30 × 7 gives 21 tens, and 8 × 7 gives 5 more tens. You need both."
+      }
+     ]
+    },
+    "remember": "Add every part: tens part + ones part. Check with your estimate."
+   },
+   {
+    "title": "Keep Every Ten When You Multiply",
+    "mistake": "You worked hard on 38 × 7 and got 216. The 5 tens from 8 × 7 = 56 were left out, so the answer was 50 too small. Many learners do this.",
+    "example": "38 × 7",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "8 × 7 = 56, write 6, carry 5",
+      "3 × 7 = 21",
+      "Forgot to add the carried 5",
+      "Answer: 216"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "Estimate: about 40 × 7 = 280",
+      "30 × 7 = 210",
+      "8 × 7 = 56",
+      "210 + 56 = 266"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Estimate first",
+      "text": "38 is close to 40. 40 × 7 = 280, so the answer is about 280."
+     },
+     {
+      "goal": "Split into tens and ones",
+      "text": "38 is 30 and 8. The 3 is worth 30."
+     },
+     {
+      "goal": "Multiply each part",
+      "text": "30 × 7 = 210. 8 × 7 = 56."
+     },
+     {
+      "goal": "Add the parts",
+      "text": "210 + 56 = 266. This is close to 280, so it makes sense."
+     }
+    ],
+    "check": {
+     "question": "Why must the 5 from 56 be added to the tens?",
+     "options": [
+      {
+       "text": "The 5 in 56 means 5 tens, which is 50.",
+       "correct": true,
+       "feedback": "Yes. 56 is 50 and 6, so those 5 tens must go in the answer."
+      },
+      {
+       "text": "It does not matter, because 5 is only a small number.",
+       "correct": false,
+       "feedback": "The 5 is in the tens place, so it is worth 50. Leaving out 50 changes the answer a lot."
+      },
+      {
+       "text": "Only the 6 ones belong in the answer.",
+       "correct": false,
+       "feedback": "All of 56 belongs in the answer. The 6 ones and the 5 tens both count."
+      },
+      {
+       "text": "The tens were already done when we did 3 × 7.",
+       "correct": false,
+       "feedback": "3 × 7 is really 30 × 7 = 210. The 5 tens from 56 are extra tens to add on."
+      }
+     ]
+    },
+    "remember": "Split into tens and ones, then add both parts."
+   }
+  ],
+  "frac.addden": [
+   {
+    "title": "Adding pieces of the same size",
+    "mistake": "You added the top numbers, which is right. But you also added the bottom numbers: 3/8 + 2/8 became 5/16. Many learners do this at first, and it is a good mistake to learn from.",
+    "example": "3/8 + 2/8",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "3/8 + 2/8",
+      "Top: 3 + 2 = 5",
+      "Bottom: 8 + 8 = 16",
+      "Answer: 5/16"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "3/8 + 2/8",
+      "3 eighths + 2 eighths = 5 eighths",
+      "Bottom stays 8",
+      "3/8 + 2/8 = 5/8"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Name the piece size",
+      "text": "The bottom number is 8 in both fractions. So the pieces are the same size: eighths."
+     },
+     {
+      "goal": "Count the pieces",
+      "text": "You have 3 eighths and 2 more eighths. 3 + 2 = 5, so you have 5 eighths."
+     },
+     {
+      "goal": "Keep the piece size",
+      "text": "The pieces are still eighths, so the bottom number stays 8. The answer is 5/8."
+     },
+     {
+      "goal": "Check it makes sense",
+      "text": "5/8 is more than 3/8. Adding should make more, so this answer makes sense."
+     }
+    ],
+    "check": {
+     "question": "Why does the bottom number stay 8 when you add 3/8 + 2/8?",
+     "options": [
+      {
+       "text": "Because the pieces are still eighths. Adding gives more pieces, but each piece is the same size.",
+       "correct": true,
+       "feedback": "Yes. The bottom number tells the size of the pieces, and that does not change. You just count the eighths."
+      },
+      {
+       "text": "Because you add every number you see, so 8 + 8 should be 16.",
+       "correct": false,
+       "feedback": "Not quite. 16 would mean sixteenths, which are smaller pieces. 5/16 is less than 3/8, but adding should make more."
+      },
+      {
+       "text": "Because the bottom number is always the bigger one, so you pick 8.",
+       "correct": false,
+       "feedback": "Not quite. We do not pick the bigger number. The bottom stays 8 because the pieces are eighths and their size does not change."
+      }
+     ]
+    },
+    "remember": "Same size pieces: add the top numbers, keep the bottom number."
+   },
+   {
+    "title": "Count the Same-Size Pieces",
+    "mistake": "You added the top numbers and the bottom numbers, so 3/8 + 2/8 became 5/16. Many children do this while learning. Here is the same mix-up with a new sum: 4/9 + 3/9.",
+    "example": "4/9 + 3/9",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "4/9 + 3/9 = (4 + 3)/(9 + 9) = 7/18",
+      "Eighteenths are smaller pieces than ninths.",
+      "4/9 = 8/18, so 7/18 is less than 4/9.",
+      "Adding made less, so 7/18 is wrong."
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "The pieces are ninths.",
+      "4 ninths + 3 ninths = 7 ninths",
+      "4/9 + 3/9 = 7/9"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Look at the piece size",
+      "text": "Both bottom numbers are 9, so the pieces are the same size: ninths."
+     },
+     {
+      "goal": "Count the ninths",
+      "text": "You are just counting ninths. 4 ninths + 3 ninths = 7 ninths."
+     },
+     {
+      "goal": "Keep the bottom number",
+      "text": "The size of the pieces does not change, so the bottom number stays 9. 7 ninths = 7/9."
+     },
+     {
+      "goal": "Check it makes more",
+      "text": "7/9 is more than 4/9. Adding should make more, so 7/9 makes sense."
+     }
+    ],
+    "check": {
+     "question": "Which is true about 4/9 + 3/9?",
+     "options": [
+      {
+       "text": "The pieces are still ninths, so the bottom number stays 9 and the answer is 7/9.",
+       "correct": true,
+       "feedback": "Yes. The bottom number tells the piece size. Adding pieces does not change their size, so only the top number changes."
+      },
+      {
+       "text": "There are 2 fractions, so you add both bottom numbers: 9 + 9 = 18.",
+       "correct": false,
+       "feedback": "Good try. The bottom number is not a count of pieces we have. It tells the size of each piece, and the size stays ninths."
+      },
+      {
+       "text": "The bottom number shows how many pieces we have, so it must get bigger.",
+       "correct": false,
+       "feedback": "The top number shows how many pieces we have. The bottom number shows the piece size, so it stays 9."
+      },
+      {
+       "text": "The answer is 7/18, because 18 is bigger, so it shows more.",
+       "correct": false,
+       "feedback": "A bigger bottom number means smaller pieces. 7/18 is less than 4/9, but adding should make more."
+      }
+     ]
+    },
+    "remember": "Same-size pieces: add the top numbers. The bottom number stays the same."
+   }
+  ],
+  "frac.bigden": [
+   {
+    "title": "More pieces means smaller pieces",
+    "mistake": "You said 1/6 is bigger than 1/4, because 6 is bigger than 4. That is a very common mix-up, and we can fix it.",
+    "example": "Which is bigger: 1/6 or 1/4?",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "6 is bigger than 4",
+      "So 1/6 > 1/4"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "Same pizza, cut into 4 or cut into 6",
+      "More pieces means smaller pieces",
+      "1 slice of 6 is smaller than 1 slice of 4",
+      "So 1/6 < 1/4"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Read the bottom numbers",
+      "text": "1/4 means 1 of 4 equal pieces. 1/6 means 1 of 6 equal pieces."
+     },
+     {
+      "goal": "Picture the same pizza",
+      "text": "Cut into 4, the slices are big. Cut into 6, the slices are smaller. More pieces means smaller pieces."
+     },
+     {
+      "goal": "Compare one slice",
+      "text": "Both top numbers are 1, so we compare 1 slice. 1 slice of 6 is smaller than 1 slice of 4. So 1/6 < 1/4."
+     },
+     {
+      "goal": "Check on the number line",
+      "text": "0 to 1 cut into 4 jumps: 1/4 is the first jump. 0 to 1 cut into 6 jumps: 1/6 is the first jump, nearer to 0. So 1/6 < 1/4."
+     }
+    ],
+    "check": {
+     "question": "On the number line from 0 to 1, why is 1/6 nearer to 0 than 1/4?",
+     "options": [
+      {
+       "text": "0 to 1 is cut into more jumps, so each jump is shorter.",
+       "correct": true,
+       "feedback": "Yes! 6 jumps fill the same space as 4 jumps, so each of the 6 jumps is shorter. Good thinking."
+      },
+      {
+       "text": "6 is bigger than 4, so 1/6 should be further from 0.",
+       "correct": false,
+       "feedback": "This is the mix-up. A bigger bottom number means more jumps, and each jump is shorter. So 1/6 is nearer to 0."
+      },
+      {
+       "text": "The bottom number tells you how far along the line to go.",
+       "correct": false,
+       "feedback": "Not quite. The bottom number tells you how many jumps there are from 0 to 1. 1/6 is only the first of 6 short jumps."
+      }
+     ]
+    },
+    "remember": "Same top number: bigger bottom number means smaller pieces."
+   }
+  ],
+  "frac.flip": [
+   {
+    "title": "Top and bottom of a fraction",
+    "mistake": "The bar was cut into 8 equal parts and 3 were shaded. You wrote 8/3, but the numbers are upside down. This mix-up is very common, and it is good that we can fix it now.",
+    "example": "A bar cut into 8 equal parts, with 3 parts shaded",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "Parts in the whole: 8",
+      "Shaded parts: 3",
+      "Fraction written: 8/3"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "Parts in the whole: 8, so 8 goes on the bottom",
+      "Shaded parts: 3, so 3 goes on the top",
+      "Fraction: 3/8",
+      "Read it as 3 of the 8 equal parts"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Count all equal parts",
+      "text": "Count every part of the bar. There are 8 equal parts. Write 8 on the bottom."
+     },
+     {
+      "goal": "Count the shaded parts",
+      "text": "Count only the shaded parts. There are 3. Write 3 on the top."
+     },
+     {
+      "goal": "Read it back",
+      "text": "Say 3/8 as 3 of the 8 equal parts. It matches the picture."
+     },
+     {
+      "goal": "Check the size",
+      "text": "The shaded part is less than the whole bar, so the top must be smaller than the bottom. 3 is smaller than 8, so 3/8 makes sense."
+     }
+    ],
+    "check": {
+     "question": "Why is 8/3 not right for this bar?",
+     "options": [
+      {
+       "text": "8/3 would mean 8 parts out of a whole cut into 3. That is more than the whole bar, but only part of it is shaded.",
+       "correct": true,
+       "feedback": "Yes. A fraction of one shape is never bigger than 1, so the top cannot be bigger than the bottom here."
+      },
+      {
+       "text": "The bigger number always goes on top.",
+       "correct": false,
+       "feedback": "Not quite. The bottom number is how many equal parts the whole is cut into. Here that is 8, so 8 goes on the bottom."
+      },
+      {
+       "text": "The number we see first goes on top.",
+       "correct": false,
+       "feedback": "The order we see them does not matter. The shaded parts go on top and all the equal parts go on the bottom."
+      },
+      {
+       "text": "8/3 and 3/8 are the same amount.",
+       "correct": false,
+       "feedback": "They are different. 3/8 is less than one bar, but 8/3 is more than 2 whole bars."
+      }
+     ]
+    },
+    "remember": "Bottom: all the equal parts. Top: the parts shaded."
+   },
+   {
+    "title": "Top and bottom of a fraction",
+    "mistake": "The bar has 4 equal parts and 3 are shaded. You wrote 4/3, so the numbers are upside down. Lots of learners do this, and it can be fixed.",
+    "example": "A bar cut into 4 equal parts, with 3 parts shaded",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "Top: 4 (all the parts)",
+      "Bottom: 3 (shaded parts)",
+      "Answer: 4/3"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "Top: 3 (shaded parts)",
+      "Bottom: 4 (all the equal parts)",
+      "Answer: 3/4"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Count the equal parts",
+      "text": "The bar is cut into 4 equal parts. The bottom number is 4."
+     },
+     {
+      "goal": "Count the shaded parts",
+      "text": "3 parts are shaded. The top number is 3."
+     },
+     {
+      "goal": "Read it in words",
+      "text": "3/4 means 3 of the 4 equal parts. That matches the picture."
+     },
+     {
+      "goal": "Check top and bottom",
+      "text": "The top is not bigger than the bottom, so 3/4 fits one bar."
+     }
+    ],
+    "check": {
+     "question": "Why is 4/3 wrong for this bar?",
+     "options": [
+      {
+       "text": "4/3 says the bar has 3 equal parts, but it has 4.",
+       "correct": true,
+       "feedback": "Yes. The bottom number tells how many equal parts. This bar has 4, so 4 goes on the bottom. You cannot have 4 of only 3 parts."
+      },
+      {
+       "text": "The number of all the parts goes on top.",
+       "correct": false,
+       "feedback": "Good try. The number of all the equal parts goes on the bottom. The top tells how many are shaded."
+      },
+      {
+       "text": "It does not matter which number is on top.",
+       "correct": false,
+       "feedback": "It does matter. 3/4 means 3 of 4 parts, but 4/3 means 4 of 3 parts. These are not the same."
+      },
+      {
+       "text": "The bigger number always goes on top.",
+       "correct": false,
+       "feedback": "Not here. For one shape, the shaded parts cannot be more than all the parts, so the top is not bigger than the bottom."
+      }
+     ]
+    },
+    "remember": "Bottom: how many equal parts. Top: how many are shaded."
+   }
+  ],
+  "frac.fpos.whole": [
+   {
+    "title": "One whole is 0 to 1",
+    "mistake": "You put 1/2 at the 1 mark on a line from 0 to 2. That is a very common mix-up. The whole line is 2 wholes, not 1 whole.",
+    "example": "Place 1/2 on a number line from 0 to 2",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "The whole line 0 to 2 is one whole.",
+      "Half of the line is at 1.",
+      "So 1/2 goes at 1."
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "One whole is 0 to 1.",
+      "Half of 0 to 1 is halfway between 0 and 1.",
+      "So 1/2 goes between 0 and 1.",
+      "1 is 2/2, so 2/2 goes at 1."
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Find one whole",
+      "text": "Look for 0 and 1 on the line. One whole is always 0 to 1, even when the line goes on to 2."
+     },
+     {
+      "goal": "Split the whole",
+      "text": "Halves means 2 equal parts. Split 0 to 1 into 2 equal parts."
+     },
+     {
+      "goal": "Count the parts",
+      "text": "Count 1 part from 0. That mark is 1/2, halfway between 0 and 1."
+     },
+     {
+      "goal": "Check past 1",
+      "text": "Keep counting: 2/2 is at 1, and 3/2 is past 1, halfway between 1 and 2."
+     }
+    ],
+    "check": {
+     "question": "Why does 1/2 go between 0 and 1, and not at 1?",
+     "options": [
+      {
+       "text": "Because one whole is 0 to 1, and 1/2 is half of one whole.",
+       "correct": true,
+       "feedback": "Yes. Fractions are parts of one whole, and one whole is always 0 to 1."
+      },
+      {
+       "text": "Because 1/2 is half of the whole line.",
+       "correct": false,
+       "feedback": "This line from 0 to 2 has 2 wholes. Half of the whole line is 1, but 1/2 is half of just one whole."
+      },
+      {
+       "text": "Because 1/2 has a 1 in it, so it goes near 1.",
+       "correct": false,
+       "feedback": "The 1 on top is how many parts we count. The 2 on the bottom says the whole 0 to 1 is cut into 2 parts."
+      }
+     ]
+    },
+    "remember": "One whole is always 0 to 1, even on a longer line."
+   },
+   {
+    "title": "One whole is 0 to 1",
+    "mistake": "You put 1/2 at the 1 mark on a line from 0 to 2. You used the whole line, 0 to 2, as one whole. This is a very common mix-up, and we can fix it.",
+    "example": "Place 1/2 on a number line from 0 to 2",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "Used 0 to 2 as one whole.",
+      "Half of 0 to 2 is at the 1 mark.",
+      "Put 1/2 at the 1 mark."
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "One whole is 0 to 1.",
+      "Cut 0 to 1 into 2 equal parts.",
+      "Put 1/2 halfway between 0 and 1.",
+      "The 1 mark is 2/2, not 1/2."
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Find one whole",
+      "text": "Look for 0 and 1 on the line. One whole is always 0 to 1, even when the line goes on to 2."
+     },
+     {
+      "goal": "Split the whole",
+      "text": "1/2 means 2 equal parts, so cut 0 to 1 into 2 equal parts."
+     },
+     {
+      "goal": "Place the fraction",
+      "text": "The first part ends halfway between 0 and 1. Put 1/2 on that mark."
+     },
+     {
+      "goal": "Check with the next halves",
+      "text": "1/2 is halfway to 1. 2/2 is 1. 3/2 is past 1, halfway between 1 and 2."
+     }
+    ],
+    "check": {
+     "question": "On a line from 0 to 2, why is the 1 mark not 1/2?",
+     "options": [
+      {
+       "text": "The 1 mark is one whole, which is 2/2. 1/2 is only halfway to 1.",
+       "correct": true,
+       "feedback": "Yes. One whole is 0 to 1, so 1/2 must come before 1."
+      },
+      {
+       "text": "1/2 means half of the whole line, so it goes in the middle at 1.",
+       "correct": false,
+       "feedback": "Many people think this. But the whole is always 0 to 1, not the whole line. Half of 0 to 1 is before the 1 mark."
+      },
+      {
+       "text": "1 is half of 2, so the 1 mark is 1/2.",
+       "correct": false,
+       "feedback": "1 is half of 2, but on the line the 1 mark means one whole. One whole is 2/2, so 1/2 is halfway between 0 and 1."
+      },
+      {
+       "text": "The middle of any line is always 1/2.",
+       "correct": false,
+       "feedback": "Only when the line goes from 0 to 1. This line goes to 2, so its middle is 1, which is 2/2."
+      }
+     ]
+    },
+    "remember": "One whole is 0 to 1. 1/2 is halfway between 0 and 1."
+   },
+   {
+    "title": "One whole is 0 to 1",
+    "mistake": "On a line from 0 to 2, you put 1/2 at the 1 mark. You used the whole line as one whole. Many learners make this mix-up, and it can be fixed.",
+    "example": "Put 1/2 on a number line from 0 to 2",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "I used 0 to 2 as one whole.",
+      "Half of the line is at the 1 mark.",
+      "So I put 1/2 at 1."
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "One whole is 0 to 1.",
+      "Cut 0 to 1 into 2 equal parts.",
+      "1/2 is halfway between 0 and 1.",
+      "The 1 mark is 2/2. 3/2 is past 1."
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Find one whole",
+      "text": "Look for 0 and 1. The part from 0 to 1 is one whole, even though the line goes on to 2."
+     },
+     {
+      "goal": "Cut the whole into halves",
+      "text": "Split 0 to 1 into 2 equal parts. Each part is 1/2."
+     },
+     {
+      "goal": "Place 1/2",
+      "text": "Count 1 part from 0. 1/2 is halfway between 0 and 1."
+     },
+     {
+      "goal": "See what goes past 1",
+      "text": "2 halves make 1 whole. 3/2 is 1 more half, so 3/2 is past 1, halfway between 1 and 2."
+     }
+    ],
+    "check": {
+     "question": "Why is the 1 mark 2/2 and not 1/2?",
+     "options": [
+      {
+       "text": "Because 0 to 1 is one whole, and one whole is 2 halves.",
+       "correct": true,
+       "feedback": "Yes. You found the whole first. 2 halves fill 0 to 1, so the 1 mark is 2/2."
+      },
+      {
+       "text": "Because the 1 mark is in the middle of the line, so it is 1/2.",
+       "correct": false,
+       "feedback": "That is the mix-up again. The middle of the whole line is not 1/2. Only 0 to 1 is one whole."
+      },
+      {
+       "text": "Because a fraction gets bigger when the line gets longer.",
+       "correct": false,
+       "feedback": "A longer line does not change a fraction. 1/2 is always halfway between 0 and 1."
+      }
+     ]
+    },
+    "remember": "One whole is always 0 to 1, even on a longer line."
+   }
+  ],
+  "frac.fpos.zero": [
+   {
+    "title": "Count the jumps from 0",
+    "mistake": "You placed 3/4 at 2/4. You counted the 0 mark as 1, so you stopped one jump too early. This is a common mix-up, and you can fix it.",
+    "example": "Place 3/4 on a number line from 0 to 1 cut into 4 equal jumps",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "Count the marks: 0 is 1, 1/4 is 2, 2/4 is 3",
+      "Stop at the 3rd mark",
+      "Point placed at 2/4"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "Start at 0. No jumps yet.",
+      "Jump 1 lands on 1/4",
+      "Jump 2 lands on 2/4",
+      "Jump 3 lands on 3/4",
+      "Point placed at 3/4"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Find the jump size",
+      "text": "The line from 0 to 1 has 4 equal jumps. So each jump is 1/4."
+     },
+     {
+      "goal": "Start at 0",
+      "text": "Put your finger on 0. You have made 0 jumps so far."
+     },
+     {
+      "goal": "Count 3 jumps",
+      "text": "3/4 means 3 jumps of 1/4. Jump to 1/4, then 2/4, then 3/4."
+     },
+     {
+      "goal": "Check the end",
+      "text": "One more jump reaches 4/4. 4/4 = 1, the end of the line. So 3/4 is one jump before 1."
+     }
+    ],
+    "check": {
+     "question": "Why do we not count the 0 mark as 1?",
+     "options": [
+      {
+       "text": "At 0 we have made no jumps yet. 1/4 is where the first jump lands.",
+       "correct": true,
+       "feedback": "Yes. Each fraction tells you how many jumps from 0, so 0 is the start and not jump 1."
+      },
+      {
+       "text": "Each mark is a quarter, so 0 is the first quarter.",
+       "correct": false,
+       "feedback": "Many people think this. But a quarter is the jump between two marks. 0 is only the start."
+      },
+      {
+       "text": "Because 0 is not a fraction.",
+       "correct": false,
+       "feedback": "0 can be written as 0/4, so that is not the reason. We start at 0 because no jumps have been made yet."
+      }
+     ]
+    },
+    "remember": "Start at 0 and count jumps, not marks."
+   },
+   {
+    "title": "Count the jumps from 0",
+    "mistake": "You put 3/4 at 2/4 because you counted the 0 mark as a jump. This mix-up is very common. Let's look at the same mix-up with eighths.",
+    "example": "Place 5/8 on a number line from 0 to 1 cut into 8 equal jumps",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "Count marks: 0 is 1, 1/8 is 2, 2/8 is 3, 3/8 is 4, 4/8 is 5",
+      "Stop at 4/8.",
+      "That is one jump short."
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "Start at 0. Count jumps, not marks.",
+      "Jump 1 lands on 1/8, jump 2 on 2/8, jump 3 on 3/8",
+      "Jump 4 lands on 4/8, jump 5 on 5/8",
+      "5 × 1/8 = 5/8",
+      "Stop at 5/8."
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Find the jump size",
+      "text": "The line from 0 to 1 is cut into 8 equal jumps. So each jump is 1/8."
+     },
+     {
+      "goal": "Start at 0",
+      "text": "Put your finger on 0. You have not moved yet, so this is 0 jumps."
+     },
+     {
+      "goal": "Count 5 jumps",
+      "text": "Jump 1 lands on 1/8, jump 2 on 2/8, jump 3 on 3/8, jump 4 on 4/8, jump 5 on 5/8."
+     },
+     {
+      "goal": "Check from the other end",
+      "text": "From 5/8 to 1 there are 3 more jumps. 5 + 3 = 8, so all 8 jumps fit."
+     }
+    ],
+    "check": {
+     "question": "Why should you NOT count the 0 mark as jump 1?",
+     "options": [
+      {
+       "text": "At 0 you have not moved yet. A jump is the space from one mark to the next.",
+       "correct": true,
+       "feedback": "Yes, well thought out. A jump is a move, so the first jump ends at 1/8, not at 0."
+      },
+      {
+       "text": "0 is a mark, so it must be counted as 1.",
+       "correct": false,
+       "feedback": "Marks show where jumps land. 0 is where you start, before any jump, so it is not counted."
+      },
+      {
+       "text": "Counting marks and counting jumps give the same answer.",
+       "correct": false,
+       "feedback": "Not quite. If you count from the 0 mark, you get one more mark than jumps, so you stop one jump short."
+      },
+      {
+       "text": "The first mark on the line is always the first fraction.",
+       "correct": false,
+       "feedback": "The first mark is 0, which means no jumps. The first fraction, 1/8, is at the next mark."
+      }
+     ]
+    },
+    "remember": "Start at 0 and count jumps, not marks."
+   }
+  ],
+  "frac.rw": [
+   {
+    "title": "Use the missing piece to compare",
+    "mistake": "You said 7/8 > 5/6. That is the right sign. Well done! But your reason was \"8 is bigger than 6\", and that reason does not always work. Lots of learners make this mix-up.",
+    "example": "7/8 vs 5/6",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "7/8 > 5/6 because 8 > 6",
+      "Same reason: 1/8 > 1/6 (wrong!)"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "7/8 + 1/8 = 1, so 7/8 is missing 1/8",
+      "5/6 + 1/6 = 1, so 5/6 is missing 1/6",
+      "1/8 < 1/6",
+      "7/8 is closer to 1, so 7/8 > 5/6"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Find each missing piece",
+      "text": "Each fraction is one piece short of a whole. 7/8 is missing 1/8. 5/6 is missing 1/6."
+     },
+     {
+      "goal": "Compare the missing pieces",
+      "text": "Cut a whole into 8 pieces. Cut another whole into 6 pieces. Each of the 8 pieces is smaller. So 1/8 is smaller than 1/6."
+     },
+     {
+      "goal": "Decide which is bigger",
+      "text": "7/8 has the smaller missing piece, so it is closer to 1. So 7/8 > 5/6."
+     }
+    ],
+    "check": {
+     "question": "Which reason shows why 7/8 is bigger than 5/6, and works every time?",
+     "options": [
+      {
+       "text": "7/8 is missing a smaller piece than 5/6, so 7/8 is closer to 1.",
+       "correct": true,
+       "feedback": "Yes! You found the missing pieces and compared them. That is a strong method."
+      },
+      {
+       "text": "8 is bigger than 6, so 7/8 is bigger.",
+       "correct": false,
+       "feedback": "A bigger bottom number means smaller pieces. That reason would also say one eighth beats one sixth, but it does not."
+      },
+      {
+       "text": "7 is bigger than 5, so 7/8 is bigger.",
+       "correct": false,
+       "feedback": "The top number alone does not tell us. 3/8 has a bigger top number than 2/3, but 3/8 is smaller."
+      },
+      {
+       "text": "Eighths are bigger pieces than sixths.",
+       "correct": false,
+       "feedback": "Look again. When you cut a whole into 8, each piece is smaller than when you cut it into 6."
+      }
+     ]
+    },
+    "remember": "Smaller missing piece means closer to 1, so it is the bigger fraction."
+   },
+   {
+    "title": "Compare by the missing piece",
+    "mistake": "You said 3/4 > 2/3, and the sign is right. Good try! But the reason \"4 is bigger than 3\" is not a safe reason. Let us find one that works every time.",
+    "example": "3/4 vs 2/3",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "3/4 > 2/3",
+      "because 4 is bigger than 3",
+      "Same reason: 1/4 > 1/3 (not true)"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "1 − 3/4 = 1/4",
+      "1 − 2/3 = 1/3",
+      "1/4 < 1/3, so 3/4 is missing less",
+      "3/4 is closer to 1",
+      "3/4 > 2/3"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Find the missing piece",
+      "text": "Each fraction is one piece short of a whole. 3/4 is missing 1/4. 2/3 is missing 1/3."
+     },
+     {
+      "goal": "Compare the missing pieces",
+      "text": "Cut a whole into 4 parts, and each part is smaller than when you cut it into 3 parts. So 1/4 is the smaller missing piece."
+     },
+     {
+      "goal": "Decide which is closer to 1",
+      "text": "3/4 is missing the smaller piece, so it is closer to 1. That means 3/4 is bigger."
+     },
+     {
+      "goal": "Test the reason",
+      "text": "A reason must work every time. The missing piece reason works for 3/4 and 2/3, and for 7/8 and 5/6 too."
+     }
+    ],
+    "check": {
+     "question": "Why is \"4 is bigger than 3\" not a good reason for 3/4 > 2/3?",
+     "options": [
+      {
+       "text": "Because the same reason would say 1/4 > 1/3, and that is wrong.",
+       "correct": true,
+       "feedback": "Yes! A good reason must work every time. More parts means smaller parts, so 1/4 is smaller than 1/3."
+      },
+      {
+       "text": "It is a good reason. A bigger bottom number always means a bigger fraction.",
+       "correct": false,
+       "feedback": "Not quite. The bottom number tells you how many parts the whole is cut into. More parts makes each part smaller, so 1/4 < 1/3."
+      },
+      {
+       "text": "Because you should look at the top numbers, and 3 is bigger than 2.",
+       "correct": false,
+       "feedback": "Bigger top numbers do not always mean a bigger fraction. 2/8 is smaller than 1/2. Look at what is missing from 1 instead."
+      }
+     ]
+    },
+    "remember": "Find what is missing from 1. The smaller missing piece means the bigger fraction."
+   },
+   {
+    "title": "Compare by the missing piece",
+    "mistake": "You picked 5/6 > 4/5, and that sign is right. But your reason was \"6 is bigger than 5\". That reason does not always work. Lots of learners do this, so let us find a reason that always works.",
+    "example": "5/6 vs 4/5",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "5/6 > 4/5",
+      "Reason: 6 is bigger than 5",
+      "The same reason would say 1/6 > 1/5, and that is wrong"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "1 − 5/6 = 1/6",
+      "1 − 4/5 = 1/5",
+      "1/6 < 1/5",
+      "5/6 is missing less, so 5/6 > 4/5"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Find the missing piece",
+      "text": "Each one is one piece short of a whole. 5/6 is missing 1/6. 4/5 is missing 1/5."
+     },
+     {
+      "goal": "Compare the missing pieces",
+      "text": "Cut a whole into 6 parts or into 5 parts. The 6 parts are smaller, so 1/6 is the smaller missing piece."
+     },
+     {
+      "goal": "Decide which is closer to 1",
+      "text": "5/6 is missing the smaller piece, so it is closer to 1. That means 5/6 > 4/5."
+     }
+    ],
+    "check": {
+     "question": "Why is \"6 is bigger than 5\" not a good reason for 5/6 > 4/5?",
+     "options": [
+      {
+       "text": "It does not work every time. It would also say 1/6 > 1/5, but 1/6 is smaller.",
+       "correct": true,
+       "feedback": "Yes. A reason must work every time. The missing piece reason always works."
+      },
+      {
+       "text": "It is a good reason. A bigger bottom number always means a bigger fraction.",
+       "correct": false,
+       "feedback": "Not quite. A bigger bottom number means more parts, so each part is smaller. 1/6 is smaller than 1/5."
+      },
+      {
+       "text": "The reason does not matter if the sign is right.",
+       "correct": false,
+       "feedback": "The reason matters. A wrong reason gives the wrong sign next time, for example with 1/6 and 1/5."
+      },
+      {
+       "text": "You should compare the top numbers, and 5 is bigger than 4.",
+       "correct": false,
+       "feedback": "That does not always work either. The parts are different sizes, so look at the missing piece."
+      }
+     ]
+    },
+    "remember": "Find the missing piece. The smaller missing piece means the bigger fraction."
+   }
+  ],
+  "frac.ticks": [
+   {
+    "title": "Count the jumps, not the ticks",
+    "mistake": "This line from 0 to 1 has 5 tick marks, so you said each piece is 1/5. That is a very common mix-up. The pieces are the spaces between the ticks, and there are only 4 spaces.",
+    "example": "A number line from 0 to 1 with 5 tick marks. A dot is 3 jumps from 0.",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "Count the tick marks: 5",
+      "Each piece is 1/5",
+      "The dot is at 3/5"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "Count the jumps from 0 to 1: 4",
+      "Each jump is 1/4",
+      "The dot is 3 jumps from 0",
+      "The dot is at 3/4"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Find one whole",
+      "text": "One whole is from 0 to 1. Look only at this part of the line."
+     },
+     {
+      "goal": "Count the equal jumps",
+      "text": "Count the spaces from 0 to 1, not the ticks. There are 4 jumps, so the bottom number is 4."
+     },
+     {
+      "goal": "Count jumps to the dot",
+      "text": "Start at 0 and jump to the dot. That is 3 jumps, so the top number is 3."
+     },
+     {
+      "goal": "Write the fraction",
+      "text": "3 jumps out of 4 jumps is 3/4."
+     }
+    ],
+    "check": {
+     "question": "Why does this line show quarters (1/4) and not fifths (1/5)?",
+     "options": [
+      {
+       "text": "Because the 4 spaces between the ticks are the pieces of the whole.",
+       "correct": true,
+       "feedback": "Yes! The jumps are the pieces. 4 equal jumps make one whole, so each jump is 1/4."
+      },
+      {
+       "text": "Because there are 5 tick marks, and each tick is one piece.",
+       "correct": false,
+       "feedback": "Good try. A tick is only a mark that shows where a piece starts or ends. The 0 tick is the start, so it is not a piece. Count the spaces: there are 4."
+      },
+      {
+       "text": "Because the dot sits on a tick, so we count that tick too.",
+       "correct": false,
+       "feedback": "The dot tells us the top number, not the bottom number. To find the bottom number, count the equal jumps from 0 to 1. There are 4."
+      }
+     ]
+    },
+    "remember": "The jumps are the pieces. Count spaces from 0 to 1, not ticks."
+   },
+   {
+    "title": "Count the Jumps, Not the Ticks",
+    "mistake": "You counted the tick marks. This line from 0 to 1 has 7 tick marks but only 6 spaces, so you got 4/7. Lots of learners do this, and you can fix it by counting the jumps.",
+    "example": "A number line from 0 to 1 with 7 tick marks. The dot is 4 jumps from 0.",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "Count the tick marks: 7",
+      "Dot is 4 jumps along",
+      "Answer: 4/7"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "Count the spaces (jumps) from 0 to 1: 6",
+      "Each jump is 1/6",
+      "Dot is 4 jumps along",
+      "Answer: 4/6"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Find one whole",
+      "text": "One whole is from 0 to 1. Look only at this part of the line."
+     },
+     {
+      "goal": "Count the jumps",
+      "text": "Count the spaces between the ticks, not the ticks. There are 6 equal jumps."
+     },
+     {
+      "goal": "Name each piece",
+      "text": "6 equal jumps make one whole, so each jump is 1/6."
+     },
+     {
+      "goal": "Count jumps to the dot",
+      "text": "Start at 0 and jump to the dot. That is 4 jumps, so the dot is at 4/6."
+     }
+    ],
+    "check": {
+     "question": "Why is the bottom number 6 and not 7 on this line?",
+     "options": [
+      {
+       "text": "Because the pieces are the spaces between the ticks, and there are 6 spaces.",
+       "correct": true,
+       "feedback": "Yes. Each space is one equal piece, so 6 spaces make sixths."
+      },
+      {
+       "text": "Because each tick mark is one piece, and we take one away.",
+       "correct": false,
+       "feedback": "A tick is only a mark, not a piece. The pieces are the jumps between ticks, and there are 6 of them."
+      },
+      {
+       "text": "Because the tick at 0 does not count, but all the others are pieces.",
+       "correct": false,
+       "feedback": "Ticks are never the pieces. Count the jumps between ticks. Here there are 6 jumps."
+      },
+      {
+       "text": "Because the dot is on a tick, so that tick is left out.",
+       "correct": false,
+       "feedback": "The dot does not change the pieces. The whole line from 0 to 1 still has 6 equal jumps."
+      }
+     ]
+    },
+    "remember": "The jumps are the pieces. Count spaces, not tick marks."
+   },
+   {
+    "title": "The jumps are the pieces",
+    "mistake": "You counted 7 tick marks from 0 to 1, so you wrote 5/7. Lots of learners do this. The pieces are the spaces, and there are only 6 spaces.",
+    "example": "A 0 to 1 number line with 7 tick marks. A dot is 5 jumps from 0.",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "I count the tick marks: 7.",
+      "So each piece is 1/7.",
+      "The dot is 5 jumps along, so it is 5/7."
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "I count the spaces (jumps) from 0 to 1: 6.",
+      "So each jump is 1/6.",
+      "The dot is 5 jumps along, so it is 5/6."
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Find one whole",
+      "text": "One whole is from 0 to 1."
+     },
+     {
+      "goal": "Count the jumps",
+      "text": "Count the spaces from 0 to 1, not the ticks. There are 6 equal jumps, so each jump is 1/6."
+     },
+     {
+      "goal": "Count jumps to the dot",
+      "text": "Start at 0 and jump to the dot. That is 5 jumps."
+     },
+     {
+      "goal": "Write the fraction",
+      "text": "5 jumps out of 6 jumps. The dot is at 5/6."
+     }
+    ],
+    "check": {
+     "question": "Why is each piece 1/6 and not 1/7 on this line?",
+     "options": [
+      {
+       "text": "The pieces are the spaces. There are 6 spaces, and 0 has a tick too, so there are 7 ticks.",
+       "correct": true,
+       "feedback": "Yes. The spaces are the pieces. There is always one more tick than spaces."
+      },
+      {
+       "text": "Each tick mark is one piece, so there are 7 pieces.",
+       "correct": false,
+       "feedback": "A tick mark only shows where a piece starts or ends. There is always one more tick than spaces, because 0 has a tick too."
+      },
+      {
+       "text": "The bottom number is how many marks you can see on the line.",
+       "correct": false,
+       "feedback": "The bottom number is how many equal pieces make one whole. On a number line, the pieces are the jumps, and there are 6 jumps."
+      }
+     ]
+    },
+    "remember": "Count the jumps, not the ticks. The jumps are the pieces."
+   }
+  ],
+  "geo.bbox": [
+   {
+    "title": "Area of an L-shape",
+    "mistake": "You found 8 × 6 = 48 sq cm. That is the big rectangle around the L-shape. It still has the missing corner inside it. This is a very common mix-up, and we can fix it.",
+    "example": "An L-shape: the bottom edge is 8 cm long and the left side is 6 cm tall. A corner piece 3 cm wide and 2 cm tall is missing from the top right.",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "8 × 6 = 48",
+      "Area = 48 sq cm",
+      "The missing corner is counted too."
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "Bottom part: 8 × 4 = 32 sq cm",
+      "Top part: 5 × 2 = 10 sq cm",
+      "32 + 10 = 42 sq cm",
+      "Check: 48 − 6 = 42 sq cm"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Split into two rectangles",
+      "text": "The bottom part is 8 cm long and 4 cm tall, because 6 − 2 = 4. The top part is 5 cm wide and 2 cm tall, because 8 − 3 = 5."
+     },
+     {
+      "goal": "Find each area",
+      "text": "Bottom part: 8 × 4 = 32 sq cm. Top part: 5 × 2 = 10 sq cm."
+     },
+     {
+      "goal": "Add the two areas",
+      "text": "32 + 10 = 42 sq cm."
+     },
+     {
+      "goal": "Check another way",
+      "text": "Big rectangle minus the missing corner: 8 × 6 = 48 and 3 × 2 = 6. Then 48 − 6 = 42 sq cm. Both ways match."
+     }
+    ],
+    "check": {
+     "question": "Ben says the area of this L-shape is 8 × 6 = 48 sq cm. Why is he wrong?",
+     "options": [
+      {
+       "text": "Because the 8 cm by 6 cm rectangle also covers the missing corner, and those squares are not part of the L-shape.",
+       "correct": true,
+       "feedback": "Yes. The corner holds 6 unit squares, each 1 cm by 1 cm. They are not in the L-shape, so we take them away: 48 − 6 = 42 sq cm."
+      },
+      {
+       "text": "Because we should add 8 + 6 instead.",
+       "correct": false,
+       "feedback": "Adding gives 14 cm, which is a length, not an area. Area counts squares, so we multiply the sides of each rectangle."
+      },
+      {
+       "text": "Because the missing corner should be added on.",
+       "correct": false,
+       "feedback": "The corner is not part of the shape, so we do not add it. We take it away from the big rectangle."
+      }
+     ]
+    },
+    "remember": "Split the L-shape into two rectangles, or take away the missing corner."
+   },
+   {
+    "title": "Area of an L-shape: mind the gap",
+    "mistake": "You found the area of the whole big rectangle, 8 × 6 = 48 sq cm. But the L-shape has a missing corner, so that part should not count. This is a very common mix-up.",
+    "example": "An L-shape: the bottom is 8 cm long and the left side is 6 cm tall. A corner 3 cm wide and 2 cm tall is cut out of the top right.",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "Big rectangle: 8 × 6 = 48",
+      "Area = 48 sq cm",
+      "The missing corner was counted too"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "Big rectangle: 8 × 6 = 48 sq cm",
+      "Missing corner: 3 × 2 = 6 sq cm",
+      "48 − 6 = 42",
+      "Area = 42 sq cm"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Split into two rectangles",
+      "text": "Cut the L across. The bottom part is 8 cm long and 6 − 2 = 4 cm tall. The top-left part is 8 − 3 = 5 cm wide and 2 cm tall."
+     },
+     {
+      "goal": "Find each area",
+      "text": "Bottom part: 8 × 4 = 32 sq cm. Top-left part: 5 × 2 = 10 sq cm."
+     },
+     {
+      "goal": "Add the parts",
+      "text": "32 + 10 = 42 sq cm."
+     },
+     {
+      "goal": "Check another way",
+      "text": "Big rectangle minus missing corner: 48 − 6 = 42 sq cm. Both ways give 42, so the answer is right."
+     }
+    ],
+    "check": {
+     "question": "Why is 48 sq cm too big for this L-shape?",
+     "options": [
+      {
+       "text": "Because 48 counts the 6 unit squares in the missing corner, and they are not part of the shape.",
+       "correct": true,
+       "feedback": "Yes. Imagine the unit squares: the cut-out corner has no squares, so we take its 6 away."
+      },
+      {
+       "text": "Because the area of any shape is the longest side times the tallest side.",
+       "correct": false,
+       "feedback": "That only works for a full rectangle. An L-shape has a corner missing, so we must take it away or split the shape."
+      },
+      {
+       "text": "Because the missing corner is so small that it does not change the area.",
+       "correct": false,
+       "feedback": "Every unit square counts. The corner is 3 × 2 = 6 sq cm, so leaving it in makes the answer 6 too big."
+      }
+     ]
+    },
+    "remember": "For an L-shape, split and add, or take away the missing corner."
+   }
+  ],
+  "geo.mix": [
+   {
+    "title": "Inside or around the edge?",
+    "mistake": "The question asked for the perimeter of a 5 cm by 3 cm rectangle. You gave 15, but 15 is the area. Many learners mix these two up, and noticing the difference is a great step.",
+    "example": "Perimeter of a 5 cm by 3 cm rectangle",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "Perimeter?",
+      "5 × 3 = 15",
+      "Answer: 15 (this is the area)"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "Perimeter: walk around the edge",
+      "5 + 3 + 5 + 3 = 16",
+      "Perimeter = 16 cm",
+      "Area (inside) = 5 × 3 = 15 sq cm"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Read what is asked",
+      "text": "The word is perimeter. That means the edge, like a fence around a garden."
+     },
+     {
+      "goal": "List all four sides",
+      "text": "A rectangle has 2 long sides and 2 short sides: 5 cm, 3 cm, 5 cm, 3 cm."
+     },
+     {
+      "goal": "Add the sides",
+      "text": "Walk around and add: 5 + 3 + 5 + 3 = 16."
+     },
+     {
+      "goal": "Write the right unit",
+      "text": "Perimeter is a length, so the answer is 16 cm, not sq cm."
+     }
+    ],
+    "check": {
+     "question": "Why is 5 × 3 = 15 not the perimeter of this rectangle?",
+     "options": [
+      {
+       "text": "5 × 3 counts the squares inside. The perimeter is the length around the edge.",
+       "correct": true,
+       "feedback": "Yes. Rows × squares in each row fills the inside. For the edge you add all four sides."
+      },
+      {
+       "text": "Because perimeter and area are the same, so 15 is right.",
+       "correct": false,
+       "feedback": "They are different. Area is the inside, 15 sq cm. Perimeter is around the edge, 16 cm."
+      },
+      {
+       "text": "Because you should only add two sides: 5 + 3 = 8.",
+       "correct": false,
+       "feedback": "That is only half the way around. A rectangle has four sides, so add 5 + 3 + 5 + 3."
+      },
+      {
+       "text": "Because the answer needs sq cm, not cm.",
+       "correct": false,
+       "feedback": "Sq cm is for area. Perimeter is a length, so it uses cm."
+      }
+     ]
+    },
+    "remember": "Area covers the inside (sq cm). Perimeter goes around the edge (cm)."
+   },
+   {
+    "title": "Inside squares or around the edge?",
+    "mistake": "You were asked for the area of a 9 cm by 5 cm rectangle, and you answered 28. That is the perimeter. You worked hard on it, and this mix-up is very common.",
+    "example": "a 9 cm by 5 cm rectangle: find the area",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "Add all four sides:",
+      "9 + 5 + 9 + 5 = 28",
+      "Area: 28 cm"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "Area covers the inside.",
+      "5 rows, 9 squares in each row",
+      "5 × 9 = 45",
+      "Area: 45 sq cm",
+      "Perimeter is different: 9 + 5 + 9 + 5 = 28 cm"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Read the question word",
+      "text": "The question says area. Area covers the inside, like a carpet or tiles."
+     },
+     {
+      "goal": "Picture the unit squares",
+      "text": "Fill the rectangle with 1 cm squares. There are 5 rows, with 9 squares in each row."
+     },
+     {
+      "goal": "Multiply rows by squares",
+      "text": "Rows × squares in each row: 5 × 9 = 45."
+     },
+     {
+      "goal": "Write square units",
+      "text": "We counted squares, so the answer is 45 sq cm, not cm."
+     }
+    ],
+    "check": {
+     "question": "Why does 9 + 5 + 9 + 5 not give the area of this rectangle?",
+     "options": [
+      {
+       "text": "Adding the sides only measures the edge, not the squares inside.",
+       "correct": true,
+       "feedback": "Yes. Adding the sides is a walk around the edge. Area counts the squares that cover the inside."
+      },
+      {
+       "text": "28 is right. Only the unit is wrong, it should be sq cm.",
+       "correct": false,
+       "feedback": "Good thinking about units, but the number changes too. The inside holds 45 squares, so the area is 45 sq cm."
+      },
+      {
+       "text": "Area and perimeter are the same for a rectangle.",
+       "correct": false,
+       "feedback": "They are different. Perimeter is the edge, 28 cm. Area is the inside, 45 sq cm."
+      },
+      {
+       "text": "To find area you always add the numbers.",
+       "correct": false,
+       "feedback": "Adding the sides gives the perimeter. For area, use rows × squares in each row."
+      }
+     ]
+    },
+    "remember": "Area: inside squares, multiply, sq cm. Perimeter: edge, add sides, cm."
+   }
+  ],
+  "geo.sides": [
+   {
+    "title": "Walk All the Way Around",
+    "mistake": "You added only the two sides with labels: 6 + 4 = 10 cm. That is a very common mix-up. A rectangle has 4 sides, and the 2 sides without labels count too.",
+    "example": "The perimeter of a 6 cm by 4 cm rectangle",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "6 + 4 = 10 cm",
+      "Only 2 sides added"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "6 + 4 + 6 + 4 = 20 cm",
+      "All 4 sides added",
+      "or (6 + 4) × 2 = 20 cm"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Find all four sides",
+      "text": "Opposite sides (sides across from each other) of a rectangle are equal. So the 4 sides are 6 cm, 4 cm, 6 cm and 4 cm."
+     },
+     {
+      "goal": "Walk all the way around",
+      "text": "6 + 4 + 6 + 4 = 20 cm. Count the sides as you add: 1, 2, 3, 4. Did you add all 4?"
+     },
+     {
+      "goal": "Check with a shortcut",
+      "text": "One long side and one short side is 6 + 4 = 10 cm. That is half the way around. Double it: 10 × 2 = 20 cm."
+     }
+    ],
+    "check": {
+     "question": "Why do we add 6 and 4 two times for this rectangle?",
+     "options": [
+      {
+       "text": "A rectangle has 4 sides, and the sides across from each other are equal, so each label is used twice.",
+       "correct": true,
+       "feedback": "Yes! The two labels tell you all four sides. Good careful thinking."
+      },
+      {
+       "text": "Only the sides with numbers count.",
+       "correct": false,
+       "feedback": "Good try, but the sides without numbers are still part of the shape. Each one has the same length as the side across from it."
+      },
+      {
+       "text": "6 + 4 already goes all the way around.",
+       "correct": false,
+       "feedback": "Nice thinking, but 6 + 4 only goes halfway around. You need the other long side and the other short side too."
+      }
+     ]
+    },
+    "remember": "Perimeter: walk all the way around and add all 4 sides."
+   },
+   {
+    "title": "Walk all the way around",
+    "mistake": "You added only some of the sides, like 6 + 4 = 10 cm. Lots of learners do this when only 2 sides have labels. Let's look at an 8 cm by 5 cm rectangle.",
+    "example": "a rectangle 8 cm long and 5 cm wide",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "Only the 2 labelled sides: 8 + 5 = 13 cm",
+      "Or one side missed: 8 + 5 + 8 = 21 cm"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "All 4 sides: 8 + 5 + 8 + 5 = 26 cm",
+      "Or the short way: (8 + 5) × 2 = 26 cm"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Find all four sides",
+      "text": "Opposite sides of a rectangle are equal. Top and bottom are 8 cm. Left and right are 5 cm."
+     },
+     {
+      "goal": "Walk all the way around",
+      "text": "Add each side once: 8 + 5 + 8 + 5 = 26 cm."
+     },
+     {
+      "goal": "Count your numbers",
+      "text": "Your sum needs 4 numbers, one for each side. 8, 5, 8, 5 is 4 numbers."
+     },
+     {
+      "goal": "Check the short way",
+      "text": "(8 + 5) × 2 = 13 × 2 = 26 cm. It matches."
+     }
+    ],
+    "check": {
+     "question": "In 8 + 5 + 8 + 5, why do we use 8 two times?",
+     "options": [
+      {
+       "text": "Because the side across from the 8 cm side is also 8 cm.",
+       "correct": true,
+       "feedback": "Yes. Opposite sides of a rectangle are equal, so 2 sides are 8 cm. That is why the 2 labels tell you all 4 sides."
+      },
+      {
+       "text": "Because we go around the rectangle two times.",
+       "correct": false,
+       "feedback": "We go around only once. We see 8 two times because there are 2 sides that are 8 cm long."
+      },
+      {
+       "text": "Because 8 is the longer side, so it counts more.",
+       "correct": false,
+       "feedback": "No side counts more. 5 is in the sum two times too, because the 2 short sides are both 5 cm."
+      }
+     ]
+    },
+    "remember": "A rectangle has 4 sides. Walk all the way around and add all 4."
+   },
+   {
+    "title": "Walk All the Way Around",
+    "mistake": "The rectangle had 2 labels, 9 cm and 5 cm, and you added only those: 9 + 5 = 14 cm. Many learners do this. But a rectangle has 4 sides, and you need all of them.",
+    "example": "a 9 cm by 5 cm rectangle",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "Add only the 2 labelled sides",
+      "9 + 5 = 14 cm",
+      "This only goes halfway around."
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "Walk all the way around:",
+      "9 + 5 + 9 + 5 = 28 cm",
+      "Or: (9 + 5) × 2",
+      "14 × 2 = 28 cm"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Count the sides",
+      "text": "A rectangle has 4 sides. Only 2 have labels."
+     },
+     {
+      "goal": "Find the missing sides",
+      "text": "Opposite sides of a rectangle are equal. So the side across from 9 cm is 9 cm, and the side across from 5 cm is 5 cm."
+     },
+     {
+      "goal": "Walk all the way around",
+      "text": "Add all 4 sides: 9 + 5 + 9 + 5 = 28 cm."
+     },
+     {
+      "goal": "Check with the short way",
+      "text": "(9 + 5) × 2 = 14 × 2 = 28 cm. Both ways give 28 cm."
+     }
+    ],
+    "check": {
+     "question": "Why do we multiply (9 + 5) by 2?",
+     "options": [
+      {
+       "text": "Because 9 + 5 is only half the way around, and the other half is the same.",
+       "correct": true,
+       "feedback": "Yes. Opposite sides are equal, so the second half of the walk is 9 + 5 again."
+      },
+      {
+       "text": "Because we need to double the answer to get area.",
+       "correct": false,
+       "feedback": "Not quite. Area is 9 × 5. Here we are finding the perimeter, the distance around. The × 2 adds the 2 sides with no labels."
+      },
+      {
+       "text": "We do not need to. The 2 labelled sides are the whole perimeter.",
+       "correct": false,
+       "feedback": "This is the mix-up. The 2 labels show only 2 of the 4 sides. The other 2 sides are there too, and they are also 9 cm and 5 cm."
+      },
+      {
+       "text": "Because the sides with no labels are twice as long.",
+       "correct": false,
+       "feedback": "Good thinking about the missing sides, but they are not longer. Each one is equal to the side opposite it."
+      }
+     ]
+    },
+    "remember": "Perimeter: walk all 4 sides. Opposite sides of a rectangle are equal."
+   }
+  ],
+  "ldiv.bigrem": [
+   {
+    "title": "The remainder must be smaller",
+    "mistake": "You wrote 38 ÷ 6 = 5 R 8. Many learners make this mistake. You found 6 × 5 well, but 8 cookies left is enough to give each child one more.",
+    "example": "38 ÷ 6",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "6 × 5 = 30",
+      "38 − 30 = 8",
+      "Answer: 5 R 8",
+      "8 is bigger than 6, so each child can get one more."
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "6 × 6 = 36",
+      "38 − 36 = 2",
+      "2 is smaller than 6",
+      "Answer: 6 R 2"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Share out the cookies",
+      "text": "Share 38 cookies among 6 children. If each child gets 5, that uses 6 × 5 = 30 cookies, and 8 are left."
+     },
+     {
+      "goal": "Check the remainder",
+      "text": "8 is bigger than 6. There are enough cookies to give every child one more."
+     },
+     {
+      "goal": "Find the biggest that fits",
+      "text": "6 × 6 = 36 is not more than 38. 6 × 7 = 42 is too many. So each child gets 6."
+     },
+     {
+      "goal": "Find what is left",
+      "text": "38 − 36 = 2. 2 is smaller than 6, so we stop. The answer is 6 R 2."
+     }
+    ],
+    "check": {
+     "question": "Why is 38 ÷ 6 = 5 R 8 not right?",
+     "options": [
+      {
+       "text": "8 cookies are left, and that is enough to give each of the 6 children one more.",
+       "correct": true,
+       "feedback": "Yes. Each child can get 1 more, so each gets 6 and only 2 are left. Good checking."
+      },
+      {
+       "text": "The remainder only has to be smaller than 38.",
+       "correct": false,
+       "feedback": "Not quite. The remainder must be smaller than 6, the number of children. If it is 6 or more, each child can get one more."
+      },
+      {
+       "text": "The 8 should be added to the 5 to make 13.",
+       "correct": false,
+       "feedback": "Not quite. 5 is the cookies each child gets and 8 is the cookies left. We share the 8 out: each child gets 1 more, and 2 are left."
+      },
+      {
+       "text": "We always use the times table fact we think of first.",
+       "correct": false,
+       "feedback": "Not quite. The first fact may not be the biggest one that fits. Look for the biggest fact in the 6 times table that is not more than 38."
+      }
+     ]
+    },
+    "remember": "The remainder is always smaller than the number you divide by."
+   },
+   {
+    "title": "The remainder must be smaller",
+    "mistake": "You wrote 53 ÷ 7 = 6 R 11. Good try, you found a fact in the 7 times table. But 11 is bigger than 7, so everyone can get one more.",
+    "example": "53 ÷ 7",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "7 × 6 = 42",
+      "53 − 42 = 11",
+      "53 ÷ 7 = 6 R 11",
+      "11 is not smaller than 7"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "7 × 7 = 49",
+      "7 × 8 = 56, too big",
+      "53 − 49 = 4",
+      "53 ÷ 7 = 7 R 4",
+      "4 is smaller than 7"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Share out the cookies",
+      "text": "We have 53 cookies and 7 equal groups. How many cookies can each group get?"
+     },
+     {
+      "goal": "Find the biggest that fits",
+      "text": "Go up the 7 times table: 42, 49, 56. 56 is more than 53, so 7 × 7 = 49 is the biggest that fits."
+     },
+     {
+      "goal": "Find what is left",
+      "text": "53 − 49 = 4. So 4 cookies are left over."
+     },
+     {
+      "goal": "Check the remainder",
+      "text": "4 is smaller than 7, so no group can get one more. The answer is 7 R 4."
+     }
+    ],
+    "check": {
+     "question": "Why is 6 R 11 not the finished answer for 53 ÷ 7?",
+     "options": [
+      {
+       "text": "With 11 left, we can give all 7 groups one more cookie.",
+       "correct": true,
+       "feedback": "Yes. 11 is more than 7, so another group of 7 still fits. Each group gets 7, and 4 are left."
+      },
+      {
+       "text": "It is fine, because the remainder can be any number.",
+       "correct": false,
+       "feedback": "Not quite. If the remainder is 7 or more, everyone can get one more. It must be smaller than 7."
+      },
+      {
+       "text": "The remainder only needs to be smaller than 53.",
+       "correct": false,
+       "feedback": "The remainder is compared with the number you divide by, which is 7, not with 53."
+      },
+      {
+       "text": "We should stop at 7 × 6 because 6 is a nice number.",
+       "correct": false,
+       "feedback": "We need the biggest fact that is not more than 53. That is 7 × 7 = 49, not 7 × 6 = 42."
+      }
+     ]
+    },
+    "remember": "The remainder is always smaller than the number you divide by."
+   }
+  ],
+  "ldiv.norem": [
+   {
+    "title": "Always look for the leftover",
+    "mistake": "You found 7 groups of 6 in 47. Well done, that part is right! But you wrote R 0, and 5 is still left over.",
+    "example": "47 ÷ 6",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "47 ÷ 6",
+      "6 fits 7 times",
+      "Answer: 7 R 0",
+      "Check: 6 × 7 + 0 is 42, not 47"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "47 ÷ 6",
+      "6 fits 7 times",
+      "6 × 7 = 42",
+      "47 − 42 = 5",
+      "Answer: 7 R 5",
+      "Check: 6 × 7 + 5 = 47"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Find the number of groups",
+      "text": "How many 6s fit in 47? 6 × 7 = 42 and 6 × 8 = 48. 48 is too big, so 7 groups."
+     },
+     {
+      "goal": "Multiply back",
+      "text": "7 groups of 6 use 6 × 7 = 42."
+     },
+     {
+      "goal": "Subtract to find the leftover",
+      "text": "47 − 42 = 5. So 5 is left over."
+     },
+     {
+      "goal": "Check the answer",
+      "text": "Groups × size + leftover: 7 × 6 + 5 = 47. This is the starting number, so 7 R 5 is right."
+     }
+    ],
+    "check": {
+     "question": "Why must we subtract 47 − 42 after we find 7 groups?",
+     "options": [
+      {
+       "text": "The 7 groups only use 42, so we subtract to see how many of the 47 are still left.",
+       "correct": true,
+       "feedback": "Yes! The groups use 42. Subtracting shows the 5 that are left over."
+      },
+      {
+       "text": "We do not need to. If 6 fits 7 times, nothing is left over.",
+       "correct": false,
+       "feedback": "Not quite. 7 groups of 6 use only 42, not all 47. There are 5 more, so we must subtract to find them."
+      },
+      {
+       "text": "The leftover is small, so we can leave it out.",
+       "correct": false,
+       "feedback": "The leftover is part of the answer. Without the 5, the check gives 42, not 47."
+      }
+     ]
+    },
+    "remember": "Multiply back and subtract. What is left is the remainder."
+   },
+   {
+    "title": "Always look for the leftover",
+    "mistake": "You found 8 groups for 58 ÷ 7. Good work! But you wrote R 0, and 2 were still left over. Lots of learners forget this part.",
+    "example": "58 ÷ 7",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "58 ÷ 7: 8 groups of 7",
+      "Answer: 8 R 0",
+      "The leftover was not found"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "58 ÷ 7: 8 groups of 7",
+      "7 × 8 = 56",
+      "58 − 56 = 2",
+      "Answer: 8 R 2"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Find the number of groups",
+      "text": "The biggest number of 7s that fits in 58 is 8, because 7 × 8 = 56 and 7 × 9 = 63 is too big."
+     },
+     {
+      "goal": "Multiply back",
+      "text": "Multiply back: 7 × 8 = 56."
+     },
+     {
+      "goal": "Subtract to see what is left",
+      "text": "58 − 56 = 2. So the leftover is 2."
+     },
+     {
+      "goal": "Check the answer",
+      "text": "Groups × size + leftover = the starting number: 8 × 7 + 2 = 58. It matches."
+     }
+    ],
+    "check": {
+     "question": "Why is 8 R 0 not the right answer for 58 ÷ 7?",
+     "options": [
+      {
+       "text": "8 groups of 7 make only 56, so 2 of the 58 are still left.",
+       "correct": true,
+       "feedback": "Yes! Multiply back and subtract: 58 − 56 = 2. Those 2 must go in the answer as R 2."
+      },
+      {
+       "text": "It is right. If the number of groups is right, the leftover is always 0.",
+       "correct": false,
+       "feedback": "Not quite. The groups can be right and there can still be some left. Multiply back to see: 7 × 8 = 56, and 58 − 56 = 2."
+      },
+      {
+       "text": "The leftover is too small to matter, so we can drop it.",
+       "correct": false,
+       "feedback": "Good try, but every leftover matters. Without it, 8 × 7 makes only 56, not 58."
+      },
+      {
+       "text": "A leftover only counts if it is bigger than 7.",
+       "correct": false,
+       "feedback": "Not quite. If it were 7 or more, you could make another group. A leftover is always smaller than 7, and it still counts."
+      }
+     ]
+    },
+    "remember": "Multiply back and subtract. What is left is the remainder."
+   },
+   {
+    "title": "Don't Forget the Leftover",
+    "mistake": "You found 8 groups for 58 ÷ 7. Good work! But you wrote R 0, and there are 2 left over. This mix-up is very common while learning.",
+    "example": "58 ÷ 7",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "7 goes into 58 8 times",
+      "58 ÷ 7 = 8 R 0",
+      "The leftover was not worked out"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "7 goes into 58 8 times",
+      "7 × 8 = 56",
+      "58 − 56 = 2",
+      "58 ÷ 7 = 8 R 2"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Find the biggest that fits",
+      "text": "7 × 8 = 56 and 7 × 9 = 63. 63 is too big, so there are 8 groups."
+     },
+     {
+      "goal": "Multiply back",
+      "text": "8 groups of 7 use up 7 × 8 = 56."
+     },
+     {
+      "goal": "Subtract to see what is left",
+      "text": "58 − 56 = 2. So 2 are left over. Write 8 R 2."
+     },
+     {
+      "goal": "Check your answer",
+      "text": "Groups × size + leftover: 8 × 7 + 2 = 58. This is the starting number, so it is right."
+     }
+    ],
+    "check": {
+     "question": "Why can 58 ÷ 7 not be 8 R 0?",
+     "options": [
+      {
+       "text": "Because 8 × 7 + 0 makes 56, not 58. 2 are still missing.",
+       "correct": true,
+       "feedback": "Yes! The check must give back the starting number. 56 is not 58, so the leftover is 2."
+      },
+      {
+       "text": "R 0 is fine, because the 8 groups are the main answer.",
+       "correct": false,
+       "feedback": "The 8 groups are right, but the leftover is part of the answer too. The 2 left over must not get lost."
+      },
+      {
+       "text": "2 is so small that we can leave it out.",
+       "correct": false,
+       "feedback": "Every leftover counts, even a small one. Without it, groups × size + leftover does not make 58."
+      },
+      {
+       "text": "We only write a remainder when there are no groups.",
+       "correct": false,
+       "feedback": "We always write what is left after the groups. Multiply back and subtract to find it: 58 − 56 = 2."
+      }
+     ]
+    },
+    "remember": "Multiply back and subtract to find the leftover every time."
+   }
+  ],
+  "ldiv.remslip": [
+   {
+    "title": "Finding the Right Leftover",
+    "mistake": "You found 43 ÷ 9 = 4, and that part is right. Then the leftover came out as 13, because in the ones you did 6 − 3 instead of 3 − 6. Many learners slip here.",
+    "example": "43 ÷ 9",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "9 × 4 = 36",
+      "43 − 36 → ones: 6 − 3 = 3, tens: 4 − 3 = 1",
+      "Leftover 13, so 4 R 13"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "9 × 4 = 36",
+      "43 − 36 = 7",
+      "43 ÷ 9 = 4 R 7",
+      "Check: 9 × 4 + 7 = 43",
+      "7 < 9"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Multiply divisor by answer",
+      "text": "The divisor is 9 and the answer is 4. 9 × 4 = 36."
+     },
+     {
+      "goal": "Take it from the number",
+      "text": "Leftover = 43 − 36. You cannot take 6 from 3, so take 1 ten: 13 − 6 = 7, and 3 − 3 = 0 tens. 43 − 36 = 7."
+     },
+     {
+      "goal": "Check it gives back 43",
+      "text": "9 × 4 + 7 = 36 + 7 = 43. Yes, we get the number back."
+     },
+     {
+      "goal": "Check leftover is small",
+      "text": "7 < 9, so no more 9s fit. The answer is 4 R 7."
+     }
+    ],
+    "check": {
+     "question": "Why can 13 NOT be the leftover for 43 ÷ 9?",
+     "options": [
+      {
+       "text": "13 is bigger than 9, so another 9 could still fit in it.",
+       "correct": true,
+       "feedback": "Yes! The leftover must be smaller than the divisor. Also 36 + 13 = 49, not 43."
+      },
+      {
+       "text": "13 is OK because 6 − 3 = 3 in the ones.",
+       "correct": false,
+       "feedback": "In 43 − 36 we must take 6 from 3, not 3 from 6. Turning the numbers around gives a different number."
+      },
+      {
+       "text": "13 is OK because the answer 4 is already right.",
+       "correct": false,
+       "feedback": "The leftover must be right too. Check: 9 × 4 + 13 = 49, not 43."
+      }
+     ]
+    },
+    "remember": "Check: divisor × answer + leftover = number, and leftover < divisor."
+   },
+   {
+    "title": "Finding the Right Leftover",
+    "mistake": "You found the right answer, 7, for 53 ÷ 7. Well done. The slip was in the take-away: 53 − 49 is 4, not 16. This is a very common slip, and you can learn to catch it.",
+    "example": "53 ÷ 7",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "7 × 7 = 49",
+      "53 − 49 = 16",
+      "Answer: 7 R 16"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "7 × 7 = 49",
+      "53 − 49 = 4",
+      "Answer: 7 R 4",
+      "Check: 7 × 7 + 4 = 53",
+      "4 is smaller than 7"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Multiply divisor by answer",
+      "text": "The divisor is 7 and the answer is 7. So 7 × 7 = 49."
+     },
+     {
+      "goal": "Take away to find leftover",
+      "text": "Leftover = the number − (divisor × answer). So 53 − 49 = 4. Count up from 49 to 53: 50, 51, 52, 53. That is 4."
+     },
+     {
+      "goal": "Check it gives back the number",
+      "text": "Divisor × answer + leftover: 7 × 7 + 4 = 53. Yes, this is our number."
+     },
+     {
+      "goal": "Check the leftover size",
+      "text": "The leftover 4 is smaller than the divisor 7. So 7 R 4 is right."
+     }
+    ],
+    "check": {
+     "question": "Why can 16 NOT be the leftover for 53 ÷ 7?",
+     "options": [
+      {
+       "text": "16 is bigger than 7, so another group of 7 could still fit.",
+       "correct": true,
+       "feedback": "Yes. A leftover must be smaller than the divisor. If it is not, the take-away has a slip."
+      },
+      {
+       "text": "16 is fine, because any leftover is OK if the answer is right.",
+       "correct": false,
+       "feedback": "Good thinking about the answer, but the leftover must also be right. Check: 7 × 7 + 16 = 65, not 53."
+      },
+      {
+       "text": "The leftover should be 53 − 7, because we take away the divisor.",
+       "correct": false,
+       "feedback": "Not quite. We take away divisor × answer, which is 49, not just 7."
+      }
+     ]
+    },
+    "remember": "Leftover = number − (divisor × answer). It must be smaller than the divisor."
+   },
+   {
+    "title": "Finding the leftover carefully",
+    "mistake": "Your answer 13 was right. Well done! The slip was in the subtraction: 83 − 78 gives 5, not 15. Subtraction slips happen a lot while you are learning.",
+    "example": "83 ÷ 6",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "6 × 13 = 78",
+      "83 − 78 = 15 (took 3 from 8 in the ones)",
+      "83 ÷ 6 = 13 R 15"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "6 × 13 = 78",
+      "83 − 78 = 5",
+      "83 ÷ 6 = 13 R 5",
+      "Check: 6 × 13 + 5 = 83"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Find the answer",
+      "text": "6 × 13 = 78 and 6 × 14 = 84. 84 is too big, so the answer is 13."
+     },
+     {
+      "goal": "Multiply divisor × answer",
+      "text": "6 × 13 = 78. This is how much the 13 groups use."
+     },
+     {
+      "goal": "Subtract to find leftover",
+      "text": "83 − 78. You cannot take 8 from 3, so exchange 1 ten: 13 − 8 = 5 and 7 − 7 = 0. Leftover = 5."
+     },
+     {
+      "goal": "Check your leftover",
+      "text": "6 × 13 + 5 = 83, so you get back the number. Also 5 is smaller than 6. Both checks pass."
+     }
+    ],
+    "check": {
+     "question": "Why can the leftover in 83 ÷ 6 not be 15?",
+     "options": [
+      {
+       "text": "15 is bigger than 6, so more groups of 6 would still fit.",
+       "correct": true,
+       "feedback": "Yes. The leftover must be smaller than the divisor. A leftover of 15 tells you to check your subtraction."
+      },
+      {
+       "text": "It can be 15. Only the answer 13 needs to be right.",
+       "correct": false,
+       "feedback": "The leftover matters too. 6 × 13 + 15 = 93, not 83, so 15 cannot be right."
+      },
+      {
+       "text": "In each column, you always take the small digit from the big digit.",
+       "correct": false,
+       "feedback": "Always take the bottom digit from the top digit. If the top digit is smaller, exchange 1 ten first: 13 − 8 = 5."
+      }
+     ]
+    },
+    "remember": "Leftover = number − (divisor × answer). It must be smaller than the divisor."
+   }
+  ],
+  "ldiv.steps": [
+   {
+    "title": "Divide, Multiply, Subtract, Bring down",
+    "mistake": "In 186 ÷ 6, the 6 at the end was not brought down, so the answer came out as 3. Many children lose track of a step in the middle. Going step by step fixes it.",
+    "example": "186 ÷ 6",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "18 ÷ 6 = 3. 3 × 6 = 18. 18 − 18 = 0.",
+      "Stopped here. The 6 was not brought down.",
+      "Answer: 3"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "18 ÷ 6 = 3. 3 × 6 = 18. 18 − 18 = 0. Bring down 6.",
+      "6 ÷ 6 = 1. 1 × 6 = 6. 6 − 6 = 0.",
+      "No digits left. Answer: 31",
+      "Check: 31 × 6 = 186"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Divide the first part",
+      "text": "6 does not go into 1, so use 18. 18 ÷ 6 = 3. Write 3 on top."
+     },
+     {
+      "goal": "Multiply and subtract",
+      "text": "3 × 6 = 18. 18 − 18 = 0."
+     },
+     {
+      "goal": "Bring down the next digit",
+      "text": "There is still a 6 in 186. Bring down 6. Now you have 6."
+     },
+     {
+      "goal": "Do the steps again",
+      "text": "6 ÷ 6 = 1. 1 × 6 = 6. 6 − 6 = 0. No digits are left, so the answer is 31."
+     },
+     {
+      "goal": "Check by multiplying back",
+      "text": "31 × 6 = 186. This is the number we started with, so 31 is right."
+     }
+    ],
+    "check": {
+     "question": "After 18 − 18 = 0, why do we still bring down the 6?",
+     "options": [
+      {
+       "text": "Because every digit of 186 must be used before we stop.",
+       "correct": true,
+       "feedback": "Yes. The 6 is part of 186. We only stop when no digits are left to bring down."
+      },
+      {
+       "text": "We do not need to. When we get 0, the division is finished.",
+       "correct": false,
+       "feedback": "A 0 only means that step had nothing left over. The 6 in 186 has not been divided yet, so we must keep going."
+      },
+      {
+       "text": "We only bring down a digit when the subtraction leaves a remainder.",
+       "correct": false,
+       "feedback": "We bring down the next digit every time, even after 0. Otherwise part of the number is lost."
+      },
+      {
+       "text": "Bringing down is just for neat writing. It does not change the answer.",
+       "correct": false,
+       "feedback": "It does change the answer. Without it we got 3, but 3 × 6 = 18, not 186."
+      }
+     ]
+    },
+    "remember": "Divide, Multiply, Subtract, Bring down. Stop only when no digits are left."
+   }
+  ],
+  "ldiv.zeroskip": [
+   {
+    "title": "Every bring down gets a digit",
+    "mistake": "You worked hard on 624 ÷ 6 and got 14. When 6 did not fit into 2, you wrote nothing, so the 0 in the tens place went missing. Lots of learners do this at first.",
+    "example": "624 ÷ 6",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "6 ÷ 6 gives 1. Write 1.",
+      "Bring down 2. 6 does not fit. Write nothing.",
+      "Bring down 4. 24 ÷ 6 gives 4. Write 4.",
+      "Answer: 14"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "6 ÷ 6 = 1, 1 × 6 = 6, 6 − 6 = 0",
+      "Bring down 2. 6 does not fit in 2. Write 0.",
+      "0 × 6 = 0, 2 − 0 = 2",
+      "Bring down 4. 24 ÷ 6 = 4, 4 × 6 = 24",
+      "Answer: 104"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Estimate first",
+      "text": "624 ÷ 6 is about 100. So the answer needs 3 digits. 14 is far too small."
+     },
+     {
+      "goal": "Divide the hundreds",
+      "text": "6 ÷ 6 = 1. Write 1 above the 6. Multiply: 1 × 6 = 6. Subtract: 6 − 6 = 0."
+     },
+     {
+      "goal": "Write 0 when it does not fit",
+      "text": "Bring down 2. 6 does not fit into 2, so write 0 above the 2. Then bring down the next digit."
+     },
+     {
+      "goal": "Divide the ones",
+      "text": "Bring down 4 to make 24. 24 ÷ 6 = 4. Write 4 above the 4. 24 − 24 = 0."
+     },
+     {
+      "goal": "Check the answer",
+      "text": "104 × 6 = 624. It matches, and 104 is close to our estimate of 100."
+     }
+    ],
+    "check": {
+     "question": "Why must we write 0 above the 2 in 624 ÷ 6?",
+     "options": [
+      {
+       "text": "The 0 holds the tens place, so the 1 stays in the hundreds place.",
+       "correct": true,
+       "feedback": "Yes! 104 means 1 hundred, 0 tens and 4 ones. Without the 0, the 1 slides down to become 1 ten."
+      },
+      {
+       "text": "We can skip it, because 0 means nothing.",
+       "correct": false,
+       "feedback": "0 tells us there are no tens. If we skip it, 104 turns into 14, which is much smaller."
+      },
+      {
+       "text": "We only write a digit when the divisor fits.",
+       "correct": false,
+       "feedback": "Every digit you bring down gets a digit in the answer. If the divisor does not fit, that digit is 0."
+      },
+      {
+       "text": "The answer should have fewer digits than the number we divide.",
+       "correct": false,
+       "feedback": "Our estimate says the answer is about 100, so it needs 3 digits. Estimating first helps you spot a missing 0."
+      }
+     ]
+    },
+    "remember": "Every digit you bring down gets an answer digit, even 0."
+   },
+   {
+    "title": "Every bring down gets a digit",
+    "mistake": "For 742 ÷ 7 you got 16. 7 did not fit into 4, so you wrote nothing there, but that step needs a 0. Lots of learners do this. It is a good mistake to learn from.",
+    "example": "742 ÷ 7",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "7 ÷ 7 = 1, write 1",
+      "Bring down 4: 7 does not fit, write nothing",
+      "Bring down 2: 42 ÷ 7 = 6, write 6",
+      "Answer: 16"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "Estimate: 742 ÷ 7 is about 100",
+      "7 ÷ 7 = 1, write 1",
+      "Bring down 4: 4 ÷ 7 = 0 R 4, write 0",
+      "Bring down 2: 42 ÷ 7 = 6, write 6",
+      "Answer: 106",
+      "Check: 106 × 7 = 742"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Estimate first",
+      "text": "700 ÷ 7 is 100, so the answer is about 100. It must have 3 digits."
+     },
+     {
+      "goal": "Divide the hundreds",
+      "text": "Divide: 7 ÷ 7 = 1. Multiply: 1 × 7 = 7. Subtract: 7 − 7 = 0."
+     },
+     {
+      "goal": "Write 0 when it does not fit",
+      "text": "Bring down 4. 7 does not fit into 4, so write 0 in the answer. Bring down the next digit."
+     },
+     {
+      "goal": "Finish the last digit",
+      "text": "Now you have 42. Divide: 42 ÷ 7 = 6. Multiply: 6 × 7 = 42. Subtract: 42 − 42 = 0."
+     },
+     {
+      "goal": "Check with the estimate",
+      "text": "106 is close to 100. 16 is far too small, so the 0 was needed."
+     }
+    ],
+    "check": {
+     "question": "In 742 ÷ 7, why do we write 0 when 7 does not fit into 4?",
+     "options": [
+      {
+       "text": "The 0 holds the tens place, so the 1 stays in the hundreds and the answer is 106.",
+       "correct": true,
+       "feedback": "Yes! Every digit you bring down gets a digit in the answer. The 0 keeps the other digits in the right places."
+      },
+      {
+       "text": "We do not need it. A 0 is worth nothing, so we can leave it out.",
+       "correct": false,
+       "feedback": "A 0 inside a number matters. Without it, 106 turns into 16, which is much smaller."
+      },
+      {
+       "text": "We only write a digit in the answer when the divisor fits.",
+       "correct": false,
+       "feedback": "Not quite. Each bring down needs a digit in the answer. When the divisor does not fit, that digit is 0."
+      },
+      {
+       "text": "The 0 should go at the end, so the answer is 160.",
+       "correct": false,
+       "feedback": "The 0 goes where 7 did not fit, the tens step. Write each digit in order as you work."
+      }
+     ]
+    },
+    "remember": "Divisor does not fit? Write 0, then bring down the next digit."
+   }
+  ],
+  "mul.stuck": [
+   {
+    "title": "Build a fact from facts you know",
+    "mistake": "Sometimes one wrong answer gets stuck, and it comes back again and again. This is normal when you learn. Some children keep saying 76 for 7 × 8.",
+    "example": "7 × 8",
+    "wrong": {
+     "label": "A stuck answer",
+     "lines": [
+      "7 × 8 = 76",
+      "No working, just the answer that keeps coming back"
+     ]
+    },
+    "right": {
+     "label": "Build it",
+     "lines": [
+      "7 × 5 = 35",
+      "7 × 3 = 21",
+      "35 + 21 = 56",
+      "So 7 × 8 = 56"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Split into 5 and the rest",
+      "text": "Think of 8 as 5 + 3. You know 7 × 5 = 35 and 7 × 3 = 21."
+     },
+     {
+      "goal": "Add the two parts",
+      "text": "35 + 21 = 56, so 7 × 8 = 56."
+     },
+     {
+      "goal": "Try doubling a half",
+      "text": "Half of 8 is 4. 7 × 4 = 28, and 28 + 28 = 56. Same answer."
+     },
+     {
+      "goal": "Check with a neighbour",
+      "text": "7 × 7 = 49. One more 7: 49 + 7 = 56. It matches."
+     }
+    ],
+    "check": {
+     "question": "Why does building 7 × 8 from facts you know help fix a stuck answer?",
+     "options": [
+      {
+       "text": "You work it out from facts you are sure of, so the answer has a reason.",
+       "correct": true,
+       "feedback": "Yes. When 56 comes from 35 + 21, you can trust it, and the stuck answer has no reason to come back."
+      },
+      {
+       "text": "Because building it is faster than remembering.",
+       "correct": false,
+       "feedback": "Building takes a little longer at first. That is fine, because it gives you a true answer, and soon you will remember 56."
+      },
+      {
+       "text": "Because then you never need to check.",
+       "correct": false,
+       "feedback": "Checking still helps. 7 × 7 = 49, and 49 + 7 = 56, so the check tells you 56 is right."
+      },
+      {
+       "text": "Because seeing 56 again is enough.",
+       "correct": false,
+       "feedback": "Just seeing the right answer often does not stop a stuck one. Building it from 7 × 5 and 7 × 3 gives the answer a reason."
+      }
+     ]
+    },
+    "remember": "If an answer gets stuck, build it from facts you know, then check."
+   },
+   {
+    "title": "Build 8 × 7 from facts you know",
+    "mistake": "Sometimes a wrong answer gets stuck on one fact. Some children keep saying 76 for 8 × 7. This is normal while learning, and you can fix it by building the fact.",
+    "example": "8 × 7",
+    "wrong": {
+     "label": "A stuck answer",
+     "lines": [
+      "8 × 7 = 76",
+      "76 just comes to mind. It is not built from anything."
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "7 = 5 + 2",
+      "8 × 5 = 40",
+      "8 × 2 = 16",
+      "40 + 16 = 56",
+      "So 8 × 7 = 56"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Split into 5 + the rest",
+      "text": "Think of 7 as 5 + 2. So 8 × 7 is 8 × 5 and 8 × 2 put together."
+     },
+     {
+      "goal": "Use facts you know",
+      "text": "8 × 5 = 40 and 8 × 2 = 16. Then 40 + 16 = 56."
+     },
+     {
+      "goal": "Build it another way",
+      "text": "Double a half: 4 × 7 = 28. Double it: 28 + 28 = 56."
+     },
+     {
+      "goal": "Check with a neighbour",
+      "text": "8 × 6 = 48. One more 8 is 48 + 8 = 56. All ways give 56."
+     }
+    ],
+    "check": {
+     "question": "Why does 8 × 5 + 8 × 2 give the answer to 8 × 7?",
+     "options": [
+      {
+       "text": "Because 7 is 5 + 2, so 7 eights is 5 eights and 2 more eights.",
+       "correct": true,
+       "feedback": "Yes! You split 7 into parts and kept all 7 eights. That is a strong strategy."
+      },
+      {
+       "text": "Because 8 × 5 + 2 is the same thing.",
+       "correct": false,
+       "feedback": "Good try. 8 × 5 + 2 adds only 2, not 2 eights. You need 8 × 2 = 16 for the rest."
+      },
+      {
+       "text": "Because the answer should start with 7, like the 7 in 8 × 7.",
+       "correct": false,
+       "feedback": "This idea can make 76 get stuck. The answer does not copy the numbers. Building it gives 56."
+      },
+      {
+       "text": "It does not matter. Looking at the answer again is enough.",
+       "correct": false,
+       "feedback": "Looking again often does not stop a stuck answer. Building the fact from known facts helps it stay right."
+      }
+     ]
+    },
+    "remember": "If a fact gets stuck, build it from facts you know, then check."
+   }
+  ],
+  "mul2.cross": [
+   {
+    "title": "Every part times every part",
+    "mistake": "For 34 × 26 you did 30 × 20 and 4 × 6, then added them to get 624. That is a good start, but 2 boxes are missing: 30 × 6 and 4 × 20.",
+    "example": "34 × 26",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "30 × 20 = 600",
+      "4 × 6 = 24",
+      "600 + 24 = 624",
+      "Only 2 boxes were used"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "30 × 20 = 600",
+      "30 × 6 = 180",
+      "4 × 20 = 80",
+      "4 × 6 = 24",
+      "600 + 180 + 80 + 24 = 884"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Estimate first",
+      "text": "34 × 26 is about 30 × 30, which is 900. So the answer should be close to 900."
+     },
+     {
+      "goal": "Split both numbers",
+      "text": "34 is 30 + 4. 26 is 20 + 6."
+     },
+     {
+      "goal": "Fill all four boxes",
+      "text": "Multiply every part by every part: 30 × 20 = 600, 30 × 6 = 180, 4 × 20 = 80, 4 × 6 = 24."
+     },
+     {
+      "goal": "Add all four",
+      "text": "600 + 180 + 80 + 24 = 884. This is close to 900, so it makes sense."
+     }
+    ],
+    "check": {
+     "question": "Why do we need the boxes 30 × 6 and 4 × 20?",
+     "options": [
+      {
+       "text": "Because the 30 in 34 must be multiplied by all of 26, and so must the 4.",
+       "correct": true,
+       "feedback": "Yes. Each part of 34 multiplies both parts of 26, so there are 4 boxes in the area model."
+      },
+      {
+       "text": "We do not need them. Tens go with tens and ones go with ones.",
+       "correct": false,
+       "feedback": "That works for adding, but not for multiplying. 624 is far from the estimate of 900, so some parts are missing."
+      },
+      {
+       "text": "They are only needed when the answer has a remainder.",
+       "correct": false,
+       "feedback": "Remainders are for division. In multiplication you always need all 4 boxes."
+      }
+     ]
+    },
+    "remember": "Split both numbers, fill all four boxes, then add all four."
+   },
+   {
+    "title": "Every Part Times Every Part",
+    "mistake": "You did 40 × 20 and 3 × 5, and got 815. Good start, but 2 boxes were missing: 40 × 5 and 3 × 20. Many learners miss these at first.",
+    "example": "43 × 25",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "40 × 20 = 800",
+      "3 × 5 = 15",
+      "800 + 15 = 815"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "40 × 20 = 800",
+      "40 × 5 = 200",
+      "3 × 20 = 60",
+      "3 × 5 = 15",
+      "800 + 200 + 60 + 15 = 1075"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Estimate first",
+      "text": "43 × 25 is about 40 × 25. So the answer is about 1000."
+     },
+     {
+      "goal": "Split both numbers",
+      "text": "43 is 40 + 3. 25 is 20 + 5."
+     },
+     {
+      "goal": "Fill all four boxes",
+      "text": "Multiply every part by every part: 40 × 20 = 800, 40 × 5 = 200, 3 × 20 = 60, 3 × 5 = 15."
+     },
+     {
+      "goal": "Add all four",
+      "text": "800 + 200 + 60 + 15 = 1075. This is close to 1000, so it makes sense."
+     }
+    ],
+    "check": {
+     "question": "Why does the area model for 43 × 25 need 4 boxes, not 2?",
+     "options": [
+      {
+       "text": "Because the 40 must meet the 5, and the 3 must meet the 20, too.",
+       "correct": true,
+       "feedback": "Yes. Each part of 43 is multiplied by each part of 25, so there are 2 × 2 = 4 boxes."
+      },
+      {
+       "text": "Because tens only go with tens, and ones only go with ones.",
+       "correct": false,
+       "feedback": "This is the belief behind the mix-up. The 40 is used 25 times, so it must meet the 20 and the 5."
+      },
+      {
+       "text": "The two middle boxes are very small, so we can leave them out.",
+       "correct": false,
+       "feedback": "They are not small here: 200 + 60 = 260. Leaving them out gave 815, far from the estimate of 1000."
+      }
+     ]
+    },
+    "remember": "Four boxes: multiply every part by every part, then add all four."
+   }
+  ],
+  "mul2.onerow": [
+   {
+    "title": "Two rows: tens and ones",
+    "mistake": "For 47 × 23 you got 141. That is only 47 × 3. You did that row well, but the row for the 20 is missing. This mistake happens a lot while you are learning.",
+    "example": "47 × 23",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "47 × 3 = 141",
+      "Answer: 141",
+      "The 20 was not used"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "23 = 20 + 3",
+      "47 × 20 = 940",
+      "47 × 3 = 141",
+      "940 + 141 = 1081",
+      "47 × 23 = 1081"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Split the second number",
+      "text": "23 = 20 + 3. Make one box for 20 and one box for 3."
+     },
+     {
+      "goal": "Fill the tens box",
+      "text": "47 × 20 = 940. This is the tens row."
+     },
+     {
+      "goal": "Fill the ones box",
+      "text": "47 × 3 = 141. This is the ones row."
+     },
+     {
+      "goal": "Add the two rows",
+      "text": "940 + 141 = 1081. Every box is filled, so 47 × 23 = 1081."
+     }
+    ],
+    "check": {
+     "question": "Why must we add 47 × 20 to 47 × 3?",
+     "options": [
+      {
+       "text": "23 means 20 + 3, so we need 20 groups of 47 and 3 more groups of 47.",
+       "correct": true,
+       "feedback": "Yes. Each row gives one part of 23. You need both parts to get all 23 groups."
+      },
+      {
+       "text": "We only multiply by the ones digit. The 2 is not important.",
+       "correct": false,
+       "feedback": "The 2 in 23 means 20. If you leave it out, you lose 20 groups of 47."
+      },
+      {
+       "text": "47 × 3 is close enough to 47 × 23.",
+       "correct": false,
+       "feedback": "141 is much smaller than 1081. 3 groups of 47 is far less than 23 groups of 47."
+      },
+      {
+       "text": "The tens row is only a check. We use one row as the answer.",
+       "correct": false,
+       "feedback": "Each row is one part of the answer. We add both rows together to get the answer."
+      }
+     ]
+    },
+    "remember": "Multiply by the tens AND the ones, then add the two rows."
+   }
+  ],
+  "mul2.place": [
+   {
+    "title": "The tens digit is worth tens",
+    "mistake": "You did 34 × 6 and 34 × 2, then added them to get 272. Good try, and this mix-up is common. The 2 in 26 is 2 tens, so it is worth 20, not 2.",
+    "example": "34 × 26",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "34 × 6 = 204",
+      "34 × 2 = 68",
+      "204 + 68 = 272"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "34 × 6 = 204",
+      "34 × 20 = 680",
+      "204 + 680 = 884"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Estimate first",
+      "text": "34 × 26 is about 30 × 30, which is 900. So the answer should be near 900."
+     },
+     {
+      "goal": "Multiply by the ones",
+      "text": "The 6 in 26 is 6 ones. 34 × 6 = 204."
+     },
+     {
+      "goal": "Multiply by the tens",
+      "text": "The 2 in 26 is worth 20. Do 34 × 2 = 68, then × 10: add the zero. 34 × 20 = 680."
+     },
+     {
+      "goal": "Add the two rows",
+      "text": "204 + 680 = 884. This is close to 900, so it makes sense. 272 is far too small."
+     }
+    ],
+    "check": {
+     "question": "Why is the second row 34 × 20 and not 34 × 2?",
+     "options": [
+      {
+       "text": "The 2 is in the tens place, so it is worth 20.",
+       "correct": true,
+       "feedback": "Yes. Where a digit sits tells you its value. In 26, the 2 means 2 tens, which is 20."
+      },
+      {
+       "text": "26 is made of 2 and 6, so we multiply by 2 and by 6.",
+       "correct": false,
+       "feedback": "26 is not 2 + 6. It is 20 + 6. So we multiply by 20 and by 6."
+      },
+      {
+       "text": "The zero is only there to keep the columns neat.",
+       "correct": false,
+       "feedback": "The zero changes the value. 68 and 680 are very different. 34 × 20 is 680, so we need the zero."
+      },
+      {
+       "text": "A digit is always worth the same, wherever it is.",
+       "correct": false,
+       "feedback": "A digit's value depends on its place. The 2 in 26 is worth 20, but the 2 in 62 is worth 2."
+      }
+     ]
+    },
+    "remember": "The tens digit is worth tens: multiply, then add the zero."
+   },
+   {
+    "title": "The tens digit is worth tens",
+    "mistake": "In 34 × 26 you did 34 × 2 = 68, but the 2 in 26 is 2 tens, so it is 20. This is a normal mix-up. Here is a new example, 36 × 24, with the same mix-up.",
+    "example": "36 × 24",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "36 × 4 = 144",
+      "36 × 2 = 72",
+      "144 + 72 = 216"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "Estimate: about 40 × 20 = 800",
+      "36 × 4 = 144",
+      "36 × 20 = 720",
+      "144 + 720 = 864"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Estimate first",
+      "text": "36 is about 40 and 24 is about 20. 40 × 20 = 800, so the answer is about 800."
+     },
+     {
+      "goal": "Multiply by the ones",
+      "text": "The 4 in 24 is 4 ones. 36 × 4 = 144."
+     },
+     {
+      "goal": "Multiply by the tens",
+      "text": "The 2 in 24 is worth 20. Do 36 × 2 = 72, then × 10: put a 0 on the end. 36 × 20 = 720."
+     },
+     {
+      "goal": "Add the rows",
+      "text": "144 + 720 = 864. This is close to 800, so it makes sense. 216 is far too small."
+     }
+    ],
+    "check": {
+     "question": "In 36 × 24, why is the second row 720 and not 72?",
+     "options": [
+      {
+       "text": "The 2 in 24 is worth 20, so we do 36 × 20.",
+       "correct": true,
+       "feedback": "Yes. The 2 is in the tens place, so it means 20. 36 × 20 = 720."
+      },
+      {
+       "text": "The zero just makes the rows look neat.",
+       "correct": false,
+       "feedback": "The 0 changes the value. 72 becomes 720. It shows we did × 20, not × 2."
+      },
+      {
+       "text": "Each digit in 24 is a ones digit.",
+       "correct": false,
+       "feedback": "Only the 4 is ones. The 2 is in the tens place, so it is 2 tens, 20."
+      },
+      {
+       "text": "We put a 0 on the end of every row.",
+       "correct": false,
+       "feedback": "The ones row has no 0 on the end: 36 × 4 = 144. Only the tens row gets the 0, because it is × 20."
+      }
+     ]
+    },
+    "remember": "For the tens digit, multiply by it, then put a 0 on the end."
+   }
+  ],
+  "multi.early": [
+   {
+    "title": "Two Steps to the Answer",
+    "mistake": "You found 4 × 6 = 24, and that part was right. But you stopped there and gave 24 as the answer. This story has a second step. Many children stop too soon while they learn this.",
+    "example": "Tom has 4 bags with 6 marbles in each bag. He gives 5 marbles away. How many marbles does Tom have now?",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "Step 1: 4 × 6 = 24 marbles",
+      "Answer: 24 marbles",
+      "(Stopped after step 1)"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "Underline: How many marbles does Tom have now?",
+      "Step 1: 4 × 6 = 24 marbles",
+      "Is 24 the answer? No, he still gives 5 away.",
+      "Step 2: 24 − 5 = 19 marbles",
+      "Is 19 the answer? Yes.",
+      "Answer: 19 marbles"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Underline the question",
+      "text": "Underline: How many marbles does Tom have now? The word now means after he gives some away."
+     },
+     {
+      "goal": "Find the hidden number",
+      "text": "4 bags with 6 in each bag. 4 × 6 = 24 marbles at the start."
+     },
+     {
+      "goal": "Check the first number",
+      "text": "Is 24 the number the question wants? No. 24 is how many he had before he gave any away."
+     },
+     {
+      "goal": "Use it to answer",
+      "text": "He gives 5 marbles away. 24 − 5 = 19 marbles."
+     },
+     {
+      "goal": "Check the answer",
+      "text": "Is 19 the number the question wants? Yes, it is how many marbles Tom has now."
+     }
+    ],
+    "check": {
+     "question": "Why is 24 not the answer to this story?",
+     "options": [
+      {
+       "text": "24 is how many marbles Tom had before he gave 5 away. The question asks about now.",
+       "correct": true,
+       "feedback": "Yes! 24 is the hidden number. You need it to find the answer, but it is not the answer."
+      },
+      {
+       "text": "24 is not the answer because 4 × 6 is really 25.",
+       "correct": false,
+       "feedback": "4 × 6 = 24 is correct. Your times table was fine. The real problem is that the story has one more step."
+      },
+      {
+       "text": "24 is not the answer because we should add 4 + 6, not multiply.",
+       "correct": false,
+       "feedback": "4 bags with 6 in each bag is groups, so × is right. 24 is right for step 1, but the story does not stop there."
+      },
+      {
+       "text": "24 is not the answer because we should add the 5 marbles to it.",
+       "correct": false,
+       "feedback": "Tom gives 5 away, so he has fewer marbles. We take away: 24 − 5 = 19."
+      }
+     ]
+    },
+    "remember": "After each step, ask: Is this the number the question wants?"
+   },
+   {
+    "title": "Two steps to the real answer",
+    "mistake": "You found that Ana has 12 stickers. Good work, that step was right! But the question asks how many they have altogether, so there is one more step. Stopping early is a common mistake while you learn.",
+    "example": "Tom has 7 stickers. Ana has 5 more stickers than Tom. How many stickers do they have altogether?",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "Ana: 7 + 5 = 12",
+      "Answer: 12 stickers",
+      "Stopped after step 1"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "Step 1, Ana: 7 + 5 = 12",
+      "Step 2, altogether: 7 + 12 = 19",
+      "Answer: 19 stickers"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Underline the question",
+      "text": "Underline: How many stickers do they have altogether? Altogether means Tom and Ana together."
+     },
+     {
+      "goal": "Find the hidden number",
+      "text": "The story does not tell us how many Ana has. Ana has 5 more than Tom, so 7 + 5 = 12."
+     },
+     {
+      "goal": "Ask: is this it?",
+      "text": "Is 12 the number the question wants? No. 12 is only Ana's stickers."
+     },
+     {
+      "goal": "Use it to answer",
+      "text": "Add Tom and Ana: 7 + 12 = 19. Is 19 the number the question wants? Yes. They have 19 stickers."
+     }
+    ],
+    "check": {
+     "question": "Why is 12 not the answer to this question?",
+     "options": [
+      {
+       "text": "12 is only Ana's stickers, but the question asks about Tom and Ana together.",
+       "correct": true,
+       "feedback": "Yes! 12 is the hidden number. You need it to find the total, but it is not the answer."
+      },
+      {
+       "text": "12 is wrong because 7 + 5 is not 12.",
+       "correct": false,
+       "feedback": "Your adding was right: 7 + 5 = 12. The problem is that 12 answers a different question. The question wants the total for both children."
+      },
+      {
+       "text": "The first number you find is always the answer.",
+       "correct": false,
+       "feedback": "In a two-step story, the first number is often a hidden number. Check the underlined question each time to see if you need another step."
+      },
+      {
+       "text": "The word more means you only add once.",
+       "correct": false,
+       "feedback": "More helps you find Ana's stickers. But the word altogether in the question tells you to add again."
+      }
+     ]
+    },
+    "remember": "After each step, ask: Is this the number the question wants?"
+   },
+   {
+    "title": "Two steps: find, then answer",
+    "mistake": "You found 32 − 9 = 23. That was good work, but you stopped there. 23 is only the hidden number. The story has one more step. Many children do this while they learn.",
+    "example": "A bus has 32 people. At the first stop, 9 people get off. At the second stop, 7 people get on. How many people are on the bus now?",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "32 − 9 = 23",
+      "Answer: 23 people"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "Step 1: 32 − 9 = 23 (hidden number)",
+      "Step 2: 23 + 7 = 30",
+      "Answer: 30 people"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Underline the question",
+      "text": "Underline: How many people are on the bus now? Now means after both stops."
+     },
+     {
+      "goal": "Find the hidden number",
+      "text": "9 people get off. 32 − 9 = 23 people after the first stop."
+     },
+     {
+      "goal": "Check the number",
+      "text": "Ask: Is this the number the question wants? No. 23 is only after the first stop."
+     },
+     {
+      "goal": "Use it to answer",
+      "text": "7 people get on. 23 + 7 = 30. Yes, 30 is the number on the bus now."
+     }
+    ],
+    "check": {
+     "question": "What is true about the number 23 in this story?",
+     "options": [
+      {
+       "text": "23 is the number after the first stop, not after both stops.",
+       "correct": true,
+       "feedback": "Yes. 23 is the hidden number. You use it in step 2 to find 30."
+      },
+      {
+       "text": "23 is the answer, because you always stop after the first step.",
+       "correct": false,
+       "feedback": "Not quite. After each step, ask: Is this the number the question wants? Here the question wants the number after both stops."
+      },
+      {
+       "text": "23 is the answer, because a word problem needs only one step.",
+       "correct": false,
+       "feedback": "Some word problems need two steps. This one has a hidden number first, then a second step to answer."
+      },
+      {
+       "text": "23 is the answer, because the 7 is only an extra fact.",
+       "correct": false,
+       "feedback": "Look at the underlined question. Ask: Does the question want the number after the second stop too? It does, so the 7 is needed."
+      }
+     ]
+    },
+    "remember": "After each step, ask: Is this the number the question wants?"
+   }
+  ],
+  "multi.onesum": [
+   {
+    "title": "Choose an operation for each step",
+    "mistake": "You added all the numbers: 4 + 6 + 5 = 15. That is a normal mix-up. This story has 2 steps, and each step needs its own operation.",
+    "example": "Tom has 4 bags with 6 apples in each bag. He eats 5 apples. How many apples are left?",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "4 + 6 + 5 = 15",
+      "15 apples left"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "Step 1: 4 × 6 = 24",
+      "Step 2: 24 − 5 = 19",
+      "19 apples left"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Find the first step",
+      "text": "4 bags with 6 in each bag are equal groups. Equal groups → ×."
+     },
+     {
+      "goal": "Do step 1",
+      "text": "4 × 6 = 24. Tom has 24 apples."
+     },
+     {
+      "goal": "Find the second step",
+      "text": "He eats 5, and we want how many are left. Left → −."
+     },
+     {
+      "goal": "Do step 2",
+      "text": "24 − 5 = 19. There are 19 apples left."
+     }
+    ],
+    "check": {
+     "question": "Why is the answer not 4 + 6 + 5?",
+     "options": [
+      {
+       "text": "Each step needs its own operation: × for the equal bags, then − for the apples he eats.",
+       "correct": true,
+       "feedback": "Yes. You read the story for each step and chose × first, then −. Good thinking."
+      },
+      {
+       "text": "We should multiply all three numbers: 4 × 6 × 5.",
+       "correct": false,
+       "feedback": "That still uses one operation for every number. The 5 apples are eaten, so they are taken away. That step is −."
+      },
+      {
+       "text": "The numbers should be added in a different order.",
+       "correct": false,
+       "feedback": "Adding in any order still gives 15. The order is not the problem. The story needs × and then −."
+      },
+      {
+       "text": "4 + 6 is right, but then we take away 5.",
+       "correct": false,
+       "feedback": "You are right that step 2 is −. But 4 bags with 6 in each bag are equal groups, so step 1 is 4 × 6, not 4 + 6."
+      }
+     ]
+    },
+    "remember": "Write each step separately and choose its operation from the story."
+   },
+   {
+    "title": "Each step gets its own operation",
+    "mistake": "You multiplied all 3 numbers: 3 × 7 × 4 = 84. Many learners do this. The story has 2 steps, and each step needs its own operation.",
+    "example": "Mei has 3 bags with 7 apples in each bag. Then she buys 4 more apples. How many apples does she have in total?",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "3 × 7 × 4 = 84",
+      "84 apples"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "Step 1: 3 × 7 = 21",
+      "Step 2: 21 + 4 = 25",
+      "25 apples"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Find the two steps",
+      "text": "First the bags of apples. Then the 4 more apples."
+     },
+     {
+      "goal": "Choose step 1 operation",
+      "text": "3 bags with 7 in each bag are equal groups, so use ×. 3 × 7 = 21 apples."
+     },
+     {
+      "goal": "Choose step 2 operation",
+      "text": "She buys 4 more. More means +. 21 + 4 = 25 apples."
+     },
+     {
+      "goal": "Check the answer",
+      "text": "25 is a bit more than 21. That makes sense for 4 more apples."
+     }
+    ],
+    "check": {
+     "question": "Why do we use + and not × in step 2?",
+     "options": [
+      {
+       "text": "The 4 apples are just 4 more apples. They are not 4 equal groups.",
+       "correct": true,
+       "feedback": "Yes. The story word is more, so we add. Good thinking."
+      },
+      {
+       "text": "All the numbers in one story should use the same operation.",
+       "correct": false,
+       "feedback": "This is the belief that causes the mix-up. Each step has its own operation. Read the story again for each step."
+      },
+      {
+       "text": "We used × in step 1, so we must keep using ×.",
+       "correct": false,
+       "feedback": "Step 2 is a new step. It has its own story words. Here more tells us to use +."
+      },
+      {
+       "text": "× always gives the biggest answer, so it is the safest choice.",
+       "correct": false,
+       "feedback": "A big answer is not always right. 84 apples is too many. The story words tell us the operation."
+      }
+     ]
+    },
+    "remember": "Write each step separately and choose its operation from the story."
+   },
+   {
+    "title": "Each step gets its own operation",
+    "mistake": "You added all the numbers: 4 + 6 + 5 = 15. That is a normal mix-up. This story has 2 steps, and each step needs its own operation.",
+    "example": "Ben has 4 boxes. There are 6 pencils in each box. He gives away 5 pencils. How many pencils are left?",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "4 + 6 + 5 = 15",
+      "Answer: 15 pencils"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "Step 1: 4 × 6 = 24",
+      "Step 2: 24 − 5 = 19",
+      "Answer: 19 pencils"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Find the 2 steps",
+      "text": "First find how many pencils Ben has. Then find how many are left after he gives some away."
+     },
+     {
+      "goal": "Choose step 1 operation",
+      "text": "4 boxes with 6 in each box are equal groups, so use ×. 4 × 6 = 24 pencils."
+     },
+     {
+      "goal": "Choose step 2 operation",
+      "text": "He gives away 5, and we want how many are left, so use −. 24 − 5 = 19 pencils."
+     },
+     {
+      "goal": "Check the answer",
+      "text": "Ben gave some away, so the answer must be less than 24. 19 is less than 24."
+     }
+    ],
+    "check": {
+     "question": "Why do we use − in step 2?",
+     "options": [
+      {
+       "text": "Because Ben gives pencils away, so we want how many are left.",
+       "correct": true,
+       "feedback": "Yes. The word 'left' tells us to take away. You chose the sign from the story."
+      },
+      {
+       "text": "Because 5 is smaller than 24.",
+       "correct": false,
+       "feedback": "The size of the number does not choose the sign. If Ben got 5 more pencils, we would use +, even though 5 is small."
+      },
+      {
+       "text": "Because we can add all the numbers in a story.",
+       "correct": false,
+       "feedback": "Adding everything gives 15, which is not right. Each step needs its own sign, chosen from the story."
+      },
+      {
+       "text": "Because step 2 must use a different sign from step 1.",
+       "correct": false,
+       "feedback": "Two steps can use the same sign. We use − here because the story says how many are left."
+      }
+     ]
+    },
+    "remember": "Write each step on its own line. Choose its operation from the story."
+   }
+  ],
+  "multi.remx": [
+   {
+    "title": "Let the question decide the leftover",
+    "mistake": "You worked out 29 ÷ 4 = 7 R 1 correctly, well done. But you answered 7 cars, so 1 kid had no seat. This is a very common mix-up.",
+    "example": "29 kids go on a trip. 4 kids fit in each car. How many cars are needed so every kid has a seat?",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "29 ÷ 4 = 7 R 1",
+      "Answer: 7 cars",
+      "1 kid has no seat!"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "29 ÷ 4 = 7 R 1",
+      "7 full cars, 1 kid left",
+      "That kid needs a car too",
+      "7 + 1 = 8 cars"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Divide first",
+      "text": "29 ÷ 4 = 7 R 1. Check: 7 × 4 = 28 and 28 + 1 = 29."
+     },
+     {
+      "goal": "Read the question again",
+      "text": "It says every kid needs a seat. So the 1 kid left over needs a car too."
+     },
+     {
+      "goal": "Add one more car",
+      "text": "A car is a group. We add one more car (one more group): 7 + 1 = 8 cars."
+     },
+     {
+      "goal": "See other questions",
+      "text": "If it asked how many cars are FULL, the answer would be 7. If it asked how many kids are left over, the answer would be 1."
+     }
+    ],
+    "check": {
+     "question": "How do we decide what to do with the leftover 1 kid?",
+     "options": [
+      {
+       "text": "Read the question. Every kid needs a seat, so we add one more car.",
+       "correct": true,
+       "feedback": "Yes! The question decides. Here everyone needs a place, so 8 cars."
+      },
+      {
+       "text": "Always drop the leftover. 7 R 1 means 7 cars.",
+       "correct": false,
+       "feedback": "We drop the leftover only when the question asks for FULL groups. Here 1 kid would have no seat, so we need 8 cars."
+      },
+      {
+       "text": "The answer is always the remainder, so it is 1.",
+       "correct": false,
+       "feedback": "The remainder is the answer only when the question asks what is left over. This question asks how many cars, so the answer is 8."
+      }
+     ]
+    },
+    "remember": "Everyone needs a place: add one. FULL groups: drop it. Left over: remainder."
+   }
+  ],
+  "sub.borrow": [
+   {
+    "title": "Trading a ten when the top is smaller",
+    "mistake": "In 562 − 238, the ones column has 2 on top and 8 below. You did 8 − 2 = 6 and got 336. Lots of learners do this, and we can fix it.",
+    "example": "562 − 238",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "Ones: 8 − 2 = 6 (digits flipped round)",
+      "Tens: 6 − 3 = 3",
+      "Hundreds: 5 − 2 = 3",
+      "Answer: 336"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "Ones: 2 is smaller than 8, so trade",
+      "6 tens become 5 tens, 2 ones become 12 ones",
+      "Ones: 12 − 8 = 4",
+      "Tens: 5 − 3 = 2",
+      "Hundreds: 5 − 2 = 3",
+      "Answer: 324"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Start from the right",
+      "text": "Look at the ones: 2 on top, 8 below. The top digit is smaller, so we cannot take 8 away yet."
+     },
+     {
+      "goal": "Trade 1 ten",
+      "text": "Trade 1 ten for 10 ones. The 6 tens become 5 tens. The 2 ones become 12 ones."
+     },
+     {
+      "goal": "Subtract each column",
+      "text": "Ones: 12 − 8 = 4. Tens: 5 − 3 = 2. Hundreds: 5 − 2 = 3. The answer is 324."
+     },
+     {
+      "goal": "Check your answer",
+      "text": "Add back: 324 + 238 = 562. That is the top number, so the answer is right."
+     }
+    ],
+    "check": {
+     "question": "After the trade, why does the 6 in the tens column become 5?",
+     "options": [
+      {
+       "text": "Because 1 ten moved to the ones column as 10 ones.",
+       "correct": true,
+       "feedback": "Yes! The ten did not disappear. It moved to the ones, so the tens have 1 less."
+      },
+      {
+       "text": "It does not need to change. The ones just get 10 more for free.",
+       "correct": false,
+       "feedback": "Good try. The 10 ones must come from somewhere. They come from 1 ten, so the tens digit goes down by 1."
+      },
+      {
+       "text": "We do not need a trade. We can just do 8 − 2 instead.",
+       "correct": false,
+       "feedback": "Flipping the digits gives 336, which is wrong. The top number must stay on top, so we trade instead."
+      }
+     ]
+    },
+    "remember": "Top digit smaller? Trade 1 ten, make tens one less. Never flip."
+   }
+  ],
+  "sub.zero": [
+   {
+    "title": "Trading across a 0 in the tens",
+    "mistake": "In 704 − 368, you made the 0 tens into 9 tens, but the hundreds stayed at 7. A 0 has nothing to give, so the 10 tens must come from a hundred first. This is a very common mix-up, and you were close.",
+    "example": "704 − 368",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "704 is used as 7 hundreds, 9 tens, 14 ones",
+      "Ones: 14 − 8 = 6",
+      "Tens: 9 − 6 = 3",
+      "Hundreds: 7 − 3 = 4, so the answer was 436"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "704 becomes 6 hundreds, 9 tens, 14 ones",
+      "Ones: 14 − 8 = 6",
+      "Tens: 9 − 6 = 3",
+      "Hundreds: 6 − 3 = 3",
+      "704 − 368 = 336"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "See the 0 tens",
+      "text": "4 ones is less than 8 ones, so we need a ten. But there are 0 tens to trade."
+     },
+     {
+      "goal": "Trade 1 hundred first",
+      "text": "Trade 1 hundred for 10 tens. Now we have 6 hundreds and 10 tens."
+     },
+     {
+      "goal": "Trade 1 ten next",
+      "text": "Trade 1 ten for 10 ones. Now 704 is 6 hundreds, 9 tens, 14 ones. The 0 became 9, not -1."
+     },
+     {
+      "goal": "Subtract each column",
+      "text": "14 − 8 = 6, 9 − 6 = 3, 6 − 3 = 3. The answer is 336."
+     },
+     {
+      "goal": "Check by adding back",
+      "text": "336 + 368 = 704, so the answer is right."
+     }
+    ],
+    "check": {
+     "question": "In 704 − 368, why must the 7 hundreds become 6 hundreds?",
+     "options": [
+      {
+       "text": "Because 1 hundred was traded to make 10 tens, so it is no longer in the hundreds.",
+       "correct": true,
+       "feedback": "Yes. The 10 tens came from a hundred, so only 6 hundreds are left. Good thinking."
+      },
+      {
+       "text": "It does not have to. The 0 can just turn into 9 by itself.",
+       "correct": false,
+       "feedback": "Nice try, but a 0 cannot make tens from nothing. The tens must come from 1 hundred, so the 7 becomes 6."
+      },
+      {
+       "text": "Because the 0 tens becomes -1 tens.",
+       "correct": false,
+       "feedback": "Good try, but we never use -1 here. We trade 1 hundred for 10 tens, then 1 ten for 10 ones, so the 0 becomes 9."
+      }
+     ]
+    },
+    "remember": "0 tens? Trade 1 hundred first. The 0 becomes 9."
+   },
+   {
+    "title": "Trading across a 0 in the tens",
+    "mistake": "In 704 − 368 you got 436. There are 0 tens, so the ten had to come from a hundred. But you left the 7 hundreds as 7. It should be 6. This is a very common mix-up, and you are close.",
+    "example": "704 − 368",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "Ones: 4 becomes 14, so 14 − 8 = 6",
+      "Tens: the 0 becomes 9, so 9 − 6 = 3",
+      "Hundreds: 7 stayed 7, so 7 − 3 = 4",
+      "Answer: 436"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "704 becomes 6 hundreds, 9 tens, 14 ones",
+      "Ones: 14 − 8 = 6",
+      "Tens: 9 − 6 = 3",
+      "Hundreds: 6 − 3 = 3",
+      "Answer: 336"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Look at the tens",
+      "text": "The ones need a trade, because 4 is less than 8. But 704 has 0 tens, so there is no ten to trade yet."
+     },
+     {
+      "goal": "Trade 1 hundred first",
+      "text": "Trade 1 hundred for 10 tens. Now there are 6 hundreds and 10 tens."
+     },
+     {
+      "goal": "Then trade 1 ten",
+      "text": "Trade 1 ten for 10 ones. Now there are 9 tens and 14 ones. So 704 is 6 hundreds, 9 tens, 14 ones."
+     },
+     {
+      "goal": "Subtract each column",
+      "text": "14 − 8 = 6, then 9 − 6 = 3, then 6 − 3 = 3. The answer is 336."
+     },
+     {
+      "goal": "Check by adding back",
+      "text": "336 + 368 = 704. It matches the top number, so 336 is right."
+     }
+    ],
+    "check": {
+     "question": "In 704 − 368, why do the 7 hundreds become 6 hundreds?",
+     "options": [
+      {
+       "text": "Because 1 hundred was traded for 10 tens.",
+       "correct": true,
+       "feedback": "Yes. The tens had nothing to give, so 1 hundred was traded for 10 tens. That leaves 6 hundreds."
+      },
+      {
+       "text": "They should stay 7, because the ten came from the tens column.",
+       "correct": false,
+       "feedback": "The tens column has 0 tens, so it has no ten to give. The ten must come from a hundred, so 7 hundreds become 6."
+      },
+      {
+       "text": "They stay 7, because the 0 tens just become −1.",
+       "correct": false,
+       "feedback": "Trade 1 hundred for 10 tens. Then trade 1 ten for 10 ones. So the 0 becomes 9, never −1, and the hundreds go down by 1."
+      }
+     ]
+    },
+    "remember": "With 0 tens, trade 1 hundred first. The 0 becomes 9."
+   }
+  ],
+  "word.extra": [
+   {
+    "title": "Use only the numbers you need",
+    "mistake": "You used the 12 from \"The bus ride took 12 minutes\". The question asks about stickers, so 12 minutes does not help. Many learners do this. Good stories can have extra numbers.",
+    "example": "Tom has 24 stickers. The bus ride took 12 minutes. He gives 9 stickers to his sister. How many stickers does Tom have now?",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "24 − 9 − 12 = 3",
+      "Tom has 3 stickers."
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "Cross out: 12 minutes",
+      "24 − 9 = 15",
+      "Tom has 15 stickers."
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Read the question sentence",
+      "text": "The question is: How many stickers does Tom have now? It is about stickers."
+     },
+     {
+      "goal": "Cross out extra numbers",
+      "text": "12 minutes is about time, not stickers. Cross it out."
+     },
+     {
+      "goal": "Choose the operation",
+      "text": "Tom gives stickers away, so he has fewer. Take away: 24 − 9."
+     },
+     {
+      "goal": "Calculate and answer",
+      "text": "24 − 9 = 15. Tom has 15 stickers now."
+     }
+    ],
+    "check": {
+     "question": "Why do we cross out the 12 before we calculate?",
+     "options": [
+      {
+       "text": "The question asks about stickers, and 12 is minutes, not stickers.",
+       "correct": true,
+       "feedback": "Yes. You read the question first and kept only the numbers about stickers. That is a strong strategy."
+      },
+      {
+       "text": "We should use every number in the story.",
+       "correct": false,
+       "feedback": "Not always. Some stories have numbers that the question does not ask about. Read the question first to check."
+      },
+      {
+       "text": "12 is crossed out because it is the smallest number.",
+       "correct": false,
+       "feedback": "Size does not matter here. 9 is smaller, and we need it. We cross out 12 because it is about time, not stickers."
+      }
+     ]
+    },
+    "remember": "Read the question first. Cross out numbers it does not ask about."
+   },
+   {
+    "title": "Find the numbers the question needs",
+    "mistake": "You added the 3 km into your answer. The question asks about eggs, so the 3 km is not needed. Lots of learners do this, and it can be fixed.",
+    "example": "A box holds 6 eggs. Tom buys 4 boxes. The shop is 3 km from his home. How many eggs does Tom buy?",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "Used 6, 4 and 3",
+      "6 × 4 + 3 = 27",
+      "27 eggs"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "Cross out 3 km",
+      "Use 6 and 4",
+      "6 × 4 = 24",
+      "24 eggs"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Read the question sentence",
+      "text": "The question is: How many eggs does Tom buy? We need to find a number of eggs."
+     },
+     {
+      "goal": "Cross out extra numbers",
+      "text": "3 km tells us how far the shop is. It is not about eggs, so cross it out."
+     },
+     {
+      "goal": "Choose the operation",
+      "text": "4 boxes with 6 eggs in each box. That is 4 groups of 6, so we multiply."
+     },
+     {
+      "goal": "Calculate and check",
+      "text": "6 × 4 = 24. Tom buys 24 eggs. The answer is about eggs, so it matches the question."
+     }
+    ],
+    "check": {
+     "question": "Why do we cross out the 3 km before we calculate?",
+     "options": [
+      {
+       "text": "The question asks about eggs, and 3 km does not tell us anything about eggs.",
+       "correct": true,
+       "feedback": "Yes. You read the question sentence and kept only the numbers it asks about. Well done."
+      },
+      {
+       "text": "Every number in a story must be used, so we should keep it.",
+       "correct": false,
+       "feedback": "Many people think this. But some stories have an extra number. Use only the numbers the question asks about."
+      },
+      {
+       "text": "We should add 3 because it is the last number in the story.",
+       "correct": false,
+       "feedback": "Where a number sits in the story does not matter. Ask what the number is about. 3 km is a distance, not eggs."
+      }
+     ]
+    },
+    "remember": "Read the question sentence first, then cross out numbers it does not need."
+   }
+  ],
+  "word.schema": [
+   {
+    "title": "Read the story, not the word",
+    "mistake": "You saw the word \"more\" and added 12 + 5 = 17. That is a very common mix-up. Here, Mia has fewer than Sam, so we need to subtract.",
+    "example": "Sam has 12 stickers. That is 5 more than Mia. How many stickers does Mia have?",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "\"more\" means add",
+      "12 + 5 = 17",
+      "Mia has 17 stickers"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "Sam has 5 more, so Mia has 5 fewer",
+      "12 − 5 = 7",
+      "Mia has 7 stickers"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Read the story",
+      "text": "Who has more? Sam has 5 more than Mia. So Mia has less than Sam."
+     },
+     {
+      "goal": "Draw a bar picture",
+      "text": "Draw a long bar for Sam: 12. Draw a shorter bar for Mia. The extra part on Sam's bar is 5."
+     },
+     {
+      "goal": "Decide what it asks",
+      "text": "We know the big bar and the difference. We want the short bar, so we take away."
+     },
+     {
+      "goal": "Work it out and check",
+      "text": "12 − 5 = 7. Check: 7 + 5 = 12, so Sam really has 5 more."
+     }
+    ],
+    "check": {
+     "question": "Why do we subtract to find Mia's stickers, even though the story says \"more\"?",
+     "options": [
+      {
+       "text": "Because Sam has more, so Mia's bar is shorter than 12.",
+       "correct": true,
+       "feedback": "Yes. The 5 extra belongs to Sam, so we take 5 away from 12 to find Mia's part."
+      },
+      {
+       "text": "We should not subtract. \"More\" always means add.",
+       "correct": false,
+       "feedback": "Many children think this. But here \"more\" tells us who has the bigger bar. Mia has the smaller one, so we subtract."
+      },
+      {
+       "text": "Because 12 is the bigger number, and we always take the small number from the big one.",
+       "correct": false,
+       "feedback": "The size of the numbers does not tell us what to do. The story does. Mia has fewer than Sam, so we subtract."
+      }
+     ]
+    },
+    "remember": "Draw the bars first. \"More\" can mean subtract."
+   },
+   {
+    "title": "Read the story, not the word",
+    "mistake": "You saw the word \"more\" and added: 41 + 16 = 57. Many children do this, and it is a normal step in learning. But the story says Tom has fewer marbles than Lily, so his number must be smaller than 41.",
+    "example": "Lily has 41 marbles. That is 16 more than Tom. How many marbles does Tom have?",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "\"more\" means add",
+      "41 + 16 = 57",
+      "Tom has 57 marbles"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "Lily's bar: Tom's part and 16 more, 41 in all",
+      "Tom's bar: shorter by 16",
+      "41 − 16 = 25",
+      "Tom has 25 marbles"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Read the story",
+      "text": "Lily has 41. Lily has 16 more than Tom. So Lily has more and Tom has fewer."
+     },
+     {
+      "goal": "Draw a bar picture",
+      "text": "Draw a long bar for Lily, 41. Draw Tom's bar under it, 16 shorter."
+     },
+     {
+      "goal": "Decide what it asks",
+      "text": "It is a difference story. We know the long bar and the difference. We need the short bar, so we subtract: 41 − 16 = 25."
+     },
+     {
+      "goal": "Check the answer",
+      "text": "Add the difference back: 25 + 16 = 41. That is Lily's number, so 25 is right."
+     }
+    ],
+    "check": {
+     "question": "Why do we find Tom's number with 41 − 16?",
+     "options": [
+      {
+       "text": "Because Lily has 16 more than Tom, so Tom has 16 fewer than Lily.",
+       "correct": true,
+       "feedback": "Yes. You read the story well. Tom's bar is 16 shorter than Lily's bar, so we take 16 away from 41."
+      },
+      {
+       "text": "Because 16 is smaller than 41.",
+       "correct": false,
+       "feedback": "It is true that 16 is smaller, but that is not the reason. In many stories with a small number we add. The story tells us Tom has fewer, and that is why we subtract."
+      },
+      {
+       "text": "Because the question says \"how many\".",
+       "correct": false,
+       "feedback": "\"How many\" is in lots of questions, for adding too. One word cannot tell us the sum. We must think about who has more and who has fewer."
+      },
+      {
+       "text": "Because Lily gives 16 marbles to Tom.",
+       "correct": false,
+       "feedback": "Lily does not give any marbles away in this story. The 16 is the difference between them. Tom has 16 fewer than Lily, so we subtract."
+      }
+     ]
+    },
+    "remember": "Read the story and draw bars. \"More\" can mean subtract."
+   },
+   {
+    "title": "Read the story, not just the words",
+    "mistake": "You saw the word \"more\" and added 34 + 9 to get 43. Many children do this. But in this story, Ben has fewer stickers than Leo, so we need to take away.",
+    "example": "Leo has 34 stickers. That is 9 more than Ben. How many stickers does Ben have?",
+    "wrong": {
+     "label": "The mix-up",
+     "lines": [
+      "\"more\" means add",
+      "34 + 9 = 43",
+      "Ben has 43 stickers"
+     ]
+    },
+    "right": {
+     "label": "The right way",
+     "lines": [
+      "Leo has 9 more, so Ben has 9 fewer",
+      "34 − 9 = 25",
+      "Ben has 25 stickers"
+     ]
+    },
+    "steps": [
+     {
+      "goal": "Read the whole story",
+      "text": "Leo has 34. Leo has 9 more than Ben. So Leo has the bigger number."
+     },
+     {
+      "goal": "Draw a bar picture",
+      "text": "Draw a long bar for Leo: 34. Draw a shorter bar for Ben. The extra bit on Leo's bar is 9."
+     },
+     {
+      "goal": "Decide what it asks",
+      "text": "We know the big bar and the difference. We want the short bar, so we take away."
+     },
+     {
+      "goal": "Work it out and check",
+      "text": "34 − 9 = 25. Check: 25 + 9 = 34, the same as Leo. Ben has 25 stickers."
+     }
+    ],
+    "check": {
+     "question": "Why do we take away 9 here, even though the story says \"more\"?",
+     "options": [
+      {
+       "text": "Because Leo has more, so Ben's bar is shorter than 34.",
+       "correct": true,
+       "feedback": "Yes. You read the story well. Leo has the long bar, and Ben's bar is 9 shorter, so we take away."
+      },
+      {
+       "text": "Because \"more\" always means take away.",
+       "correct": false,
+       "feedback": "Not always. Sometimes \"more\" does mean add. We must read the story and draw the bars to decide each time."
+      },
+      {
+       "text": "Because the word \"more\" tells us Ben gets 9 more stickers.",
+       "correct": false,
+       "feedback": "Ben does not get any stickers. The story only compares Leo and Ben. Leo is the one with more."
+      }
+     ]
+    },
+    "remember": "Read the story and draw bars. \"More\" can mean take away."
+   }
+  ]
+ }
 }

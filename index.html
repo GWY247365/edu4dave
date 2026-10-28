@@ -5811,7 +5811,11 @@ function renderMiniLesson({ key, n, lesson: L }) {
     }
   };
   card.appendChild(el('h4', null, L.title));
-  if (L.mistake) card.appendChild(el('p', null, L.mistake));
+  // The lesson's own "mistake" line speaks about its example ("you wrote
+  // 38 ÷ 6 = 5 R 8"), but he made the mistake on different numbers, and the
+  // diagnosis above already names it with his. So the lesson is introduced
+  // as the same mistake on another example, and that line is not shown.
+  card.appendChild(el('p', null, 'The same kind of mistake, on another example' + (L.example ? ` (${L.example})` : '') + '. Spot the difference:'));
   const side = (cls, part, fallback) => {
     const d = el('div', 'ml-side ' + cls);
     d.appendChild(el('b', null, (part && part.label) || fallback));

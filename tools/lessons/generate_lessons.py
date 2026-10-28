@@ -97,7 +97,7 @@ WRITER_SYSTEM = f"""You write mini-lessons for a children's maths practice app. 
 The learner: {CATALOG['learner']}
 
 Write each lesson the way the research on learning from errors says works:
-- Name the mistake kindly and specifically, with the numbers he saw; mistakes are normal while learning. Never say "easy", "simple" or "obviously"; praise effort and strategy, not cleverness.
+- Name the mistake kindly and specifically on the lesson's example. The lesson is shown after a DIFFERENT problem with other numbers, so never claim what he wrote or did ('you wrote 5 R 8'); describe the example instead ('On 38 ÷ 6, a common slip is 5 R 8'). Mistakes are normal while learning. Never say "easy", "simple" or "obviously"; praise effort and strategy, not cleverness.
 - Contrast: show the mistaken working and the correct working on the SAME example side by side, so the one difference is easy to see (comparing incorrect and correct examples).
 - Then a short worked example on that example, each step headed by a subgoal label (what the step is for), so he learns the method's structure and not just the answer.
 - Then one self-explanation question about WHY a step is right or why the mistake does not work. Exactly one option is correct. The wrong options are the beliefs that cause this mistake, so picking one is useful: its feedback explains kindly. Do not ask him to do a new calculation there.
